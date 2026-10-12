@@ -1,12 +1,16 @@
 extends HumanNPC
 ## A survivor on a guard tower with a rifle. Every so often it picks the nearest
-## zombie it has a clear shot at and fires. Shots can miss, every shot is loud
+## zombie it has a clear shot at and fires. If it's been given something to
+## guard (the police station's front gate), it only shoots zombies that come
+## within guard_radius of it; everywhere else is yours to deal with. Shots can miss, every shot is loud
 ## (pulling more zombies toward the station), and after a few rounds it has to
 ## stop and reload. It won't fire if you or another person is in the line of fire.
 ## TUNING: open guard.tscn, select the Guard node, and use the Inspector.
 
 @export_group("Rifle")
 @export var fire_range := 45.0
+## Only zombies this close (meters, along the ground) to what it guards are shot.
+@export var guard_radius := 8.0
 ## Seconds between shots (each one varies +-15% so guards don't fire in sync).
 @export var fire_interval := 1.6
 @export_range(0.0, 1.0) var hit_chance := 0.75
@@ -21,6 +25,10 @@ extends HumanNPC
 @export var reload_time := 4.0
 
 var exclude: Array[RID] = [] # set by main.gd: the guard's own tower, so its railing doesn't block its aim
+## What it guards: a line on the ground from guard_from to guard_to (the gate's
+## opening). Left at INF, it shoots anything in range.
+var guard_from := Vector3.INF
+var guard_to := Vector3.INF
 var rounds := 5
 
 var _cooldown := 0.0
@@ -69,6 +77,8 @@ func _find_target() -> Node3D:
 	var mask := GameData.LAYER_WORLD | GameData.LAYER_ZOMBIES | GameData.LAYER_PLAYER | GameData.LAYER_NPC
 	for node in get_tree().get_nodes_in_group("zombies"):
 		var zombie := node as Node3D
+		if not _near_guarded(zombie.global_position):
+			continue
 		var aim := zombie.global_position + Vector3(0, 1.2, 0)
 		var dist := eye.distance_to(aim)
 		if dist >= best_dist:
@@ -80,6 +90,17 @@ func _find_target() -> Node3D:
 		best = zombie
 		best_dist = dist
 	return best
+
+
+## Within guard_radius of the guarded line (or there's nothing to guard).
+func _near_guarded(pos: Vector3) -> bool:
+	if guard_from == Vector3.INF:
+		return true
+	var a := Vector2(guard_from.x, guard_from.z)
+	var b := Vector2(guard_to.x, guard_to.z)
+	var p := Vector2(pos.x, pos.z)
+	var t := clampf((p - a).dot(b - a) / maxf((b - a).length_squared(), 0.0001), 0.0, 1.0)
+	return p.distance_to(a.lerp(b, t)) <= guard_radius
 
 
 func _fire_at(target: Node3D) -> void:

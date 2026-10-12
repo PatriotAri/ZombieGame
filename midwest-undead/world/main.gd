@@ -41,6 +41,7 @@ const Zones := preload("res://world/zones.gd")
 const MapMenu := preload("res://ui/map_menu.gd")
 const BackpackMenu := preload("res://ui/backpack_menu.gd")
 const Discoveries := preload("res://world/discoveries.gd")
+const TraderArrival := preload("res://world/trader_arrival.gd")
 const Hud := preload("res://ui/hud.gd")
 const WorldBuilder := preload("res://world/world_builder.gd")
 const Loot := preload("res://world/loot.gd")
@@ -97,6 +98,7 @@ var zones: Zones
 var map_menu: MapMenu
 var backpack_menu: BackpackMenu
 var discoveries: Discoveries
+var trader_arrival: TraderArrival # the wagon trader who comes once Zone 1 is cleared
 var dialogue: DialogueBox
 var quest: MainQuest
 var chief: PoliceChief
@@ -219,6 +221,13 @@ func _ready() -> void:
 	quest.objective_changed.connect(hud.set_objective)
 	quest.story_beat.connect(hud.show_story)
 	quest.setup(player, chief, safe_house_point, dialogue)
+
+	trader_arrival = TraderArrival.new()
+	add_child(trader_arrival)
+	var compound_center := (PoliceStation.COMPOUND_MIN + PoliceStation.COMPOUND_MAX) / 2.0
+	trader_arrival.setup(player, zones, day_night, Vector3(compound_center.x, 0.0, compound_center.y))
+	trader_arrival.zone_cleared.connect(quest.zone_cleared)
+	trader_arrival.seen.connect(quest.trader_found)
 
 	# Coming from "Load": the town is freshly rebuilt; now put the saved state on top.
 	if not SaveGame.pending_load.is_empty():
@@ -426,6 +435,7 @@ func _save_game() -> bool:
 		"discovered": discoveries.save_state(),
 		"shop_stock": trader.stock.to_dict(),
 		"shop_restocked_day": trader.restocked_day,
+		"wagon_trader": trader_arrival.save_state(),
 	})
 
 
@@ -499,6 +509,8 @@ func _apply_save(data: Dictionary) -> void:
 
 	trader.stock.from_dict(data.get("shop_stock", trader.stock.to_dict()))
 	trader.restocked_day = int(data.get("shop_restocked_day", day_night.day))
+	trader_arrival.load_state(data.get("wagon_trader", {}))
+	quest.sync_progress(trader_arrival.cleared, trader_arrival.was_seen)
 	player.load_state(data.get("player", {}))
 
 

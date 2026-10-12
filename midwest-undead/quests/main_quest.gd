@@ -3,7 +3,10 @@ extends Node
 ##
 ##   TALK_TO_CHIEF    -> the Chief explains the Westside safe house has gone silent
 ##   REACH_SAFE_HOUSE -> cross town to it; arriving reveals it's been overrun
-##   REPORT_BACK      -> tell the Chief; he pays you
+##   REPORT_BACK      -> tell the Chief; he pays you and asks you to clear Zone 1
+##   CLEAR_ZONE       -> kill the zombies on the streets around the station
+##   WAIT_FOR_TRADER  -> go out; a trader's wagon comes while you're away
+##                       (world/trader_arrival.gd), and finding it ends the stage
 ##   WAIT_FOR_NEXT    -> end of the current story (more quests go here later)
 ##
 ## It owns the objective text (shown on the HUD) and a waypoint marker you can
@@ -14,7 +17,10 @@ signal objective_changed(text: String)
 ## A big story moment shown in the middle of the screen.
 signal story_beat(text: String)
 
-enum Stage { TALK_TO_CHIEF, REACH_SAFE_HOUSE, REPORT_BACK, WAIT_FOR_NEXT }
+## Saved as numbers, so only ever add stages, never reorder. (CLEAR_ZONE took
+## WAIT_FOR_NEXT's old number on purpose: saves from before it existed pick up
+## the new job.)
+enum Stage { TALK_TO_CHIEF, REACH_SAFE_HOUSE, REPORT_BACK, CLEAR_ZONE, WAIT_FOR_TRADER, WAIT_FOR_NEXT }
 
 const CHIEF := "Police Chief"
 const REWARD_MONEY := 100
@@ -38,8 +44,10 @@ const REPORT_LINES: Array[String] = [
 	"Overrun. All of them?",
 	"Damn it. I knew those people. The Harlans. Old Mrs. Pruitt. The Okafor kids.",
 	"If the Westside barricades couldn't hold, nothing in this town is as safe as we've been telling ourselves.",
-	"Here. You earned this, and then some. Rest up while you can.",
-	"I need to think about our next move. I'll have work for you soon.",
+	"Here. You earned this, and then some.",
+	"And here's our next move. We stop hiding behind this fence and take back the blocks around it.",
+	"Every one of those things on the streets around the station. Clear them out. Board up what you can so they stay out.",
+	"Do that and word gets around. Traders follow safe streets.",
 ]
 # Talking to the Chief for the first time after you've already found the safe
 # house on your own: he pays you straight away instead of sending you there.
@@ -49,15 +57,31 @@ const ALREADY_BEEN_LINES: Array[String] = [
 	"Overrun. All eleven of them?",
 	"Damn it. I was about to send you out there to find exactly that.",
 	"You saved me a day of wondering, and yourself a trip. Here. You've earned this.",
-	"I need to think about our next move. I'll have work for you soon.",
+	"And here's our next move. We stop hiding behind this fence and take back the blocks around it.",
+	"Every one of those things on the streets around the station. Clear them out. Board up what you can so they stay out.",
+	"Do that and word gets around. Traders follow safe streets.",
 ]
+const CLEAR_ZONE_LINES: Array[String] = [
+	"The streets around the station aren't safe yet. Check your map: anywhere red, they're still out there.",
+]
+const ZONE_CLEARED_STORY := "The streets around the station are clear.\nWord will get around."
+const WAIT_FOR_TRADER_LINES: Array[String] = [
+	"You did it. The blocks around us are clear. First time in months.",
+	"Give it time. Anyone out there with goods to sell will hear about it. Go see what else is out there.",
+]
+const TRADER_STORY := "A trader's wagon has pulled into the station yard."
 const IDLE_LINES: Array[String] = [
+	"A trader in our own yard. Almost feels like a town again.",
 	"Still working out what comes next. Keep your head down, and keep that gun clean.",
 ]
 
 var stage := Stage.TALK_TO_CHIEF
 ## True once you've seen the overrun safe house, whether or not the Chief sent you.
 var safe_house_investigated := false
+## Set from world/trader_arrival.gd: Zone 1 has been cleared at least once, and
+## you've come back and found the trader's wagon.
+var area_cleared := false
+var trader_seen := false
 ## Stages that have already been autosaved near their objective (so it happens once each).
 var autosaved_stages: Array[int] = []
 var player: Node3D
@@ -96,6 +120,10 @@ func objective_text() -> String:
 			return "Find out what happened at the Westside safe house (west end of 7th Street)"
 		Stage.REPORT_BACK:
 			return "Report back to the Police Chief"
+		Stage.CLEAR_ZONE:
+			return "Clear Zone 1: kill the zombies on the streets around the station (M for the map)"
+		Stage.WAIT_FOR_TRADER:
+			return "Zone 1 is clear. Head out and scavenge; word will get around"
 	return ""
 
 
@@ -111,6 +139,10 @@ func talk_to_chief() -> void:
 			dialogue.start(CHIEF, REMINDER_LINES, player)
 		Stage.REPORT_BACK:
 			dialogue.start(CHIEF, REPORT_LINES, player, _reward)
+		Stage.CLEAR_ZONE:
+			dialogue.start(CHIEF, CLEAR_ZONE_LINES, player)
+		Stage.WAIT_FOR_TRADER:
+			dialogue.start(CHIEF, WAIT_FOR_TRADER_LINES, player)
 		Stage.WAIT_FOR_NEXT:
 			dialogue.start(CHIEF, IDLE_LINES, player)
 
@@ -136,7 +168,38 @@ func _reward() -> void:
 	player.set("money", int(player.get("money")) + REWARD_MONEY)
 	player.call("give_item", "pistol_ammo", REWARD_AMMO)
 	player.emit_signal("notify", "+$%d  ·  +%d pistol rounds" % [REWARD_MONEY, REWARD_AMMO])
-	_set_stage(Stage.WAIT_FOR_NEXT)
+	_set_stage(Stage.CLEAR_ZONE)
+	_catch_up() # you may have cleared it already
+
+
+## world/trader_arrival.gd: Zone 1 was cleared for the first time.
+func zone_cleared() -> void:
+	area_cleared = true
+	story_beat.emit(ZONE_CLEARED_STORY)
+	_catch_up()
+
+
+## world/trader_arrival.gd: you came back and found the wagon.
+func trader_found() -> void:
+	trader_seen = true
+	story_beat.emit(TRADER_STORY)
+	_catch_up()
+
+
+## After loading: where things stand, without the story moments.
+func sync_progress(cleared: bool, seen: bool) -> void:
+	area_cleared = cleared
+	trader_seen = seen
+	_catch_up()
+
+
+## Moves past stages whose goal is already met (either can happen before the
+## Chief asks: you might clear the zone early).
+func _catch_up() -> void:
+	if stage == Stage.CLEAR_ZONE and area_cleared:
+		_set_stage(Stage.WAIT_FOR_TRADER)
+	if stage == Stage.WAIT_FOR_TRADER and trader_seen:
+		_set_stage(Stage.WAIT_FOR_NEXT)
 
 
 ## Where the current objective is (the waypoint), or Vector3.INF if there isn't one.

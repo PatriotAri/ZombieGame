@@ -113,11 +113,15 @@ func zone_at(pos: Vector3) -> String:
 	return _zone_of_square.get(square_at(pos), "")
 
 
+## False until the first count: before it, every zone reads as safe.
+func is_counted() -> bool:
+	return _started
+
+
 func status_of(zone_name: String) -> Status:
 	return _status.get(zone_name, Status.SAFE)
 
 
-## "Zone 1 (Police Station)".
 ## "Zone 1 (Police Station)"; just "Zone 1" while its title is a place you
 ## haven't found yet (world/discoveries.gd).
 func full_name(zone_name: String) -> String:

@@ -91,12 +91,15 @@ static func build(b: WorldBuilder) -> Dictionary:
 		b.add_box(Vector3(0.15, fence_h, z1 - z0), Vector3(x, fence_h / 2.0, (z0 + z1) / 2.0), PLYWOOD)
 	_build_gate(b, gate0, gate1, z0, fence_h)
 
-	# Guard towers in the two front corners, covering the street and the gate.
+	# Guard towers in the two front corners. They only shoot zombies that come
+	# near the gate (guard.gd's guard_radius); the street beyond is yours to clear.
 	for tower_x in [x0 + 2.5, x1 - 2.5]:
 		var base := Vector3(tower_x, 0.0, z0 + 2.5)
 		var tower_rids := _build_guard_tower(b, base)
 		var guard := GuardScene.instantiate() as Guard
 		guard.exclude = tower_rids
+		guard.guard_from = Vector3(gate0, 0.0, z0)
+		guard.guard_to = Vector3(gate1, 0.0, z0)
 		guard.position = base + Vector3(0, 4.2, 0)
 		b.main.add_child(guard) # starts facing -z (the street); turns toward targets as it fires
 	return result

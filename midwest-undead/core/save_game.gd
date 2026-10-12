@@ -11,6 +11,7 @@ extends RefCounted
 ## Project > Open User Data Folder in the editor.
 
 const PATH := "user://savegame.json"
+const GAME_SCENE := "res://world/main.tscn"
 const VERSION := 2 # bump whenever the save layout changes; older saves are ignored
 
 ## Set by request_load(); main.gd picks it up after the scene reloads.
@@ -43,14 +44,15 @@ static func read() -> Dictionary:
 	return parsed
 
 
-## Reload the world and restore the save. Returns false if there's no usable save.
+## Load the world fresh (from the game or the main menu) and restore the save.
+## Returns false if there's no usable save.
 static func request_load(tree: SceneTree) -> bool:
 	var data := read()
 	if data.is_empty():
 		return false
 	pending_load = data
-	tree.paused = false # pause survives a scene reload, so clear it first
-	tree.reload_current_scene()
+	tree.paused = false # pause survives a scene change, so clear it first
+	tree.change_scene_to_file(GAME_SCENE)
 	return true
 
 
