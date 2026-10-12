@@ -12,9 +12,9 @@ extends CharacterBody3D
 ## The node tree lives in zombie.tscn.
 ## TUNING: open zombie.tscn, select the Zombie node, and use the Inspector.
 
-const Player := preload("res://player.gd")
-const GameData := preload("res://game_data.gd")
-const Door := preload("res://door.gd")
+const Player := preload("res://characters/player/player.gd")
+const GameData := preload("res://core/game_data.gd")
+const Door := preload("res://world/door.gd")
 
 enum State { IDLE, INVESTIGATE, HUNT }
 

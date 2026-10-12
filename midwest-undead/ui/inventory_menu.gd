@@ -2,10 +2,10 @@ extends CanvasLayer
 ## Two-column transfer screen between you and an opened container.
 ## The game keeps running while it's open, and it closes itself if you get hurt.
 
-const GameData := preload("res://game_data.gd")
-const Inventory := preload("res://inventory.gd")
-const Player := preload("res://player.gd")
-const LootSpot := preload("res://loot_spot.gd")
+const GameData := preload("res://core/game_data.gd")
+const Inventory := preload("res://items/inventory.gd")
+const Player := preload("res://characters/player/player.gd")
+const LootSpot := preload("res://items/loot_spot.gd")
 
 var player: Player
 var container: LootSpot

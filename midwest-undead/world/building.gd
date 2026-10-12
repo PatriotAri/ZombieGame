@@ -7,9 +7,9 @@ extends Node3D
 ## z runs along the street; y is up. main.gd rotates the node so +x points away
 ## from Main Street on either side.
 
-const GameData := preload("res://game_data.gd")
-const LootSpot := preload("res://loot_spot.gd")
-const Door := preload("res://door.gd")
+const GameData := preload("res://core/game_data.gd")
+const LootSpot := preload("res://items/loot_spot.gd")
+const Door := preload("res://world/door.gd")
 
 const WALL := 0.2
 ## Default floor height: matches the sidewalk, so you step straight in from it.

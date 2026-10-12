@@ -9,7 +9,7 @@ extends HumanNPC
 
 enum State { IDLE, ALERT, COMBAT }
 
-const GroundItem := preload("res://ground_item.gd")
+const GroundItem := preload("res://items/ground_item.gd")
 
 @export_group("Senses")
 @export var sight_range := 25.0 ## In daylight.

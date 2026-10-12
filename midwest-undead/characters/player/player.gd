@@ -14,11 +14,11 @@ signal npc_interacted(npc: HumanNPC)
 ## You pressed interact on an object that offers something (e.g. the logbook).
 signal object_interacted(obj: Node)
 
-const GameData := preload("res://game_data.gd")
-const Controls := preload("res://controls.gd")
-const Inventory := preload("res://inventory.gd")
-const LootSpot := preload("res://loot_spot.gd")
-const GroundItem := preload("res://ground_item.gd")
+const GameData := preload("res://core/game_data.gd")
+const Controls := preload("res://core/controls.gd")
+const Inventory := preload("res://items/inventory.gd")
+const LootSpot := preload("res://items/loot_spot.gd")
+const GroundItem := preload("res://items/ground_item.gd")
 
 @export_group("Movement")
 @export var walk_speed := 4.0

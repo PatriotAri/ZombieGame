@@ -2,7 +2,7 @@ extends RefCounted
 ## A bag of item counts, e.g. {"pistol_ammo": 12, "health_pack": 1}.
 ## The player and every searchable container each own one.
 
-const GameData := preload("res://game_data.gd")
+const GameData := preload("res://core/game_data.gd")
 
 var _counts := {}
 

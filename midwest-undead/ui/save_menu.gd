@@ -2,7 +2,7 @@ extends CanvasLayer
 ## The logbook screen: save your game, or load the last save.
 ## main.gd supplies the save callback (it knows how to collect the game state).
 
-const SaveGame := preload("res://save_game.gd")
+const SaveGame := preload("res://core/save_game.gd")
 
 var _player: Node
 var _save_callback := Callable()

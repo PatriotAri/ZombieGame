@@ -2,7 +2,7 @@ extends StaticBody3D
 ## A container you can open: a dumpster, a car, a pile of boxes.
 ## main.gd fills its inventory; the inventory screen moves items in and out.
 
-const Inventory := preload("res://inventory.gd")
+const Inventory := preload("res://items/inventory.gd")
 
 var label := "Boxes"
 var inventory := Inventory.new()

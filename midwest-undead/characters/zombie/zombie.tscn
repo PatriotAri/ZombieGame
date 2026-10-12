@@ -1,6 +1,6 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://zombie.gd" id="1_zombie"]
+[ext_resource type="Script" path="res://characters/zombie/zombie.gd" id="1_zombie"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_skin"]
 albedo_color = Color(0.45, 0.52, 0.4, 1)

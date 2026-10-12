@@ -3,9 +3,9 @@ extends CanvasLayer
 ## Right column: their stock (click to buy). Shift+click does the whole stack,
 ## or as many as you can afford when buying.
 
-const GameData := preload("res://game_data.gd")
-const Player := preload("res://player.gd")
-const Shopkeeper := preload("res://shopkeeper.gd")
+const GameData := preload("res://core/game_data.gd")
+const Player := preload("res://characters/player/player.gd")
+const Shopkeeper := preload("res://characters/npcs/shopkeeper.gd")
 
 var player: Player
 var shop: Shopkeeper

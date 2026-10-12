@@ -4,7 +4,7 @@ extends HumanNPC
 ## higher price). Each trader scene can have its own stock and prices.
 ## TUNING: open shopkeeper.tscn, select the Shopkeeper node, and use the Inspector.
 
-const Inventory := preload("res://inventory.gd")
+const Inventory := preload("res://items/inventory.gd")
 
 @export_group("Shop")
 ## What the trader starts with. Keys must be item ids from game_data.gd.

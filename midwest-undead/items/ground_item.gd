@@ -4,7 +4,7 @@ extends Area3D
 ## doesn't change zombie navigation. The player's interaction ray is told to
 ## detect areas on the items layer.
 
-const GameData := preload("res://game_data.gd")
+const GameData := preload("res://core/game_data.gd")
 
 var item_id := ""
 var amount := 1

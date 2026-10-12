@@ -4,7 +4,7 @@ extends CanvasLayer
 ## process_mode is the default (Inherit -> Pausable): the player, zombies, physics, tweens.
 ## This menu sets its own process_mode to ALWAYS so it keeps running while paused.
 
-const SaveGame := preload("res://save_game.gd")
+const SaveGame := preload("res://core/save_game.gd")
 
 var resume_button: Button
 var _load_button: Button

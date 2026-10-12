@@ -1,7 +1,7 @@
 [gd_scene format=3]
 
-[ext_resource type="PackedScene" path="res://human_npc.tscn" id="1_base"]
-[ext_resource type="Script" path="res://guard.gd" id="2_guard"]
+[ext_resource type="PackedScene" path="res://characters/npcs/human_npc.tscn" id="1_base"]
+[ext_resource type="Script" path="res://characters/npcs/guard.gd" id="2_guard"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metal"]
 albedo_color = Color(0.1, 0.1, 0.1, 1)

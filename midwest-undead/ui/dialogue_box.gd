@@ -3,7 +3,7 @@ extends CanvasLayer
 ## time, press to continue. Your controls freeze while it's open (the world keeps
 ## running). Call start() with the lines and, optionally, what to do when it ends.
 
-const Controls := preload("res://controls.gd")
+const Controls := preload("res://core/controls.gd")
 
 var _lines: Array[String] = []
 var _index := 0
