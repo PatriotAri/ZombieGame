@@ -19,12 +19,12 @@ var hour := 17.0
 var day := 1
 
 var env: Environment
-var sky_mat: ProceduralSkyMaterial
+var sky_mat: ShaderMaterial # world/sky_clouds.gdshader
 var sun: DirectionalLight3D
 var moon: DirectionalLight3D
 
 
-func setup(environment: Environment, sky_material: ProceduralSkyMaterial,
+func setup(environment: Environment, sky_material: ShaderMaterial,
 		sun_light: DirectionalLight3D, moon_light: DirectionalLight3D) -> void:
 	add_to_group("day_night")
 	hour = start_hour
@@ -79,10 +79,12 @@ func _apply() -> void:
 	moon.light_energy = 0.2 * clampf(-height * 4.0, 0.0, 1.0)
 
 	var horizon := NIGHT_HORIZON.lerp(DAY_HORIZON, light).lerp(DUSK_HORIZON, twilight * 0.75)
-	sky_mat.sky_top_color = NIGHT_TOP.lerp(DAY_TOP, light)
-	sky_mat.sky_horizon_color = horizon
-	sky_mat.ground_horizon_color = horizon.darkened(0.3)
-	sky_mat.ground_bottom_color = horizon.darkened(0.8)
+	sky_mat.set_shader_parameter("sky_top_color", NIGHT_TOP.lerp(DAY_TOP, light))
+	sky_mat.set_shader_parameter("sky_horizon_color", horizon)
+	sky_mat.set_shader_parameter("ground_horizon_color", horizon.darkened(0.3))
+	sky_mat.set_shader_parameter("ground_bottom_color", horizon.darkened(0.8))
+	sky_mat.set_shader_parameter("light", light)
+	sky_mat.set_shader_parameter("sun_tint", sun.light_color) # golden clouds at dawn and dusk
 
 	env.ambient_light_color = night_ambient.lerp(DAY_AMBIENT, light)
 	env.fog_light_color = horizon.darkened(0.25)

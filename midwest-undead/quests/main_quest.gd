@@ -26,11 +26,11 @@ const INTRO_LINES: Array[String] = [
 	"Eleven people holed up there. Families, mostly. They checked in on the radio every night like clockwork.",
 	"Three nights ago they missed the call. Nothing since.",
 	"Could be a dead battery. Could be worse. I can't spare a guard off the towers to find out.",
-	"It's on the far west end of the cross street, past Main. Get over there, see what happened, and come back and tell me.",
+	"It's way out on the west end of 7th Street, past Main and past the houses, across from the gas station. Get over there, see what happened, and come back and tell me.",
 	"Trade with the Quartermaster if you need supplies. And keep it quiet out there. Gunfire brings every one of them for blocks.",
 ]
 const REMINDER_LINES: Array[String] = [
-	"The safe house is on the west end of the cross street, past Main. Go. And come back in one piece.",
+	"The safe house is way out on the west end of 7th Street, across from the gas station. Go. And come back in one piece.",
 ]
 const SAFE_HOUSE_DISCOVERY := "The barricade is torn open. The windows are smashed in.\nNobody answered the radio because nobody is left."
 const REPORT_LINES: Array[String] = [
@@ -92,7 +92,7 @@ func objective_text() -> String:
 		Stage.TALK_TO_CHIEF:
 			return "Talk to the Police Chief"
 		Stage.REACH_SAFE_HOUSE:
-			return "Find out what happened at the Westside safe house (west end of the cross street)"
+			return "Find out what happened at the Westside safe house (west end of 7th Street)"
 		Stage.REPORT_BACK:
 			return "Report back to the Police Chief"
 	return ""

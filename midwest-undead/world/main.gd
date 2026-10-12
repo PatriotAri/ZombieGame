@@ -46,6 +46,10 @@ const Town := preload("res://world/areas/town.gd")
 const PoliceStation := preload("res://world/areas/police_station.gd")
 const SafeHouse := preload("res://world/areas/safe_house.gd")
 const BanditCamp := preload("res://world/areas/bandit_camp.gd")
+const Housing := preload("res://world/areas/housing.gd")
+const SkyShader := preload("res://world/sky_clouds.gdshader")
+const Grocery := preload("res://world/areas/grocery.gd")
+const GasStation := preload("res://world/areas/gas_station.gd")
 
 @export_group("World")
 ## Same seed = same town layout and loot every run. Change it for a different town.
@@ -95,6 +99,12 @@ var safe_house_point := Vector3.ZERO # middle of the safe house yard (quest mark
 var safe_house_zombie_points: Array[Vector3] = []
 var bandits: Array[Bandit] = []
 var zombies: Array[Zombie] = [] # every zombie spawned, dead or alive, in spawn order (for saving)
+## Everything added after the original town rolls its own dice, so it never
+## reshuffles what came before it (see world_builder.gd).
+var housing_rng := RandomNumberGenerator.new()
+var grocery_rng := RandomNumberGenerator.new()
+var gas_station_rng := RandomNumberGenerator.new()
+var house_zombie_points: Array[Vector3] = [] # inside the houses and the gas station
 var save_menu: SaveMenu
 var inventory_menu: InventoryMenu
 var shop_menu: ShopMenu
@@ -121,6 +131,15 @@ func _ready() -> void:
 	safe_house_point = safe_house["point"]
 	safe_house_zombie_points = safe_house["zombie_points"]
 	BanditCamp.build(builder)
+	# Last of the build, with its own generator, so it doesn't reshuffle anything above.
+	housing_rng.seed = town_seed + 2
+	house_zombie_points = Housing.build(builder, housing_rng, door_open_chance,
+			container_health_pack_chance, container_ammo_chance, container_trade_goods_chance)
+	grocery_rng.seed = town_seed + 3
+	Grocery.build(builder, grocery_rng)
+	gas_station_rng.seed = town_seed + 4
+	house_zombie_points.append_array(GasStation.build(builder, gas_station_rng, door_open_chance,
+			container_health_pack_chance, container_ammo_chance, container_trade_goods_chance))
 	# Bake the walkable area from the town's collision shapes. Runs once at startup
 	# and blocks briefly; fine for one small town.
 	nav_region.bake_navigation_mesh(false)
@@ -131,6 +150,9 @@ func _ready() -> void:
 	_spawn_player()
 	_spawn_zombies()
 	bandits = BanditCamp.spawn(builder)
+	for point in house_zombie_points:
+		if housing_rng.randf() < indoor_zombie_chance:
+			_add_zombie(point + Vector3(0, 0.1, 0), housing_rng)
 	zones = Zones.new()
 	zones.bandits = bandits
 	add_child(zones)
@@ -151,7 +173,8 @@ func _ready() -> void:
 	add_child(save_menu)
 	map_menu = MapMenu.new()
 	add_child(map_menu)
-	map_menu.setup(player, zones, Town.map_roads(), _map_buildings(), [PoliceStation.map_fence()])
+	map_menu.setup(player, zones, Town.map_roads() + Housing.map_roads(), _map_buildings(), [PoliceStation.map_fence()],
+			_map_landmarks())
 	player.object_interacted.connect(func(obj: Node) -> void:
 		if obj is SavePoint:
 			save_menu.open(player, _save_game)
@@ -181,6 +204,21 @@ func _map_buildings() -> Array[PackedVector2Array]:
 		if node is Building:
 			result.append((node as Building).footprint)
 	return result
+
+
+## Place names for the map screen, as [name, (x, z)].
+func _map_landmarks() -> Array:
+	return [
+		["Police Station", Vector2(PoliceStation.STATION_X, PoliceStation.COMPOUND_MAX.y + 4.0)],
+		["Safe House", Vector2(SafeHouse.SAFE_HOUSE_X, SafeHouse.SAFE_HOUSE_FRONT_Z + 16.0)],
+		["Bandit Camp", Vector2(BanditCamp.CAMP_CENTER.x, BanditCamp.CAMP_CENTER.z - 10.0)],
+		["Main Street", Vector2(0.0, -82.0)],
+		["Water Tower", Vector2(-45.0, -57.0)],
+		["Elm Street", Housing.ELM_STREET.get_center() + Vector2(0.0, 18.0)],
+		["7th Street", Vector2(-100.0, 0.0)],
+		["Gas Station", GasStation.map_position()],
+		["Grocery", Grocery.map_position(builder)],
+	]
 
 
 ## Pressing interact on an NPC: open whatever that kind of NPC offers.
@@ -219,9 +257,11 @@ func _load_or_restart() -> void:
 
 # --- World -------------------------------------------------------------------
 
-## Sky, fog, sun and moon. Their colors and angles are set every frame by day_night.
+## Sky (with drifting clouds, see sky_clouds.gdshader), fog, sun and moon. Their
+## colors and angles are set every frame by day_night.
 func _build_environment() -> void:
-	var sky_mat := ProceduralSkyMaterial.new()
+	var sky_mat := ShaderMaterial.new()
+	sky_mat.shader = SkyShader
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 
@@ -233,6 +273,9 @@ func _build_environment() -> void:
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.fog_enabled = true
 	env.fog_density = 0.02
+	# Fog would otherwise cover the sky completely, hiding the clouds. At this
+	# strength it still blends the horizon into the haze.
+	env.fog_sky_affect = 0.35
 
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
@@ -265,8 +308,10 @@ func _setup_navigation() -> void:
 	# Agent size: multiples of the default 0.25 m cell size avoid rounding warnings.
 	nav_mesh.agent_radius = 0.5
 	nav_mesh.agent_height = 1.75
-	# Only bake the town itself, not the whole 400 m field (much faster).
-	nav_mesh.filter_baking_aabb = AABB(Vector3(-90, -1, -90), Vector3(180, 30, 180))
+	# Only bake where there's town (Main Street, the station's neighborhood, out to
+	# the safe house), not the whole field (much faster). Build somewhere new
+	# outside this box and zombies won't be able to walk there.
+	nav_mesh.filter_baking_aabb = AABB(Vector3(-180, -1, -90), Vector3(305, 30, 180))
 	nav_region = NavigationRegion3D.new()
 	nav_region.navigation_mesh = nav_mesh
 	add_child(nav_region)
@@ -425,9 +470,9 @@ func _spawn_zombies() -> void:
 		if rng.randf() < 0.65:
 			pos = builder.street_spot(-75.0, 35.0) + Vector3(0, 0.08, 0)
 		else:
-			# On the cross street, but not right where you start (x = 24) or in front
-			# of the police station.
-			pos = Vector3(rng.randf_range(-70.0, 6.0), 0.1, rng.randf_range(-4.0, 4.0))
+			# On the cross street west of Main (it runs out to the safe house), not
+			# where you start (x = 24) or in front of the police station.
+			pos = Vector3(rng.randf_range(-140.0, 6.0), 0.1, rng.randf_range(-4.0, 4.0))
 		_add_zombie(pos)
 	# A few more already shut inside the shops.
 	for point in builder.interior_points:
@@ -438,10 +483,13 @@ func _spawn_zombies() -> void:
 		_add_zombie(point)
 
 
-func _add_zombie(pos: Vector3) -> void:
+## rng: whose dice pick its facing; the town's unless said otherwise.
+func _add_zombie(pos: Vector3, rng: RandomNumberGenerator = null) -> void:
+	if rng == null:
+		rng = builder.rng
 	var zombie := ZombieScene.instantiate() as Zombie
 	zombie.position = pos
-	zombie.rotation.y = builder.rng.randf_range(0.0, TAU)
+	zombie.rotation.y = rng.randf_range(0.0, TAU)
 	add_child(zombie)
 	zombies.append(zombie)
 
@@ -460,9 +508,9 @@ func _on_player_died() -> void:
 func _on_zone_status_changed(zone_name: String, status: Zones.Status) -> void:
 	match status:
 		Zones.Status.SAFE:
-			hud.show_toast("%s is clear." % zone_name)
+			hud.show_toast("Zone %s is clear." % zone_name)
 		Zones.Status.HOSTILE:
-			hud.show_toast("No more zombies in %s, but bandits are still around." % zone_name)
+			hud.show_toast("No more zombies in zone %s, but bandits are still around." % zone_name)
 		Zones.Status.DANGER:
 			if zones.zone_at(player.global_position) == zone_name:
-				hud.show_toast("Zombies have wandered into %s." % zone_name)
+				hud.show_toast("Zombies have wandered into zone %s." % zone_name)

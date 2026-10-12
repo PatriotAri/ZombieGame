@@ -9,8 +9,9 @@ const Building := preload("res://world/building.gd")
 const GameData := preload("res://core/game_data.gd")
 const HumanNPCScene := preload("res://characters/npcs/human_npc.tscn")
 
-# Mirrors the station on the east end, so reaching it means crossing the whole town.
-const SAFE_HOUSE_X := -62.0
+# Out past the west end of town, so reaching it means crossing all of it and then
+# some (three zone squares further west than it first was).
+const SAFE_HOUSE_X := -152.0
 const SAFE_HOUSE_FRONT_Z := 9.0
 const PLYWOOD := Color(0.55, 0.45, 0.3)
 

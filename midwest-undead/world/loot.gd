@@ -30,15 +30,21 @@ static func fill_containers(b: WorldBuilder, start: Vector3, health_pack: float,
 	for spot: LootSpot in loot_spots:
 		if spot == crowbar_spot:
 			spot.inventory.add("crowbar")
-		if rng.randf() < health_pack:
-			spot.inventory.add("health_pack")
-		if rng.randf() < ammo:
-			spot.inventory.add("pistol_ammo", rng.randi_range(3, 7))
-		if rng.randf() < trade_goods:
-			if rng.randf() < 0.5:
-				spot.inventory.add("canned_food", rng.randi_range(1, 2))
-			else:
-				spot.inventory.add("batteries", rng.randi_range(1, 3))
+		roll_container(spot, rng, health_pack, ammo, trade_goods)
+
+
+## One container's random contents. Each chance is rolled separately.
+static func roll_container(spot: LootSpot, rng: RandomNumberGenerator, health_pack: float, ammo: float,
+		trade_goods: float) -> void:
+	if rng.randf() < health_pack:
+		spot.inventory.add("health_pack")
+	if rng.randf() < ammo:
+		spot.inventory.add("pistol_ammo", rng.randi_range(3, 7))
+	if rng.randf() < trade_goods:
+		if rng.randf() < 0.5:
+			spot.inventory.add("canned_food", rng.randi_range(1, 2))
+		else:
+			spot.inventory.add("batteries", rng.randi_range(1, 3))
 
 
 ## Loose items lying in the street.

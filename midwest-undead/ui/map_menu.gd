@@ -1,6 +1,7 @@
 extends CanvasLayer
-## The map (M, or Back/View on a controller): the town from above, every zone
-## colored by how safe it is (see world/zones.gd), and you. North is up.
+## The map (M, or Back/View on a controller): the town from above, with the zone
+## grid colored by how safe each square is (see world/zones.gd), the main places
+## labeled, and you. North is up. It shows exactly the area the grid covers.
 ## Like the inventory, it doesn't pause the game: your hands are busy and the
 ## world keeps going. Esc closes it (so does dying).
 
@@ -18,7 +19,7 @@ const BUILDING := Color(0.62, 0.58, 0.5)
 const FENCE := Color(0.55, 0.42, 0.25)
 const ZONE_BORDER := Color(1.0, 1.0, 1.0, 0.35)
 const PLAYER := Color(0.3, 0.85, 1.0)
-const BOUNDS := Rect2(-90, -90, 180, 180) # the part of the world shown (x, z), in meters
+const CELL_NAME := Color(1.0, 1.0, 1.0, 0.55)
 const REDRAW_INTERVAL := 0.2
 
 var _player: Node3D
@@ -26,6 +27,7 @@ var _zones: Zones
 var _roads: Array[Rect2] = []
 var _buildings: Array[PackedVector2Array] = []
 var _fences: Array[Rect2] = []
+var _landmarks: Array = [] # [name, (x, z) position]
 var _view: Control
 var _redraw_timer := 0.0
 
@@ -44,14 +46,15 @@ func _ready() -> void:
 
 
 ## main.gd hands over what to draw. Roads and fences are rectangles in world
-## (x, z); buildings are their four ground corners.
+## (x, z); buildings are their four ground corners; landmarks are [name, (x, z)].
 func setup(player: Node3D, zones: Zones, roads: Array[Rect2], buildings: Array[PackedVector2Array],
-		fences: Array[Rect2]) -> void:
+		fences: Array[Rect2], landmarks: Array) -> void:
 	_player = player
 	_zones = zones
 	_roads = roads
 	_buildings = buildings
 	_fences = fences
+	_landmarks = landmarks
 
 
 func open() -> void:
@@ -107,7 +110,8 @@ func _map_rect() -> Rect2:
 ## round as the world, so turning left on the map is turning left in the game.
 func _to_screen(world: Vector2) -> Vector2:
 	var area := _map_rect()
-	return area.position + (world - BOUNDS.position) / BOUNDS.size * area.size
+	var bounds := Zones.bounds()
+	return area.position + (world - bounds.position) / bounds.size * area.size
 
 
 func _rect_to_screen(rect: Rect2) -> Rect2:
@@ -132,18 +136,16 @@ func _draw_map() -> void:
 	for fence in _fences:
 		_view.draw_rect(_rect_to_screen(fence), FENCE, false, 2.0)
 
-	# Zones: fill by status, outline every box, name in the biggest box.
-	for zone: Array in Zones.ZONES:
-		var status := _zones.status_of(zone[0])
-		var biggest := Rect2()
-		for box: Array in zone[1]:
-			var rect := _rect_to_screen(Rect2(box[0], box[1] - box[0]))
-			if status != Zones.Status.SAFE:
-				_view.draw_rect(rect, ZONE_COLORS[status])
-			_view.draw_rect(rect, ZONE_BORDER, false, 1.0)
-			if rect.get_area() > biggest.get_area():
-				biggest = rect
-		_draw_label(font, zone[0], biggest.get_center(), 14)
+	# The zone grid: fill each square by status, outline it, its name in the corner.
+	for cell: Array in Zones.cells():
+		var rect := _rect_to_screen(cell[1])
+		var status := _zones.status_of(cell[0])
+		if status != Zones.Status.SAFE:
+			_view.draw_rect(rect, ZONE_COLORS[status])
+		_view.draw_rect(rect, ZONE_BORDER, false, 1.0)
+		_view.draw_string(font, rect.position + Vector2(5.0, 15.0), cell[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, CELL_NAME)
+	for landmark: Array in _landmarks:
+		_draw_label(font, landmark[0], _to_screen(landmark[1]), 14)
 
 	_draw_player()
 	_view.draw_rect(area, Color(1, 1, 1, 0.5), false, 2.0)

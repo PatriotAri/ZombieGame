@@ -1,38 +1,32 @@
 extends Node
-## Named areas of the map and how safe each one is:
+## The map is split into a grid of square zones, named like a paper map: columns
+## A, B, C... from west to east, rows 1, 2, 3... from north to south ("C4").
+## Each zone is:
 ##   DANGER   (red on the map)    - zombies still walking around in it
 ##   HOSTILE  (yellow on the map) - the zombies are dead, but bandits are still there
 ##   SAFE     (clear on the map)  - nothing left
 ## Status is worked out from whoever is standing in the zone right now, so a
 ## zombie wandering into a cleared zone turns it red again. Nothing here needs
 ## saving: zombies and bandits are saved, and the status follows from them.
-## The map screen (ui/map_menu.gd) draws the zones; the HUD shows the one you're in.
+## The map screen (ui/map_menu.gd) draws the grid; the HUD shows the zone you're in.
 ##
-## To add a zone, add a line to ZONES. A zone is one or more boxes, so it can
-## wrap around another one. Boxes must not overlap (a zombie would count in
-## whichever is listed first); a warning in the Output panel names any that do.
+## The grid also sets the area the map screen shows. When the world grows, widen
+## ORIGIN / COLUMNS / ROWS to cover it.
 
 signal status_changed(zone_name: String, status: Status)
 
 enum Status { SAFE, HOSTILE, DANGER }
 
+## +x is east and -z is north (Godot's convention; the map is drawn that way up).
+## 26 x 26 squares (A-Z, 1-26), about 780 m across, with the town in the middle.
+## Offset by half a square so Main Street (x = 0) runs down the middle of column M
+## and the cross street (z = 0) along the middle of row 13, instead of along grid
+## lines that would split them between two zones.
+const ORIGIN := Vector2(-375.0, -375.0) # the grid's north-west corner (x, z), in meters
+const CELL_SIZE := 30.0 # meters per side
+const COLUMNS := 26 # A to Z
+const ROWS := 26 # 1 to 26
 const CHECK_INTERVAL := 0.5 # seconds; counting everyone every frame is wasted work
-
-## Each zone: a name, then its boxes as [corner (x0, z0), corner (x1, z1)] in
-## meters. +x is east and -z is north (Godot's convention; the map is drawn
-## that way up), so the police station is on the south side of the cross street.
-const ZONES := [
-	["Police Station", [[Vector2(30, -6), Vector2(72, 32)]]],
-	["Bandit Camp", [[Vector2(-50, -55), Vector2(-22, -15)]]], # stops where the Main Street shops begin
-	["Westside Safe House", [[Vector2(-74, 4), Vector2(-50, 26)]]], # the yard (from the barricade) and the house
-	["Crossroads", [[Vector2(-22, -6), Vector2(22, 6)]]],
-	["Main Street North", [[Vector2(-22, -86), Vector2(22, -6)]]],
-	["Main Street South", [[Vector2(-22, 6), Vector2(22, 86)]]],
-	["East Road", [[Vector2(22, -6), Vector2(30, 6)]]],
-	# The cross street west of Main, stepping around the safe house yard.
-	["West Road", [[Vector2(-86, -6), Vector2(-74, 6)], [Vector2(-74, -6), Vector2(-50, 4)],
-			[Vector2(-50, -6), Vector2(-22, 6)]]],
-]
 
 var bandits: Array = [] # set by main.gd; zombies are found through the "zombies" group
 var _status := {} # zone name -> Status
@@ -41,11 +35,31 @@ var _check_timer := 0.0
 var _started := false
 
 
+## The whole grid, as an (x, z) rectangle in meters.
+static func bounds() -> Rect2:
+	return Rect2(ORIGIN, Vector2(COLUMNS, ROWS) * CELL_SIZE)
+
+
+## Every zone as [name, (x, z) rectangle], row by row from the north-west corner.
+static func cells() -> Array:
+	var result := []
+	for row in ROWS:
+		for col in COLUMNS:
+			result.append([cell_name(col, row), Rect2(ORIGIN + Vector2(col, row) * CELL_SIZE,
+					Vector2(CELL_SIZE, CELL_SIZE))])
+	return result
+
+
+## "A1" for the north-west corner. Column Z is the last single letter: a wider
+## grid would need names like "AA".
+static func cell_name(col: int, row: int) -> String:
+	return String.chr(65 + col) + str(row + 1)
+
+
 func _ready() -> void:
-	for zone: Array in ZONES:
-		_status[zone[0]] = Status.SAFE
-		_counts[zone[0]] = [0, 0]
-	_warn_overlaps()
+	for cell: Array in cells():
+		_status[cell[0]] = Status.SAFE
+		_counts[cell[0]] = [0, 0]
 
 
 func _physics_process(delta: float) -> void:
@@ -56,32 +70,30 @@ func _physics_process(delta: float) -> void:
 	_recount()
 
 
-## The zone a point is in, or "" outside all of them.
+## The zone a point is in, or "" off the edge of the grid.
 func zone_at(pos: Vector3) -> String:
-	for zone: Array in ZONES:
-		for box: Array in zone[1]:
-			var corner0: Vector2 = box[0]
-			var corner1: Vector2 = box[1]
-			if pos.x >= corner0.x and pos.x < corner1.x and pos.z >= corner0.y and pos.z < corner1.y:
-				return zone[0]
-	return ""
+	var col := floori((pos.x - ORIGIN.x) / CELL_SIZE)
+	var row := floori((pos.z - ORIGIN.y) / CELL_SIZE)
+	if col < 0 or col >= COLUMNS or row < 0 or row >= ROWS:
+		return ""
+	return cell_name(col, row)
 
 
 func status_of(zone_name: String) -> Status:
 	return _status.get(zone_name, Status.SAFE)
 
 
-## For the HUD, e.g. "Main Street North  ·  4 zombies".
+## For the HUD, e.g. "Zone C4  ·  4 zombies".
 func describe(zone_name: String) -> String:
 	if zone_name == "":
 		return ""
 	var counts: Array = _counts[zone_name]
 	match status_of(zone_name):
 		Status.DANGER:
-			return "%s  ·  %d zombie%s" % [zone_name, counts[0], "" if counts[0] == 1 else "s"]
+			return "Zone %s  ·  %d zombie%s" % [zone_name, counts[0], "" if counts[0] == 1 else "s"]
 		Status.HOSTILE:
-			return "%s  ·  %d bandit%s" % [zone_name, counts[1], "" if counts[1] == 1 else "s"]
-	return "%s  ·  safe" % zone_name
+			return "Zone %s  ·  %d bandit%s" % [zone_name, counts[1], "" if counts[1] == 1 else "s"]
+	return "Zone %s  ·  safe" % zone_name
 
 
 func _recount() -> void:
@@ -107,18 +119,3 @@ func _recount() -> void:
 		if _started:
 			status_changed.emit(zone_name, status)
 	_started = true
-
-
-## Overlapping boxes would count zombies in whichever zone is listed first and
-## draw on top of each other on the map. Catch it when someone edits ZONES.
-func _warn_overlaps() -> void:
-	var boxes := []
-	for zone: Array in ZONES:
-		for box: Array in zone[1]:
-			boxes.append([zone[0], Rect2(box[0], box[1] - box[0])])
-	for i in boxes.size():
-		for j in range(i + 1, boxes.size()):
-			var a: Rect2 = boxes[i][1]
-			var b: Rect2 = boxes[j][1]
-			if a.intersection(b).has_area():
-				push_warning("Zones '%s' and '%s' overlap at %s." % [boxes[i][0], boxes[j][0], a.intersection(b)])

@@ -25,6 +25,9 @@ var doors: Array[Door] = [] # every door and gate leaf, in build order (for savi
 var interior_points: Array[Vector3] = [] # inside shops, where zombies can lurk
 var car_spots: Array[Vector3] = [] # so nothing else gets spawned inside a car
 var door_spots: Array[Vector3] = [] # shop doorways on Main Street, kept clear of streetlights
+## The first shop of each Main Street block, i.e. the one on the corner with 7th
+## Street, keyed by Vector2i(side, dir): side +1 = east of Main, dir -1 = north.
+var corner_shops := {}
 
 
 func _init(main_node: Node3D, region: NavigationRegion3D, town_seed: int) -> void:

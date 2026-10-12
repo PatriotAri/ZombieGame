@@ -1,7 +1,8 @@
 extends RefCounted
-## Main Street: the ground, the two streets, four rows of storefronts with their
-## doors, alleys and dumpsters, the dead streetlights, abandoned cars, and the
-## water tower. Never instanced: main.gd calls build().
+## Main Street: the ground, Main Street and 7th Street (the cross street), four
+## rows of storefronts with their doors, alleys and dumpsters, the street sign at
+## the corner, the dead streetlights, abandoned cars, and the water tower.
+## Never instanced: main.gd calls build().
 
 const WorldBuilder := preload("res://world/world_builder.gd")
 const Building := preload("res://world/building.gd")
@@ -17,6 +18,10 @@ const BUILDING_COLORS := [
 	Color(0.4, 0.38, 0.36),  # gray stone
 	Color(0.62, 0.58, 0.5),  # painted siding
 ]
+## 7th Street (the cross street), as an (x, z) rectangle: from past the Westside
+## safe house to Oak Lane, east of the police station.
+const CROSS_STREET := Rect2(-170.0, -5.0, 290.0, 10.0)
+const MAIN_STREET := Rect2(-5.0, -85.0, 10.0, 170.0)
 const CAR_COLORS := [
 	Color(0.55, 0.1, 0.1),
 	Color(0.15, 0.2, 0.35),
@@ -28,14 +33,17 @@ const CAR_COLORS := [
 
 ## door_open_chance: how likely each shop's front door is to start open.
 static func build(b: WorldBuilder, door_open_chance: float) -> void:
-	b.add_box(Vector3(400, 1, 400), Vector3(0, -0.5, 0), GRASS)
+	# Ground for the whole map (the zone grid is ~780 m across), with room to spare.
+	b.add_box(Vector3(840, 1, 840), Vector3(0, -0.5, 0), GRASS)
 	# Main Street runs north-south; a cross street runs east-west.
-	b.add_box(Vector3(10, 0.02, 170), Vector3(0, 0.01, 0), ASPHALT)
-	b.add_box(Vector3(170, 0.02, 10), Vector3(0, 0.01, 0), ASPHALT)
+	b.add_box(Vector3(MAIN_STREET.size.x, 0.02, MAIN_STREET.size.y), Vector3(0, 0.01, 0), ASPHALT)
+	b.add_box(Vector3(CROSS_STREET.size.x, 0.02, CROSS_STREET.size.y),
+			Vector3(CROSS_STREET.get_center().x, 0.01, CROSS_STREET.get_center().y), ASPHALT)
 	for side: int in [-1, 1]:
 		for dir: int in [-1, 1]:
 			b.add_box(Vector3(3, 0.1, 75), Vector3(side * 6.5, 0.05, dir * 42.5), SIDEWALK)
 			_build_block(b, side, dir, door_open_chance)
+	_build_street_sign(b)
 	_build_streetlights(b)
 	_build_cars(b)
 	_build_water_tower(b, Vector3(-45, 0, -65))
@@ -43,7 +51,7 @@ static func build(b: WorldBuilder, door_open_chance: float) -> void:
 
 ## Main Street and the cross street, as (x, z) rectangles for the map screen.
 static func map_roads() -> Array[Rect2]:
-	return [Rect2(-5, -85, 10, 170), Rect2(-85, -5, 170, 10)]
+	return [MAIN_STREET, CROSS_STREET]
 
 
 ## One row of storefronts on one side of Main Street.
@@ -67,6 +75,8 @@ static func _build_block(b: WorldBuilder, side: int, dir: int, door_open_chance:
 		building.rotation.y = 0.0 if side == 1 else PI # local +x always points away from the street
 		b.nav_region.add_child(building)
 		building.build(depth, width - 0.2, height, color, rng)
+		if not b.corner_shops.has(Vector2i(side, dir)):
+			b.corner_shops[Vector2i(side, dir)] = building
 		b.loot_spots.append_array(building.loot_spots)
 		b.interior_points.append_array(building.interior_points)
 		b.add_door(building.make_door(), b.door_rng.randf() < door_open_chance)
@@ -77,6 +87,31 @@ static func _build_block(b: WorldBuilder, side: int, dir: int, door_open_chance:
 			var box_z := center_z + (width / 2.0 - 1.0) * (1.0 if door_world_z < center_z else -1.0)
 			b.add_loot(Vector3(0.8, 0.7, 0.8), Vector3(side * 7.0, 0.45, box_z), CARDBOARD, "Cardboard boxes")
 		z += width
+
+
+## A sign post on the north-east corner of the intersection. Visual only (no
+## collision), so it can't pinch the navigation mesh at the corner.
+static func _build_street_sign(b: WorldBuilder) -> void:
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.04
+	pole.bottom_radius = 0.04
+	pole.height = 3.0
+	var base := Vector3(6.0, 0.1, -5.7)
+	b.add_mesh(pole, base + Vector3(0, 1.5, 0), Color(0.3, 0.32, 0.3))
+	# Each name twice, back to back and one-sided: a single double-sided label
+	# reads mirrored from behind. A Label3D faces along its +z.
+	for entry: Array in [["7TH ST", 2.75, 0.0], ["MAIN ST", 2.45, PI / 2.0]]:
+		for flip: float in [0.0, PI]:
+			var label := Label3D.new()
+			label.text = entry[0]
+			label.font_size = 36
+			label.pixel_size = 0.01
+			label.outline_size = 0
+			label.double_sided = false
+			label.modulate = Color(0.95, 0.95, 0.95)
+			label.position = base + Vector3(0, entry[1], 0)
+			label.rotation.y = entry[2] + flip
+			b.main.add_child(label)
 
 
 static func _build_streetlights(b: WorldBuilder) -> void:

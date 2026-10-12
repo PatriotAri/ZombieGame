@@ -7,9 +7,10 @@ extends RefCounted
 ## Main Street; walking the cross street to the safe house takes you within
 ## sight of it. Placement is set by distance (checked in testing): bandits never
 ## stray more than their leash (15 m) from camp, see at most 25 m in daylight, and
-## their shots carry 25 m. The camp is ~51 m from the nearest safe house zombie and
-## ~94 m from the station, so neither is within reach. Moving the camp (or raising
-## leash/sight)? Keep leash + sight comfortably under those distances.
+## their shots carry 25 m. The camp is ~130 m from the nearest safe house zombie,
+## ~94 m from the station and ~55 m from the nearest house, so none is within reach.
+## Moving the camp (or raising leash/sight)? Keep leash + sight comfortably under
+## those distances.
 
 const WorldBuilder := preload("res://world/world_builder.gd")
 const Bandit := preload("res://characters/npcs/bandit.gd")

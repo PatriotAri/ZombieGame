@@ -33,13 +33,18 @@ var loot_spots: Array = [] # containers inside, for main.gd to fill
 var interior_points: Array[Vector3] = [] # global spots inside where a zombie could stand
 var door_z := 0.0 # local z of the doorway's center
 var footprint := PackedVector2Array() # its corners on the ground (world x, z), for the map screen
+var size_depth := 0.0 # set in build(): how far back from the front wall it goes
+var size_width := 0.0 # set in build(): along the front wall
 var _rng: RandomNumberGenerator
 var _boarded_chance := BOARDED_CHANCE
 var FLOOR_Y := SIDEWALK_FLOOR_Y # top of the floor slab for this building (set in build())
 
 
+## house: furnish it as a home (kitchen cabinet, dresser, bed) instead of a shop.
 func build(depth: float, width: float, height: float, color: Color, rng: RandomNumberGenerator,
-		furnish := true, boarded_chance := BOARDED_CHANCE, floor_y := SIDEWALK_FLOOR_Y) -> void:
+		furnish := true, boarded_chance := BOARDED_CHANCE, floor_y := SIDEWALK_FLOOR_Y, house := false) -> void:
+	size_depth = depth
+	size_width = width
 	_rng = rng
 	FLOOR_Y = floor_y
 	_boarded_chance = boarded_chance
@@ -88,7 +93,10 @@ func build(depth: float, width: float, height: float, color: Color, rng: RandomN
 						WOOD if boarded else DARK_WINDOW)
 
 	if furnish:
-		_furnish(depth, width)
+		if house:
+			_furnish_house(depth, width)
+		else:
+			_furnish(depth, width)
 
 
 ## Searchable furniture, plus a couple of spots where a zombie might be waiting.
@@ -107,6 +115,22 @@ func _furnish(depth: float, width: float) -> void:
 					Color(0.5, 0.5, 0.48), "Shelf")
 
 	for p: Vector3 in [Vector3(depth * 0.25, FLOOR_Y, half * 0.4), Vector3(depth * 0.8, FLOOR_Y, -half * 0.3)]:
+		interior_points.append(transform * p)
+
+
+## A home: a kitchen cabinet on the back wall and a dresser on one side wall to
+## search, a bed against the other, and a couple of spots where a zombie might be.
+## Everything sits back from the front wall so the doorway stays clear.
+func _furnish_house(depth: float, width: float) -> void:
+	var half := width / 2.0
+	var side := 1 if _rng.randf() < 0.5 else -1 # which wall the dresser goes on
+	_add_loot(Vector3(0.6, 0.9, minf(2.4, width * 0.3)),
+			Vector3(depth - WALL - 0.35, FLOOR_Y + 0.45, -half * 0.4), Color(0.6, 0.58, 0.52), "Kitchen cabinet")
+	_add_loot(Vector3(1.2, 1.1, 0.5), Vector3(depth * 0.55, FLOOR_Y + 0.55, side * (half - WALL - 0.3)),
+			WOOD, "Dresser")
+	_solid(Vector3(2.0, 0.5, 1.4), Vector3(depth * 0.72, FLOOR_Y + 0.25, -side * (half - WALL - 0.75)),
+			Color(0.45, 0.4, 0.5)) # bed
+	for p: Vector3 in [Vector3(depth * 0.35, FLOOR_Y, -side * half * 0.3), Vector3(depth * 0.6, FLOOR_Y, 0.0)]:
 		interior_points.append(transform * p)
 
 
