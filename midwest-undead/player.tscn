@@ -1,0 +1,101 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://player.gd" id="1_player"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+radius = 0.35
+height = 1.8
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_skin"]
+albedo_color = Color(0.75, 0.6, 0.5, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_crowbar"]
+albedo_color = Color(0.45, 0.12, 0.1, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gun"]
+albedo_color = Color(0.12, 0.12, 0.14, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_fist"]
+material = SubResource("StandardMaterial3D_skin")
+size = Vector3(0.1, 0.1, 0.16)
+
+[sub_resource type="BoxMesh" id="BoxMesh_crowbar"]
+material = SubResource("StandardMaterial3D_crowbar")
+size = Vector3(0.035, 0.035, 0.75)
+
+[sub_resource type="BoxMesh" id="BoxMesh_hook"]
+material = SubResource("StandardMaterial3D_crowbar")
+size = Vector3(0.035, 0.12, 0.035)
+
+[sub_resource type="BoxMesh" id="BoxMesh_slide"]
+material = SubResource("StandardMaterial3D_gun")
+size = Vector3(0.05, 0.06, 0.24)
+
+[sub_resource type="BoxMesh" id="BoxMesh_grip"]
+material = SubResource("StandardMaterial3D_gun")
+size = Vector3(0.045, 0.12, 0.06)
+
+[node name="Player" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 53
+script = ExtResource("1_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_body")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+current = true
+fov = 75.0
+
+[node name="Flashlight" type="SpotLight3D" parent="Camera3D"]
+visible = false
+light_energy = 3.0
+shadow_enabled = true
+spot_range = 25.0
+spot_angle = 25.0
+
+[node name="WeaponPivot" type="Node3D" parent="Camera3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.35, -0.35, -0.55)
+
+[node name="Fists" type="MeshInstance3D" parent="Camera3D/WeaponPivot"]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_fist")
+
+[node name="Crowbar" type="MeshInstance3D" parent="Camera3D/WeaponPivot"]
+transform = Transform3D(1, 0, 0, 0, 0.939693, -0.34202, 0, 0.34202, 0.939693, 0, 0.05, -0.25)
+visible = false
+cast_shadow = 0
+mesh = SubResource("BoxMesh_crowbar")
+
+[node name="Hook" type="MeshInstance3D" parent="Camera3D/WeaponPivot/Crowbar"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -0.36)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_hook")
+
+[node name="PistolPivot" type="Node3D" parent="Camera3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.25, -0.22, -0.45)
+
+[node name="Slide" type="MeshInstance3D" parent="Camera3D/PistolPivot"]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_slide")
+
+[node name="Grip" type="MeshInstance3D" parent="Camera3D/PistolPivot"]
+transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, -0.08, 0.07)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_grip")
+
+[node name="MuzzleFlash" type="OmniLight3D" parent="Camera3D/PistolPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -0.18)
+visible = false
+light_color = Color(1, 0.8, 0.5, 1)
+light_energy = 4.0
+omni_range = 6.0
+
+[node name="ItemPivot" type="Node3D" parent="Camera3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.22, -0.25, -0.45)
+visible = false
+
+[node name="HeldItem" type="MeshInstance3D" parent="Camera3D/ItemPivot"]
+cast_shadow = 0

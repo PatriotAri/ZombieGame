@@ -1,0 +1,50 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://human_npc.tscn" id="1_base"]
+[ext_resource type="Script" path="res://bandit.gd" id="2_bandit"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metal"]
+albedo_color = Color(0.1, 0.1, 0.1, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bandana"]
+albedo_color = Color(0.55, 0.08, 0.06, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_gun"]
+material = SubResource("StandardMaterial3D_metal")
+size = Vector3(0.06, 0.1, 0.35)
+
+[sub_resource type="BoxMesh" id="BoxMesh_bandana"]
+material = SubResource("StandardMaterial3D_bandana")
+size = Vector3(0.36, 0.12, 0.3)
+
+[node name="Bandit" instance=ExtResource("1_base")]
+script = ExtResource("2_bandit")
+display_name = "Bandit"
+faction = 1
+outfit_color = Color(0.32, 0.26, 0.18, 1)
+player_can_hurt = true
+stationary = false
+
+[node name="Bandana" type="MeshInstance3D" parent="Visual" index="2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.52, -0.05)
+mesh = SubResource("BoxMesh_bandana")
+
+[node name="Gun" type="Node3D" parent="." index="3"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.22, 1.3, -0.25)
+
+[node name="GunMesh" type="MeshInstance3D" parent="Gun"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.12)
+mesh = SubResource("BoxMesh_gun")
+
+[node name="MuzzleFlash" type="OmniLight3D" parent="Gun"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.35)
+visible = false
+light_color = Color(1, 0.8, 0.5, 1)
+light_energy = 4.0
+omni_range = 6.0
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="." index="4"]
+path_desired_distance = 0.6
+target_desired_distance = 1.0
+height = 1.8
+radius = 0.3
