@@ -22,6 +22,7 @@ const LootSpot := preload("res://items/loot_spot.gd")
 const GroundItem := preload("res://items/ground_item.gd")
 const Sound := preload("res://core/sound.gd")
 const Settings := preload("res://core/settings.gd")
+const Fortifications := preload("res://world/fortifications.gd")
 
 @export_group("Movement")
 @export var walk_speed := 4.0
@@ -87,6 +88,9 @@ const Settings := preload("res://core/settings.gd")
 @export_range(0.0, 1.0) var low_battery := 0.2
 ## Spare sets of batteries you start with (one set is already in the flashlight).
 @export var starting_spare_batteries := 0
+## Enough to try boarding up and barricading; more from the trader and containers.
+@export var starting_planks := 2
+@export var starting_barricades := 1
 
 @export_group("Pistol")
 @export var pistol_damage := 55.0
@@ -153,6 +157,9 @@ var _flashlight_energy := 1.0 # the beam's full brightness, from player.tscn
 var _hunger_stage := 0 # 0 fed, 1 hungry, 2 starving: to announce each change once
 var _growl_timer := 0.0
 var _hurt_sound_wait := 0.0 # zombies hurt you every frame; grunt at most this often
+var fortifications: Node # world/fortifications.gd, found through its group
+var _barricade_ghost: MeshInstance3D # where a held barricade would go
+var _ghost_material: StandardMaterial3D
 
 
 func _ready() -> void:
@@ -166,6 +173,8 @@ func _ready() -> void:
 	inventory.add("pistol")
 	inventory.add("pistol_ammo", starting_spare_ammo)
 	inventory.add("batteries", starting_spare_batteries)
+	inventory.add("planks", starting_planks)
+	inventory.add("barricade", starting_barricades)
 	_flashlight_energy = flashlight.light_energy
 	_item_pivot_rest = item_pivot.position
 	_refresh_weapon_visuals()
@@ -216,10 +225,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		crouch_latched = not crouch_latched
 		sprint_latched = false
 	else:
-		# Number keys pick a hotbar slot directly.
+		# Number keys pick from what you can hold directly (numbered on the inventory screen).
 		for i in range(1, 10):
 			if event.is_action_pressed("slot_%d" % i):
-				var bar := hotbar()
+				var bar := holdable()
 				if i <= bar.size():
 					select(bar[i - 1])
 				break
@@ -247,6 +256,7 @@ func _physics_process(delta: float) -> void:
 		_update_stamina(delta, false)
 		_update_hunger(delta)
 		_update_flashlight(delta)
+		_update_barricade_ghost() # hides it while a menu is up
 		return
 
 	# Coming back from the pause menu or a trade/inventory screen: the button that
@@ -311,6 +321,7 @@ func _physics_process(delta: float) -> void:
 	_update_flashlight(delta)
 	_update_footsteps(delta, sprinting)
 	_update_prompt()
+	_update_barricade_ghost()
 	_hurt_sound_wait = maxf(_hurt_sound_wait - delta, 0.0)
 
 
@@ -334,6 +345,8 @@ func take_damage(amount: float, cause := "bitten") -> void:
 func _die(cause: String) -> void:
 	death_cause = cause
 	is_dead = true
+	if _barricade_ghost:
+		_barricade_ghost.visible = false
 	flashlight.visible = false
 	weapon_pivot.visible = false
 	pistol_pivot.visible = false
@@ -343,16 +356,21 @@ func _die(cause: String) -> void:
 
 
 ## Hunger and flashlight for the HUD, e.g. "Hunger 64 (hungry)    Flashlight 38%  +2".
-func condition_text() -> String:
+func hunger_text() -> String:
 	var text := "Hunger %d" % floori(hunger)
 	match _hunger_stage:
 		1:
 			text += " (hungry)"
 		2:
 			text += " (STARVING)"
-	text += "    Flashlight %d%%" % ceili(flashlight_charge * 100.0)
+	return text
+
+
+## For the inventory screen: the flashlight's charge and the spare batteries.
+func flashlight_text() -> String:
+	var text := "Flashlight %d%%" % ceili(flashlight_charge * 100.0)
 	if inventory.has("batteries"):
-		text += "  +%d" % inventory.count("batteries")
+		text += "  (+%d batteries)" % inventory.count("batteries")
 	return text
 
 
@@ -372,9 +390,10 @@ func held_label() -> String:
 	return label
 
 
-## Everything you can hold, in hotbar order: empty hands first, then each usable
-## item you're carrying (ammo and batteries can't be held, so they're skipped).
-func hotbar() -> Array[String]:
+## Everything you can hold, in order: empty hands first, then each usable item
+## you're carrying (ammo and batteries can't be held, so they're skipped). The
+## number keys pick from this list, and the inventory screen (Tab) shows it.
+func holdable() -> Array[String]:
 	var bar: Array[String] = ["hands"]
 	for id in inventory.ids():
 		if GameData.item_use(id) != "":
@@ -466,9 +485,9 @@ func _drop_held_if_gone() -> void:
 	_refresh_weapon_visuals()
 
 
-## Step through the hotbar (wheel, Y, D-pad left/right). Wraps around.
+## Step through what you can hold (wheel, D-pad left/right). Wraps around.
 func _cycle(step: int) -> void:
-	var bar := hotbar()
+	var bar := holdable()
 	var index := bar.find(held)
 	select(bar[posmod(index + step, bar.size())])
 
@@ -499,6 +518,10 @@ func _use_held() -> void:
 				_start_use(heal_time)
 		"eat":
 			_start_use(eat_time)
+		"board":
+			_try_board()
+		"barricade":
+			_try_barricade()
 
 
 ## Bandaging and eating take a moment: the item comes up toward your face, and
@@ -574,6 +597,8 @@ func _update_prompt() -> void:
 			prompt_text = "%s: open %s" % [key, spot.label]
 	elif _offers_interaction(target):
 		prompt_text = "%s: %s" % [key, target.call("interact_prompt")]
+	if prompt_text == "":
+		prompt_text = _fortify_prompt()
 
 
 func _interact() -> void:
@@ -605,6 +630,106 @@ func _offers_interaction(target: Node3D) -> bool:
 	if target is HumanNPC and (target as HumanNPC).is_dead:
 		return false
 	return target.call("interact_prompt") != ""
+
+
+# --- Fortifying (planks and barricades; see world/fortifications.gd) ---------------
+
+func _fortifications() -> Node:
+	if fortifications == null:
+		fortifications = get_tree().get_first_node_in_group("fortifications")
+	return fortifications
+
+
+## The door or window you're aiming at (index into fortifications.openings), or -1.
+## The first thing the ray hits must be the opening itself, not a wall in front of it.
+func _aimed_opening() -> int:
+	var fort := _fortifications()
+	if fort == null:
+		return -1
+	var origin := camera.global_position
+	var query := PhysicsRayQueryParameters3D.create(origin, origin - camera.global_basis.z * (INTERACT_RANGE + 0.5),
+			GameData.LAYER_WORLD | GameData.LAYER_GLASS | GameData.LAYER_OPENINGS)
+	query.collide_with_areas = true
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	return fort.opening_of(hit["collider"]) if not hit.is_empty() else -1
+
+
+## Where a held barricade would stand: a couple of meters ahead, on the ground,
+## facing you.
+func _barricade_transform() -> Transform3D:
+	var forward := -global_basis.z
+	forward.y = 0.0
+	var spot := global_position + forward.normalized() * 2.2
+	var query := PhysicsRayQueryParameters3D.create(spot + Vector3.UP * 2.0, spot + Vector3.DOWN * 3.0, GameData.LAYER_WORLD)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		spot.y = (hit["position"] as Vector3).y
+	return Transform3D(Basis(Vector3.UP, rotation.y), spot)
+
+
+func _fortify_prompt() -> String:
+	var fort := _fortifications()
+	if fort == null:
+		return ""
+	var key := Controls.hint("use_held")
+	if held == "planks":
+		var index := _aimed_opening()
+		if index >= 0 and not fort.is_boarded(index):
+			return "%s: board up the %s" % [key, fort.describe(index)]
+	elif held == "barricade":
+		return "%s: place barricade" % key if fort.can_place_barricade(_barricade_transform()) else "No room for a barricade here"
+	return ""
+
+
+func _try_board() -> void:
+	var fort := _fortifications()
+	var index := _aimed_opening()
+	if fort == null or index < 0:
+		notify.emit("Aim at a door or window to board it up.")
+	elif fort.is_boarded(index):
+		notify.emit("That's already boarded up.")
+	else:
+		fort.board(index)
+		take_item("planks")
+		attack_cooldown = 0.6
+
+
+func _try_barricade() -> void:
+	var fort := _fortifications()
+	var xform := _barricade_transform()
+	if fort == null or not fort.can_place_barricade(xform):
+		notify.emit("No room for a barricade there.")
+		return
+	fort.place_barricade(xform)
+	take_item("barricade")
+	attack_cooldown = 0.6
+
+
+## A see-through preview of the barricade while you hold one: green where it fits,
+## red where it doesn't.
+func _update_barricade_ghost() -> void:
+	var fort := _fortifications()
+	var show := held == "barricade" and not is_dead and not menu_open and fort != null
+	if _barricade_ghost == null:
+		if not show:
+			return
+		_ghost_material = StandardMaterial3D.new()
+		_ghost_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_ghost_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		var box := BoxMesh.new()
+		box.size = Fortifications.BARRICADE_SIZE
+		box.material = _ghost_material
+		_barricade_ghost = MeshInstance3D.new()
+		_barricade_ghost.mesh = box
+		_barricade_ghost.top_level = true # placed in world space, not following the camera's tilt
+		_barricade_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_barricade_ghost)
+	_barricade_ghost.visible = show
+	if show:
+		var xform := _barricade_transform()
+		_barricade_ghost.global_transform = xform * Transform3D(Basis.IDENTITY, Vector3(0, Fortifications.BARRICADE_SIZE.y / 2.0, 0))
+		var ok: bool = fort.can_place_barricade(xform)
+		_ghost_material.albedo_color = Color(0.3, 1.0, 0.4, 0.35) if ok else Color(1.0, 0.25, 0.2, 0.35)
 
 
 # --- Weapons -----------------------------------------------------------------
@@ -732,7 +857,7 @@ func _refresh_weapon_visuals() -> void:
 	weapon_pivot.visible = held == "hands" or held == "crowbar"
 	fist_mesh.visible = held == "hands"
 	crowbar_mesh.visible = held == "crowbar"
-	item_pivot.visible = use == "heal" or use == "eat"
+	item_pivot.visible = use in ["heal", "eat", "board", "barricade"]
 	if item_pivot.visible:
 		# Consumables reuse their ground-item look (size and color from game_data.gd),
 		# a bit bigger since it's right in front of the camera.

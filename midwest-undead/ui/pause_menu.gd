@@ -5,15 +5,20 @@ extends CanvasLayer
 ## This menu sets its own process_mode to ALWAYS so it keeps running while paused.
 ## "Settings" swaps the button list for a page of sliders (look sensitivity and
 ## volume); changes apply as you drag and are saved when you leave the page.
+## "Controls" swaps it for the list of buttons (Controls.TABLE).
 
 const SaveGame := preload("res://core/save_game.gd")
 const Settings := preload("res://core/settings.gd")
+const Controls := preload("res://core/controls.gd")
 
 var resume_button: Button
 var _load_button: Button
 var _settings_button: Button
 var _main_page: VBoxContainer
 var _settings_page: VBoxContainer
+var _controls_button: Button
+var _controls_page: VBoxContainer
+var _controls_back: Button
 var _invert_check: CheckButton
 var _sliders := {} # setting key -> HSlider, to refresh after "Reset to defaults"
 
@@ -31,6 +36,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	var paused := get_tree().paused
 	if paused and _settings_page.visible and event.is_action_pressed("ui_cancel"):
 		_close_settings() # B / Esc on the settings page goes back, not all the way out
+		get_viewport().set_input_as_handled()
+		return
+	if paused and _controls_page.visible and event.is_action_pressed("ui_cancel"):
+		_close_controls() # same for the controls page
 		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("pause") or (paused and event.is_action_pressed("ui_cancel")):
@@ -52,6 +61,8 @@ func pause() -> void:
 func resume() -> void:
 	if _settings_page.visible:
 		_close_settings()
+	if _controls_page.visible:
+		_close_controls()
 	get_tree().paused = false
 	visible = false
 	# Only grab the mouse again if you're alive and not in the inventory screen;
@@ -93,6 +104,7 @@ func _build_ui() -> void:
 	resume_button = _add_button(_main_page, "Resume", resume)
 	_load_button = _add_button(_main_page, "Load last save", _load)
 	_settings_button = _add_button(_main_page, "Settings", _open_settings)
+	_controls_button = _add_button(_main_page, "Controls", _open_controls)
 	_add_button(_main_page, "New game", _restart)
 	_add_button(_main_page, "Quit to desktop", _quit)
 
@@ -119,6 +131,43 @@ func _build_ui() -> void:
 	_settings_page.add_child(buttons)
 	_add_button(buttons, "Reset to defaults", _reset_settings)
 	_add_button(buttons, "Back", _close_settings)
+
+	_controls_page = VBoxContainer.new()
+	_controls_page.add_theme_constant_override("separation", 10)
+	_controls_page.visible = false
+	center.add_child(_controls_page)
+	_add_title(_controls_page, "CONTROLS")
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 40)
+	grid.add_theme_constant_override("v_separation", 6)
+	_controls_page.add_child(grid)
+	for heading in ["", "Keyboard / mouse", "Controller"]:
+		_add_heading(grid, heading)
+	for row: Array in Controls.TABLE:
+		for cell: String in row:
+			var label := Label.new()
+			label.text = cell
+			label.add_theme_font_size_override("font_size", 17)
+			grid.add_child(label)
+	var back_row := HBoxContainer.new()
+	back_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_controls_page.add_child(back_row)
+	_controls_back = _add_button(back_row, "Back", _close_controls)
+
+
+# --- Controls page -------------------------------------------------------------
+
+func _open_controls() -> void:
+	_main_page.visible = false
+	_controls_page.visible = true
+	_controls_back.grab_focus()
+
+
+func _close_controls() -> void:
+	_controls_page.visible = false
+	_main_page.visible = true
+	_controls_button.grab_focus()
 
 
 # --- Settings page -------------------------------------------------------------

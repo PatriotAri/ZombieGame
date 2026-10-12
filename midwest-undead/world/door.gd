@@ -36,6 +36,8 @@ var nav_links: Array[NavigationLink3D] = []
 ## on (the outside if dead center). Without this the leaves slide through bodies
 ## and the physics engine pops them out on a random side, sometimes inside.
 var clear_path_when_closing := false
+## Planks nailed over it (fortifications.gd): it can't be opened or bashed.
+var boarded := false
 
 var _closed := Transform3D.IDENTITY
 var _open_yaw := 0.0
@@ -83,14 +85,14 @@ func setup(leaf_size: Vector3, leaf_offset: Vector3, color: Color, closed: Trans
 
 
 func interact_prompt() -> String:
-	if is_broken:
+	if is_broken or boarded:
 		return ""
 	return ("close the %s" if is_open else "open the %s") % label
 
 
 ## The player pressed interact on it.
 func toggle() -> void:
-	if is_broken:
+	if is_broken or boarded:
 		return
 	set_open(not is_open)
 	if label == "gate":
@@ -105,7 +107,7 @@ func set_open(value: bool, animate := true) -> void:
 
 
 func can_be_bashed() -> bool:
-	return breakable and not is_open and not is_broken
+	return breakable and not is_open and not is_broken and not boarded
 
 
 ## Called every physics frame by each zombie pushing against it.

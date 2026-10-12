@@ -178,6 +178,15 @@ def main():
     write("rifle_shot", mix(envelope(noise(0.5), 0.0005, 4.0),
                             gain(envelope(lowpass(noise(0.7), 250), 0.001, 2.0), 2.5)))
 
+    # Fortifying and windows (added last, so the sounds above come out unchanged)
+    write("hammer", concat(*[concat(mix(thud(0.07, 2500, 300), gain(click(0.02, 3000), 0.6)), silence(0.16))
+                             for _ in range(3)]), 0.7)
+    write("glass_bash", mix(thud(0.2, 900, 120), gain(envelope(tone(0.25, 2400, 2200), 0.001, 3.0), 0.25)), 0.7)
+    write("glass_break", mix(envelope(highpass(noise(0.8), 3000), 0.001, 1.6),
+                             gain(concat(*[concat(silence(random.uniform(0.02, 0.1)),
+                                                  envelope(tone(0.08, random.uniform(2500, 5000)), 0.001, 3.0))
+                                           for _ in range(7)]), 0.4)))
+
 
 if __name__ == "__main__":
     main()

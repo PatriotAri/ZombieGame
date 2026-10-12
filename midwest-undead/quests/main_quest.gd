@@ -72,6 +72,7 @@ func setup(the_player: Node3D, the_chief: Node3D, safe_house: Vector3, dialogue_
 	chief = the_chief
 	safe_house_point = safe_house
 	dialogue = dialogue_box
+	process_mode = Node.PROCESS_MODE_ALWAYS # _process only moves the marker; it hides it while paused
 
 	# Waypoint: floats over the current destination, drawn on top of everything
 	# and the same size on screen at any distance.
@@ -168,7 +169,9 @@ func _set_stage(new_stage: Stage) -> void:
 func _process(_delta: float) -> void:
 	var target := _marker_target()
 	var dist := INF if target == Vector3.INF else player.global_position.distance_to(target)
-	marker.visible = dist > MARKER_HIDE_DISTANCE and dist != INF
+	# Hidden with the rest of the HUD while a screen (map, menu, conversation) is up.
+	var in_screen: bool = player.get("menu_open") or get_tree().paused
+	marker.visible = dist > MARKER_HIDE_DISTANCE and dist != INF and not in_screen
 	if marker.visible:
 		marker.global_position = target + Vector3(0, 3.2, 0)
 		var place := "Safe house" if stage == Stage.REACH_SAFE_HOUSE else CHIEF

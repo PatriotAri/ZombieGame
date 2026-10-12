@@ -9,12 +9,14 @@ extends CharacterBody3D
 ## Sight needs a clear line (buildings and cars block it), mostly in front of it.
 ## Sound goes through walls. A closed door in its way gets bashed until it breaks
 ## (only while it's going somewhere: hunting or investigating, not idly wandering).
+## Its paths can also run through windows (world/fortifications.gd): it smashes the
+## glass, then climbs over the sill. Boarded windows and doors stop it for good.
 ## The node tree lives in zombie.tscn.
 ## TUNING: open zombie.tscn, select the Zombie node, and use the Inspector.
 
 const Player := preload("res://characters/player/player.gd")
 const GameData := preload("res://core/game_data.gd")
-const Door := preload("res://world/door.gd")
+const WindowPane := preload("res://world/window_pane.gd")
 const Sound := preload("res://core/sound.gd")
 
 enum State { IDLE, INVESTIGATE, HUNT }
@@ -59,6 +61,11 @@ var sense_timer := 0.0
 var repath_timer := 0.0
 var stagger_timer := 0.0
 var groan_timer := 0.0
+# The window it's heading through (see _handle_window), and the climb over its sill.
+var _window_link: NavigationLink3D = null
+var _window_entry := Vector3.ZERO
+var _window_exit := Vector3.ZERO
+var _vaulting := false
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
@@ -78,6 +85,9 @@ func _ready() -> void:
 	wander_timer = randf_range(1.0, 6.0)
 	groan_timer = randf_range(2.0, 12.0)
 	wander_target = global_position
+	# Layer 1 is the ground; layer 2 is the links through windows (fortifications.gd).
+	agent.navigation_layers = 1 | 2
+	agent.link_reached.connect(_on_link_reached)
 	_unique_materials()
 
 
@@ -97,6 +107,8 @@ func _unique_materials() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _vaulting:
+		return # a tween is carrying it over a windowsill
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 
@@ -148,16 +160,66 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	if moving and state != State.IDLE:
 		_bash_doors(delta)
+		_handle_window(delta)
 
 
 ## Its path runs through doorways (doors aren't in the navigation mesh), so a
-## closed door shows up as something it bumped into while walking.
+## closed door shows up as something it bumped into while walking. (Anything
+## with can_be_bashed() and bash(); planks and barricades have neither.)
 func _bash_doors(delta: float) -> void:
 	for i in get_slide_collision_count():
-		var door := get_slide_collision(i).get_collider() as Door
-		if door and door.can_be_bashed():
-			door.bash(door_damage_per_second * delta)
+		var thing := get_slide_collision(i).get_collider()
+		if thing and thing.has_method("can_be_bashed") and thing.call("can_be_bashed"):
+			thing.call("bash", door_damage_per_second * delta)
 			return
+
+
+# --- Windows -------------------------------------------------------------------
+
+## The path reached the outside (or inside) end of a window's link.
+func _on_link_reached(details: Dictionary) -> void:
+	var link: Variant = details.get("owner")
+	if link is NavigationLink3D and (link as Node).has_meta("window"):
+		_window_link = link
+		_window_entry = details.get("link_entry_position", (link as NavigationLink3D).start_position)
+		_window_exit = details.get("link_exit_position", (link as NavigationLink3D).end_position)
+
+
+## At a window on its path: beat on the glass, or climb through once it's gone.
+## (It can't reach the glass to bump it: the wall below the window sticks out
+## further, so the blows are dealt here rather than by _bash_doors.)
+func _handle_window(delta: float) -> void:
+	if _window_link == null:
+		return
+	var pane: WindowPane = _window_link.get_meta("window")
+	if not is_instance_valid(pane) or _flat(global_position - _window_entry).length() > 2.0:
+		_window_link = null # moved on
+	elif pane.can_be_bashed():
+		pane.bash(door_damage_per_second * delta)
+	elif pane.is_passable():
+		_vault()
+	else:
+		_window_link = null # boarded up: its next path won't use this window
+
+
+## Over the sill and in (or out): up to just above it, then down the other side.
+func _vault() -> void:
+	_vaulting = true
+	collision.disabled = true # not mid-physics: called from _physics_process, after move_and_slide
+	velocity = Vector3.ZERO
+	var sill_y: float = _window_link.get_meta("sill_y")
+	var over := (_window_entry + _window_exit) / 2.0
+	over.y = sill_y + 0.15
+	_face(_flat(_window_exit - global_position))
+	var tween := create_tween()
+	tween.tween_property(self, "global_position", over, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "global_position", _window_exit + Vector3(0, 0.1, 0), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_callback(func() -> void:
+		_vaulting = false
+		_window_link = null
+		repath_timer = 0.0
+		if not is_dead: # killed mid-climb: stays a corpse you can walk through
+			collision.disabled = false)
 
 
 # --- Senses ------------------------------------------------------------------

@@ -11,8 +11,9 @@ extends RefCounted
 ##   sprint           Shift (hold)       L3 / click left stick (toggles)
 ##   crouch           Ctrl (hold)        B (toggles)
 ##   use held item    left click         RT   (shoot, swing, heal, eat...)
-##   next/prev item   mouse wheel        Y / D-pad right = next, D-pad left = previous
-##   pick hotbar slot 1-9                -
+##   next/prev item   mouse wheel        D-pad right = next, D-pad left = previous
+##   pick held item   1-9                -    (numbered on the inventory screen)
+##   inventory        Tab                Y
 ##   interact         E                  X
 ##   reload           R                  RB
 ##   quick heal       Q                  LB   (switches to a health pack and uses it)
@@ -35,8 +36,29 @@ const HINTS := {
 	"restart": ["R", "A"],
 	"continue": ["E / Space / Click", "A / X"],
 	"map": ["M", "Back"],
+	"inventory": ["Tab", "Y"],
 	"leave": ["Esc", "B"],
 }
+
+## The pause menu's Controls page: [what it does, keyboard / mouse, controller].
+## Keep in step with setup() below.
+const TABLE := [
+	["Move", "WASD", "Left stick"],
+	["Look", "Mouse", "Right stick"],
+	["Sprint", "Shift (hold)", "L3 (toggle)"],
+	["Crouch", "Ctrl (hold)", "B (toggle)"],
+	["Jump", "Space", "A"],
+	["Use held item", "Left click", "RT"],
+	["Switch item", "Wheel / 1-9", "D-pad left / right"],
+	["Inventory", "Tab", "Y"],
+	["Search / pick up / talk / open", "E", "X"],
+	["Reload", "R", "RB"],
+	["Quick heal", "Q", "LB"],
+	["Flashlight", "F", "D-pad up"],
+	["Map", "M", "Back"],
+	["Pause", "Esc", "Start"],
+	["Move a whole stack (in menus)", "Shift + click", "RB + A"],
+]
 
 
 static func setup() -> void:
@@ -55,13 +77,13 @@ static func setup() -> void:
 	_key("interact", KEY_E); _button("interact", JOY_BUTTON_X)
 	_key("reload", KEY_R); _button("reload", JOY_BUTTON_RIGHT_SHOULDER)
 	_key("use_health_pack", KEY_Q); _button("use_health_pack", JOY_BUTTON_LEFT_SHOULDER)
-	_mouse("item_next", MOUSE_BUTTON_WHEEL_DOWN); _button("item_next", JOY_BUTTON_Y)
-	_button("item_next", JOY_BUTTON_DPAD_RIGHT)
+	_mouse("item_next", MOUSE_BUTTON_WHEEL_DOWN); _button("item_next", JOY_BUTTON_DPAD_RIGHT)
 	_mouse("item_prev", MOUSE_BUTTON_WHEEL_UP); _button("item_prev", JOY_BUTTON_DPAD_LEFT)
 	for i in range(1, 10):
 		_key("slot_%d" % i, (KEY_0 + i) as Key)
 	_key("flashlight", KEY_F); _button("flashlight", JOY_BUTTON_DPAD_UP)
 	_key("map", KEY_M); _button("map", JOY_BUTTON_BACK)
+	_key("inventory", KEY_TAB); _button("inventory", JOY_BUTTON_Y)
 	_key("pause", KEY_ESCAPE); _button("pause", JOY_BUTTON_START)
 	_key("menu_stack", KEY_SHIFT); _button("menu_stack", JOY_BUTTON_RIGHT_SHOULDER)
 	_key("restart", KEY_R); _button("restart", JOY_BUTTON_A)

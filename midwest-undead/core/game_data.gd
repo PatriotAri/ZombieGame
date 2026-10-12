@@ -10,6 +10,11 @@ const LAYER_ZOMBIES := 4
 const LAYER_ITEMS := 8
 const LAYER_GLASS := 16 # windows: block bodies, but sight and bullets pass through
 const LAYER_NPC := 32 # human NPCs (guards, traders, bandits...)
+## Doorways and windows you can board up: invisible areas only the planks aim at.
+const LAYER_OPENINGS := 64
+## Seen only by the navigation bake, never by physics: stand-ins like the shut
+## compound gate (see world/areas/police_station.gd).
+const LAYER_NAV_ONLY := 128
 
 # "use" is what the use button does while you hold the item. Items without one
 # (ammo, batteries) can't be held; they just sit in your inventory.
@@ -22,15 +27,19 @@ const ITEMS := {
 	# the flashlight swaps a set in by itself when its charge runs out.
 	"canned_food": {"name": "Canned food", "color": Color(0.7, 0.25, 0.15), "size": Vector3(0.1, 0.14, 0.1), "use": "eat"},
 	"batteries": {"name": "Batteries", "color": Color(0.2, 0.45, 0.25), "size": Vector3(0.12, 0.06, 0.08)},
+	# Fortifying (see world/fortifications.gd). Hold one, aim, and use it to place it.
+	"planks": {"name": "Planks", "color": Color(0.6, 0.47, 0.3), "size": Vector3(0.5, 0.06, 0.18), "use": "board"},
+	"barricade": {"name": "Barricade", "color": Color(0.5, 0.38, 0.24), "size": Vector3(0.6, 0.35, 0.12), "use": "barricade"},
 }
 # Order items appear in inventory lists.
-const ITEM_ORDER := ["pistol", "crowbar", "pistol_ammo", "health_pack", "canned_food", "batteries"]
+const ITEM_ORDER := ["pistol", "crowbar", "pistol_ammo", "health_pack", "canned_food", "batteries", "planks", "barricade"]
 
 
 static func item_name(id: String) -> String:
 	return ITEMS[id]["name"]
 
 
-## What using this item does ("shoot", "melee", "heal", "eat"), or "" if it can't be held.
+## What using this item does ("shoot", "melee", "heal", "eat", "board", "barricade"),
+## or "" if it can't be held.
 static func item_use(id: String) -> String:
 	return ITEMS.get(id, {}).get("use", "")

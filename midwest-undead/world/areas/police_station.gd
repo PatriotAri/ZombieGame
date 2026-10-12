@@ -14,6 +14,7 @@ const Shopkeeper := preload("res://characters/npcs/shopkeeper.gd")
 const ShopkeeperScene := preload("res://characters/npcs/shopkeeper.tscn")
 const PoliceChief := preload("res://characters/npcs/police_chief.gd")
 const PoliceChiefScene := preload("res://characters/npcs/police_chief.tscn")
+const GameData := preload("res://core/game_data.gd")
 
 # The station sits on the south side of the cross street, east of Main Street.
 # (Directions: +x is east and -z is north, the way the map screen is drawn.)
@@ -28,8 +29,7 @@ const PLYWOOD := Color(0.55, 0.45, 0.3)
 const TIMBER := Color(0.35, 0.27, 0.18)
 
 
-## Returns {"trader", "chief", "gate_nav_blocker"}. The blocker stands in for the
-## shut gate during the navigation bake; main.gd frees it right after baking.
+## Returns {"trader", "chief"}.
 static func build(b: WorldBuilder) -> Dictionary:
 	var result := {}
 	var station := Building.new()
@@ -89,7 +89,7 @@ static func build(b: WorldBuilder) -> Dictionary:
 	b.add_box(Vector3(x1 - x0, fence_h, 0.15), Vector3((x0 + x1) / 2.0, fence_h / 2.0, z1), PLYWOOD)
 	for x in [x0, x1]:
 		b.add_box(Vector3(0.15, fence_h, z1 - z0), Vector3(x, fence_h / 2.0, (z0 + z1) / 2.0), PLYWOOD)
-	result["gate_nav_blocker"] = _build_gate(b, gate0, gate1, z0, fence_h)
+	_build_gate(b, gate0, gate1, z0, fence_h)
 
 	# Guard towers in the two front corners, covering the street and the gate.
 	for tower_x in [x0 + 2.5, x1 - 2.5]:
@@ -108,10 +108,11 @@ static func map_fence() -> Rect2:
 
 
 ## Two steel leaves that slide sideways behind the fence. Zombies can't break it.
-## The navigation bake sees a wall where the gate is (the returned blocker,
-## removed right after baking), so with the gate shut zombies have no path into
-## the compound; while it's open, NavigationLinks across the gap give them one.
-static func _build_gate(b: WorldBuilder, gate0: float, gate1: float, fence_z: float, height: float) -> StaticBody3D:
+## The navigation bake sees a wall where the gate is (a stand-in on the nav-only
+## layer: invisible to physics, so it doesn't block anyone; it stays for every
+## re-bake), so with the gate shut zombies have no path into the compound; while
+## it's open, NavigationLinks across the gap give them one.
+static func _build_gate(b: WorldBuilder, gate0: float, gate1: float, fence_z: float, height: float) -> void:
 	var z := fence_z + 0.2 # just inside the fence line, so open leaves slide behind it
 	var half := (gate1 - gate0) / 2.0
 	var leaf := Vector3(half + 0.2, height, 0.1) # overlaps the fence a little at the outer end
@@ -145,6 +146,8 @@ static func _build_gate(b: WorldBuilder, gate0: float, gate1: float, fence_z: fl
 		b.add_door(gate, false)
 
 	var blocker := StaticBody3D.new()
+	blocker.collision_layer = GameData.LAYER_NAV_ONLY
+	blocker.collision_mask = 0
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(gate1 - gate0, height, 0.15)
 	var col := CollisionShape3D.new()
@@ -152,7 +155,6 @@ static func _build_gate(b: WorldBuilder, gate0: float, gate1: float, fence_z: fl
 	blocker.add_child(col)
 	blocker.position = Vector3((gate0 + gate1) / 2.0, height / 2.0, z)
 	b.nav_region.add_child(blocker)
-	return blocker
 
 
 ## Four timber legs, a platform at 4 m and a waist-high railing. Returns the

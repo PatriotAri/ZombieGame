@@ -1,14 +1,20 @@
 extends Node
-## The map is split into a grid of square zones, named like a paper map: columns
-## A, B, C... from west to east, rows 1, 2, 3... from north to south ("C4").
-## Each zone is:
-##   DANGER   (red on the map)    - zombies still walking around in it
-##   HOSTILE  (yellow on the map) - the zombies are dead, but bandits are still there
+## The map's grid and its zones.
+##
+## The grid: square map references named like a paper map, columns A, B, C... from
+## west to east, rows 1, 2, 3... from north to south ("O14"). A square is only a
+## place name.
+##
+## A zone is a named group of squares (ZONES below), and has a status:
+##   DANGER   (red on the map)    - zombies walking around in any of its squares
+##   HOSTILE  (yellow on the map) - the zombies are dead, but bandits are there
 ##   SAFE     (clear on the map)  - nothing left
-## Status is worked out from whoever is standing in the zone right now, so a
-## zombie wandering into a cleared zone turns it red again. Nothing here needs
-## saving: zombies and bandits are saved, and the status follows from them.
-## The map screen (ui/map_menu.gd) draws the grid; the HUD shows the zone you're in.
+## Status is worked out from whoever is standing in the zone right now, so zombies
+## wandering back in make it unsafe again (barricades and planks keep them out:
+## see world/fortifications.gd). Nothing here needs saving: zombies and bandits are
+## saved, and the status follows from them.
+## The map screen (ui/map_menu.gd) draws the grid and the zones; the HUD shows
+## the square you're in and, inside a zone, how it stands.
 ##
 ## The grid also sets the area the map screen shows. When the world grows, widen
 ## ORIGIN / COLUMNS / ROWS to cover it.
@@ -28,9 +34,19 @@ const COLUMNS := 26 # A to Z
 const ROWS := 26 # 1 to 26
 const CHECK_INTERVAL := 0.5 # seconds; counting everyone every frame is wasted work
 
+## The zones. To add one, add an entry: its name, a title for the map and HUD,
+## and its squares. A square belongs to at most one zone (a warning in the Output
+## panel names any that are claimed twice).
+const ZONES := [
+	{"name": "Zone 1", "title": "Police Station", # the station (O14) and the squares around it
+			"squares": ["N13", "O13", "P13", "N14", "O14", "P14", "N15", "O15", "P15"]},
+]
+
 var bandits: Array = [] # set by main.gd; zombies are found through the "zombies" group
+var discoveries: Node # set by main.gd; hides zone titles naming places not found yet
 var _status := {} # zone name -> Status
 var _counts := {} # zone name -> [zombies, bandits]
+var _zone_of_square := {} # square name -> zone name
 var _check_timer := 0.0
 var _started := false
 
@@ -56,10 +72,23 @@ static func cell_name(col: int, row: int) -> String:
 	return String.chr(65 + col) + str(row + 1)
 
 
-func _ready() -> void:
+## Each zone's squares as (x, z) rectangles, for drawing.
+static func zone_rects(zone: Dictionary) -> Array[Rect2]:
+	var rects: Array[Rect2] = []
 	for cell: Array in cells():
-		_status[cell[0]] = Status.SAFE
-		_counts[cell[0]] = [0, 0]
+		if cell[0] in zone["squares"]:
+			rects.append(cell[1])
+	return rects
+
+
+func _ready() -> void:
+	for zone: Dictionary in ZONES:
+		_status[zone["name"]] = Status.SAFE
+		_counts[zone["name"]] = [0, 0]
+		for square: String in zone["squares"]:
+			if _zone_of_square.has(square):
+				push_warning("Square %s is in both %s and %s." % [square, _zone_of_square[square], zone["name"]])
+			_zone_of_square[square] = zone["name"]
 
 
 func _physics_process(delta: float) -> void:
@@ -70,8 +99,8 @@ func _physics_process(delta: float) -> void:
 	_recount()
 
 
-## The zone a point is in, or "" off the edge of the grid.
-func zone_at(pos: Vector3) -> String:
+## The grid square a point is in ("O14"), or "" off the edge of the grid.
+func square_at(pos: Vector3) -> String:
 	var col := floori((pos.x - ORIGIN.x) / CELL_SIZE)
 	var row := floori((pos.z - ORIGIN.y) / CELL_SIZE)
 	if col < 0 or col >= COLUMNS or row < 0 or row >= ROWS:
@@ -79,21 +108,42 @@ func zone_at(pos: Vector3) -> String:
 	return cell_name(col, row)
 
 
+## The zone a point is in ("Zone 1"), or "" outside every zone.
+func zone_at(pos: Vector3) -> String:
+	return _zone_of_square.get(square_at(pos), "")
+
+
 func status_of(zone_name: String) -> Status:
 	return _status.get(zone_name, Status.SAFE)
 
 
-## For the HUD, e.g. "Zone C4  ·  4 zombies".
-func describe(zone_name: String) -> String:
+## "Zone 1 (Police Station)".
+## "Zone 1 (Police Station)"; just "Zone 1" while its title is a place you
+## haven't found yet (world/discoveries.gd).
+func full_name(zone_name: String) -> String:
+	for zone: Dictionary in ZONES:
+		if zone["name"] == zone_name:
+			if discoveries and not discoveries.is_known(zone["title"]):
+				return zone_name
+			return "%s (%s)" % [zone_name, zone["title"]]
+	return zone_name
+
+
+## For the HUD, e.g. "O14  ·  Zone 1 (Police Station)  ·  4 zombies", or just
+## "C7" outside every zone.
+func describe(pos: Vector3) -> String:
+	var square := square_at(pos)
+	var zone_name := zone_at(pos)
 	if zone_name == "":
-		return ""
+		return square
 	var counts: Array = _counts[zone_name]
+	var state := "safe"
 	match status_of(zone_name):
 		Status.DANGER:
-			return "Zone %s  ·  %d zombie%s" % [zone_name, counts[0], "" if counts[0] == 1 else "s"]
+			state = "%d zombie%s" % [counts[0], "" if counts[0] == 1 else "s"]
 		Status.HOSTILE:
-			return "Zone %s  ·  %d bandit%s" % [zone_name, counts[1], "" if counts[1] == 1 else "s"]
-	return "Zone %s  ·  safe" % zone_name
+			state = "%d bandit%s" % [counts[1], "" if counts[1] == 1 else "s"]
+	return "%s  ·  %s  ·  %s" % [square, full_name(zone_name), state]
 
 
 func _recount() -> void:

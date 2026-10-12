@@ -39,6 +39,8 @@ const Door := preload("res://world/door.gd")
 const Settings := preload("res://core/settings.gd")
 const Zones := preload("res://world/zones.gd")
 const MapMenu := preload("res://ui/map_menu.gd")
+const BackpackMenu := preload("res://ui/backpack_menu.gd")
+const Discoveries := preload("res://world/discoveries.gd")
 const Hud := preload("res://ui/hud.gd")
 const WorldBuilder := preload("res://world/world_builder.gd")
 const Loot := preload("res://world/loot.gd")
@@ -48,6 +50,8 @@ const SafeHouse := preload("res://world/areas/safe_house.gd")
 const BanditCamp := preload("res://world/areas/bandit_camp.gd")
 const Housing := preload("res://world/areas/housing.gd")
 const SkyShader := preload("res://world/sky_clouds.gdshader")
+const Fortifications := preload("res://world/fortifications.gd")
+const Fortification := preload("res://world/fortification.gd")
 const Grocery := preload("res://world/areas/grocery.gd")
 const GasStation := preload("res://world/areas/gas_station.gd")
 
@@ -91,6 +95,8 @@ var doors: Array[Door] = []
 var hud: Hud
 var zones: Zones
 var map_menu: MapMenu
+var backpack_menu: BackpackMenu
+var discoveries: Discoveries
 var dialogue: DialogueBox
 var quest: MainQuest
 var chief: PoliceChief
@@ -104,6 +110,10 @@ var zombies: Array[Zombie] = [] # every zombie spawned, dead or alive, in spawn 
 var housing_rng := RandomNumberGenerator.new()
 var grocery_rng := RandomNumberGenerator.new()
 var gas_station_rng := RandomNumberGenerator.new()
+var fortify_rng := RandomNumberGenerator.new() # planks in containers
+var fortifications: Fortifications
+## Chance each container holds some planks.
+const CONTAINER_PLANKS_CHANCE := 0.15
 var house_zombie_points: Array[Vector3] = [] # inside the houses and the gas station
 var save_menu: SaveMenu
 var inventory_menu: InventoryMenu
@@ -143,7 +153,14 @@ func _ready() -> void:
 	# Bake the walkable area from the town's collision shapes. Runs once at startup
 	# and blocks briefly; fine for one small town.
 	nav_region.bake_navigation_mesh(false)
-	station["gate_nav_blocker"].queue_free() # the real gate (and its nav links) takes over now
+	fortifications = Fortifications.new()
+	add_child(fortifications)
+	fortifications.setup(nav_region, nav_region.get_children().filter(func(n: Node) -> bool: return n is Building))
+	# Planks to find, rolled last with their own generator (see world_builder.gd).
+	fortify_rng.seed = town_seed + 5
+	for spot: LootSpot in loot_spots:
+		if fortify_rng.randf() < CONTAINER_PLANKS_CHANCE:
+			spot.inventory.add("planks", fortify_rng.randi_range(1, 2))
 	Loot.scatter(builder, ground_items)
 	hud = Hud.new()
 	add_child(hud)
@@ -157,7 +174,7 @@ func _ready() -> void:
 	zones.bandits = bandits
 	add_child(zones)
 	zones.status_changed.connect(_on_zone_status_changed)
-	hud.setup(player, day_night, zones)
+	hud.setup(player, day_night)
 	add_child(PauseMenu.new())
 	# Added last on purpose: Godot sends input to later nodes first, so while a menu
 	# is open it gets Esc/E before the pause menu and the player do.
@@ -171,18 +188,30 @@ func _ready() -> void:
 	player.npc_interacted.connect(_on_npc_interacted)
 	save_menu = SaveMenu.new()
 	add_child(save_menu)
+	discoveries = Discoveries.new()
+	add_child(discoveries)
+	discoveries.setup(player, _discoverable_places())
+	zones.discoveries = discoveries
+	discoveries.discovered.connect(func(names: Array[String]) -> void:
+		hud.show_toast("Discovered: " + ", ".join(names)))
 	map_menu = MapMenu.new()
 	add_child(map_menu)
-	map_menu.setup(player, zones, Town.map_roads() + Housing.map_roads(), _map_buildings(), [PoliceStation.map_fence()],
-			_map_landmarks())
+	map_menu.setup(player, zones, discoveries, Town.map_roads() + Housing.map_roads(), _map_buildings(),
+			[PoliceStation.map_fence()], _map_streets())
+	backpack_menu = BackpackMenu.new()
+	add_child(backpack_menu)
+	backpack_menu.setup(player)
 	player.object_interacted.connect(func(obj: Node) -> void:
 		if obj is SavePoint:
 			save_menu.open(player, _save_game)
 		elif obj is Door:
-			(obj as Door).toggle())
+			(obj as Door).toggle()
+		elif obj is Fortification:
+			player.give_item(fortifications.take_down(obj as Fortification)))
 	# Getting hurt never closes a menu or a conversation: only Esc (each menu
 	# handles its own) or dying does.
-	for menu: Callable in [inventory_menu.close, shop_menu.close, dialogue.close, save_menu.close, map_menu.close]:
+	for menu: Callable in [inventory_menu.close, shop_menu.close, dialogue.close, save_menu.close, map_menu.close,
+			backpack_menu.close]:
 		player.died.connect(menu)
 
 	quest = MainQuest.new()
@@ -206,19 +235,31 @@ func _map_buildings() -> Array[PackedVector2Array]:
 	return result
 
 
-## Place names for the map screen, as [name, (x, z)].
-func _map_landmarks() -> Array:
+## Street names for the map screen, as [name, (x, z)]. Always shown.
+func _map_streets() -> Array:
 	return [
-		["Police Station", Vector2(PoliceStation.STATION_X, PoliceStation.COMPOUND_MAX.y + 4.0)],
-		["Safe House", Vector2(SafeHouse.SAFE_HOUSE_X, SafeHouse.SAFE_HOUSE_FRONT_Z + 16.0)],
-		["Bandit Camp", Vector2(BanditCamp.CAMP_CENTER.x, BanditCamp.CAMP_CENTER.z - 10.0)],
 		["Main Street", Vector2(0.0, -82.0)],
-		["Water Tower", Vector2(-45.0, -57.0)],
 		["Elm Street", Housing.ELM_STREET.get_center() + Vector2(0.0, 18.0)],
 		["7th Street", Vector2(-100.0, 0.0)],
-		["Gas Station", GasStation.map_position()],
-		["Grocery", Grocery.map_position(builder)],
 	]
+
+
+## Places you find by going near them (world/discoveries.gd); the map names each
+## one only after that. center and label_at are (x, z); radius is in meters.
+func _discoverable_places() -> Array[Dictionary]:
+	var compound_center := (PoliceStation.COMPOUND_MIN + PoliceStation.COMPOUND_MAX) / 2.0
+	var grocery := Grocery.map_position(builder)
+	var places: Array[Dictionary] = [
+		{"name": "Police Station", "center": compound_center, "radius": 30.0,
+				"label_at": Vector2(PoliceStation.STATION_X, PoliceStation.COMPOUND_MAX.y + 4.0)},
+		{"name": "Safe House", "center": Vector2(safe_house_point.x, safe_house_point.z), "radius": 25.0,
+				"label_at": Vector2(SafeHouse.SAFE_HOUSE_X, SafeHouse.SAFE_HOUSE_FRONT_Z + 16.0)},
+		{"name": "Gas Station", "center": Vector2(GasStation.CENTER_X, GasStation.CANOPY_Z), "radius": 25.0,
+				"label_at": GasStation.map_position()},
+	]
+	if grocery != Vector2.INF:
+		places.append({"name": "Grocery Store", "center": grocery, "radius": 18.0, "label_at": grocery})
+	return places
 
 
 ## Pressing interact on an NPC: open whatever that kind of NPC offers.
@@ -381,6 +422,8 @@ func _save_game() -> bool:
 		"zombies": zombie_data,
 		"bandits": bandit_data,
 		"doors": door_data,
+		"fortifications": fortifications.save_state(),
+		"discovered": discoveries.save_state(),
 		"shop_stock": trader.stock.to_dict(),
 		"shop_restocked_day": trader.restocked_day,
 	})
@@ -405,6 +448,13 @@ func _apply_save(data: Dictionary) -> void:
 	var door_data: Array = data.get("doors", [])
 	for i in mini(door_data.size(), doors.size()):
 		doors[i].load_state(door_data[i])
+	fortifications.load_state(data.get("fortifications", {}))
+	if data.has("discovered"):
+		discoveries.load_state(data["discovered"])
+	else: # older saves: you've met the Chief, and maybe been to the safe house
+		discoveries.mark("Police Station")
+		if quest.stage >= MainQuest.Stage.REPORT_BACK:
+			discoveries.mark("Safe House")
 
 	# Ground items, zombies: throw away the freshly spawned ones and recreate
 	# exactly what the save recorded.
@@ -508,9 +558,9 @@ func _on_player_died() -> void:
 func _on_zone_status_changed(zone_name: String, status: Zones.Status) -> void:
 	match status:
 		Zones.Status.SAFE:
-			hud.show_toast("Zone %s is clear." % zone_name)
+			hud.show_toast("%s is clear." % zones.full_name(zone_name))
 		Zones.Status.HOSTILE:
-			hud.show_toast("No more zombies in zone %s, but bandits are still around." % zone_name)
+			hud.show_toast("No more zombies in %s, but bandits are still around." % zones.full_name(zone_name))
 		Zones.Status.DANGER:
-			if zones.zone_at(player.global_position) == zone_name:
-				hud.show_toast("Zombies have wandered into zone %s." % zone_name)
+			# Wherever you are: a zone you'd made safe isn't anymore.
+			hud.show_toast("Zombies have gotten into %s." % zones.full_name(zone_name))

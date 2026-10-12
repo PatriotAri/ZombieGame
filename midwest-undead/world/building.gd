@@ -10,6 +10,7 @@ extends Node3D
 const GameData := preload("res://core/game_data.gd")
 const LootSpot := preload("res://items/loot_spot.gd")
 const Door := preload("res://world/door.gd")
+const WindowPane := preload("res://world/window_pane.gd")
 
 const WALL := 0.2
 ## Default floor height: matches the sidewalk, so you step straight in from it.
@@ -33,6 +34,12 @@ var loot_spots: Array = [] # containers inside, for main.gd to fill
 var interior_points: Array[Vector3] = [] # global spots inside where a zombie could stand
 var door_z := 0.0 # local z of the doorway's center
 var footprint := PackedVector2Array() # its corners on the ground (world x, z), for the map screen
+## Every ground-floor opening that can be boarded up, in build order: unboarded
+## windows (with their WindowPane) and the doorway (with its Door, once make_door()
+## has run). Each is {"kind": "window"/"door", "center": the middle of the
+## opening in the wall (local), "width", "height", "outward": local direction
+## out of the building, "window"/"door": the node}. fortifications.gd uses them.
+var boardables: Array[Dictionary] = []
 var size_depth := 0.0 # set in build(): how far back from the front wall it goes
 var size_width := 0.0 # set in build(): along the front wall
 var _rng: RandomNumberGenerator
@@ -147,6 +154,8 @@ func make_door() -> Door:
 	var door := Door.new()
 	door.setup(leaf, Vector3(0.0, height / 2.0, DOOR_WIDTH / 2.0), DOOR_COLOR,
 			transform * Transform3D(Basis.IDENTITY, hinge), PI / 2.0)
+	boardables.append({"kind": "door", "center": Vector3(WALL / 2.0, FLOOR_Y + height / 2.0, door_z),
+			"width": DOOR_WIDTH, "height": height, "outward": Vector3(-1.0, 0.0, 0.0), "door": door})
 	return door
 
 
@@ -184,7 +193,9 @@ func _wall(x: float, width: float, openings: Array[Dictionary], color: Color) ->
 			if _rng.randf() < _boarded_chance:
 				_solid(Vector3(0.1, size.y, size.z), pos, WOOD)
 			else:
-				_glass(size, pos)
+				var glass := _glass(size, pos)
+				boardables.append({"kind": "window", "center": pos, "width": length, "height": top - bottom,
+						"outward": Vector3(-1.0 if x == 0.0 else 1.0, 0.0, 0.0), "window": glass})
 		cursor = end
 	if cursor < width / 2.0:
 		_solid(Vector3(WALL, WALL_TOP, width / 2.0 - cursor), Vector3(cx, WALL_TOP / 2.0, (cursor + width / 2.0) / 2.0), color)
@@ -192,14 +203,13 @@ func _wall(x: float, width: float, openings: Array[Dictionary], color: Color) ->
 
 ## Glass blocks movement but not sight or bullets: it lives on its own collision
 ## layer, which bodies collide with but the sight and shooting rays ignore.
-func _glass(size: Vector3, pos: Vector3) -> void:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = GLASS
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.roughness = 0.1
-	var body := _body(size, pos, mat)
-	body.collision_layer = GameData.LAYER_GLASS
-	(body.get_child(0) as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF # let sunlight in
+## Zombies can smash it (see window_pane.gd).
+func _glass(size: Vector3, pos: Vector3) -> WindowPane:
+	var window := WindowPane.new()
+	window.position = pos
+	window.setup(size, GLASS)
+	add_child(window)
+	return window
 
 
 func _solid(size: Vector3, pos: Vector3, color: Color) -> void:
