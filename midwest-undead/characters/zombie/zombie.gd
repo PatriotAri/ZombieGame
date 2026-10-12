@@ -262,7 +262,7 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 	stagger_timer = 0.4
 	_flash()
 	if health <= 0.0:
-		_die()
+		die()
 		return
 	if state == State.HUNT and _is_valid_target(target):
 		return # stay on its current target
@@ -274,12 +274,17 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 		_investigate(from_pos)
 
 
-func _die() -> void:
+## animate = false lays it straight down (loading a save with it already dead).
+func die(animate := true) -> void:
 	is_dead = true
 	target = null
 	remove_from_group("zombies") # stops hearing, being hit, and being targeted
 	collision.set_deferred("disabled", true) # deferred: physics may be mid-step
 	set_physics_process(false)
+	if not animate:
+		visual.rotation.x = PI / 2.0
+		visual.position.y = 0.3
+		return
 	var tween := create_tween()
 	tween.tween_property(visual, "rotation:x", PI / 2.0, 0.6) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN) # topple backward

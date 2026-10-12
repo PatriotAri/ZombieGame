@@ -121,6 +121,7 @@ var nav_region: NavigationRegion3D # all town geometry lives under this node
 var loot_spots: Array = []
 var interior_points: Array[Vector3] = [] # inside shops, where zombies can lurk
 var car_spots: Array[Vector3] = [] # so nothing else gets spawned inside a car
+var door_spots: Array[Vector3] = [] # shop doorways on Main Street, kept clear of streetlights
 var day_night: DayNight
 var rng := RandomNumberGenerator.new()
 ## Separate from rng so adding doors didn't reshuffle the rest of the town.
@@ -148,6 +149,7 @@ var safe_house_zombie_points: Array[Vector3] = []
 var safe_house_crates: Array = []
 var trader: Shopkeeper
 var bandits: Array[Bandit] = []
+var zombies: Array[Zombie] = [] # every zombie spawned, dead or alive, in spawn order (for saving)
 var bandit_spawns: Array[Vector3] = []
 var save_menu: SaveMenu
 var _has_save_on_death := false
@@ -356,6 +358,7 @@ func _build_block(side: int, dir: int) -> void:
 		loot_spots.append_array(building.loot_spots)
 		interior_points.append_array(building.interior_points)
 		_add_door(building.make_door(), door_rng.randf() < door_open_chance)
+		door_spots.append(building.transform * Vector3(0.0, 0.0, building.door_z))
 		# Sometimes a pile of boxes someone dragged out and abandoned, kept clear of the door.
 		if rng.randf() < 0.3:
 			var door_world_z := center_z + building.door_z * (1.0 if side == 1 else -1.0)
@@ -370,8 +373,19 @@ func _build_streetlights() -> void:
 	while z <= 78.0:
 		if absf(z) > 7.0:
 			for side: int in [-1, 1]:
-				_add_box(Vector3(0.15, 5.0, 0.15), Vector3(side * 7.6, 2.5, z), Color(0.2, 0.2, 0.2))
+				var pos := Vector3(side * 7.6, 2.5, z)
+				if not _near_door(pos, 2.5):
+					_add_box(Vector3(0.15, 5.0, 0.15), pos, Color(0.2, 0.2, 0.2))
 		z += 16.0
+
+
+## A pole this close to a doorway pinches the navmesh shut in front of it (walls
+## and poles both get an agent_radius margin), so zombies couldn't path inside.
+func _near_door(pos: Vector3, min_dist: float) -> bool:
+	for door in door_spots:
+		if Vector2(pos.x - door.x, pos.z - door.z).length() < min_dist:
+			return true
+	return false
 
 
 func _build_cars() -> void:
@@ -708,10 +722,10 @@ func _save_game() -> bool:
 		if not item.is_queued_for_deletion(): # (picked up this frame)
 			ground.append({"id": item.item_id, "amount": item.amount,
 					"position": SaveGame.vec_to_array(item.global_position), "yaw": item.rotation.y})
-	var zombies := []
-	for zombie: Zombie in get_tree().get_nodes_in_group("zombies"):
-		zombies.append({"position": SaveGame.vec_to_array(zombie.global_position),
-				"yaw": zombie.rotation.y, "health": zombie.health})
+	var zombie_data := []
+	for zombie in zombies:
+		zombie_data.append({"position": SaveGame.vec_to_array(zombie.global_position),
+				"yaw": zombie.rotation.y, "health": zombie.health, "dead": zombie.is_dead})
 	var door_data := []
 	for door in doors:
 		door_data.append(door.save_state())
@@ -727,7 +741,7 @@ func _save_game() -> bool:
 		"player": player.save_state(),
 		"containers": containers,
 		"ground_items": ground,
-		"zombies": zombies,
+		"zombies": zombie_data,
 		"bandits": bandit_data,
 		"doors": door_data,
 		"shop_stock": trader.stock.to_dict(),
@@ -764,15 +778,24 @@ func _apply_save(data: Dictionary) -> void:
 			_add_ground_item(entry["id"], int(entry.get("amount", 1)),
 					SaveGame.array_to_vec(entry["position"]), float(entry.get("yaw", 0.0)))
 
-	for zombie in get_tree().get_nodes_in_group("zombies"):
-		zombie.remove_from_group("zombies")
-		zombie.remove_from_group("noise_listeners")
-		zombie.queue_free()
-	for entry: Dictionary in data.get("zombies", []):
-		_add_zombie(SaveGame.array_to_vec(entry["position"]))
-		var zombie := get_child(-1) as Zombie
+	# Zombies, like bandits: the town spawns the same ones in the same order every
+	# time, so each saved entry goes back onto the zombie it came from. Nothing is
+	# freed, so nobody is ever left aiming at a deleted node. Older saves listed
+	# only the living (no "dead" flags): those fill the first zombies and the rest
+	# are laid down dead.
+	var zombie_data: Array = data.get("zombies", [])
+	for i in zombies.size():
+		var zombie := zombies[i]
+		if i >= zombie_data.size():
+			zombie.die(false)
+			continue
+		var entry: Dictionary = zombie_data[i]
+		zombie.global_position = SaveGame.array_to_vec(entry["position"])
 		zombie.rotation.y = float(entry.get("yaw", 0.0))
-		zombie.health = float(entry.get("health", zombie.max_health))
+		if entry.get("dead", false):
+			zombie.die(false)
+		else:
+			zombie.health = float(entry.get("health", zombie.max_health))
 
 	var bandit_data: Array = data.get("bandits", [])
 	for i in mini(bandit_data.size(), bandits.size()):
@@ -893,6 +916,7 @@ func _add_zombie(pos: Vector3) -> void:
 	zombie.position = pos
 	zombie.rotation.y = rng.randf_range(0.0, TAU)
 	add_child(zombie)
+	zombies.append(zombie)
 
 
 func _on_player_died() -> void:
