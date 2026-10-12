@@ -56,9 +56,11 @@ const Settings := preload("res://core/settings.gd")
 @export_range(0.0, 1.0) var door_open_chance := 0.35
 
 @export_group("Time of Day")
-@export_range(0.0, 23.99) var start_hour := 17.0
-## Real seconds per in-game hour. 40 = a 16-minute day.
-@export_range(1.0, 600.0) var seconds_per_game_hour := 40.0
+## 8:00 AM: a full day of light to get your bearings before the first night.
+@export_range(0.0, 23.99) var start_hour := 8.0
+## Real seconds per in-game hour. 120 = a 48-minute day: 24 minutes of
+## daylight (6 AM to 6 PM), then 24 of night.
+@export_range(1.0, 600.0) var seconds_per_game_hour := 120.0
 ## How bright the darkest night is. Raise it if nights are too dark on your screen.
 @export var night_ambient := Color(0.05, 0.06, 0.1)
 
@@ -170,6 +172,7 @@ func _ready() -> void:
 	_setup_navigation()
 	_build_town()
 	_build_police_station()
+	trader.day_night = day_night # restocks each morning
 	_assign_loot()
 	_build_safe_house() # after _assign_loot: its crates get fixed supplies, not random loot
 	_build_bandit_camp()
@@ -748,6 +751,7 @@ func _save_game() -> bool:
 		"bandits": bandit_data,
 		"doors": door_data,
 		"shop_stock": trader.stock.to_dict(),
+		"shop_restocked_day": trader.restocked_day,
 	})
 
 
@@ -813,6 +817,7 @@ func _apply_save(data: Dictionary) -> void:
 			bandit.health = float(entry.get("health", bandit.max_health))
 
 	trader.stock.from_dict(data.get("shop_stock", trader.stock.to_dict()))
+	trader.restocked_day = int(data.get("shop_restocked_day", day_night.day))
 	player.load_state(data.get("player", {}))
 
 

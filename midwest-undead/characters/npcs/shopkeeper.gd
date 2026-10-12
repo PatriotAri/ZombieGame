@@ -2,6 +2,8 @@ extends HumanNPC
 ## A trader. Look at them and press E (X on a controller) to buy and sell.
 ## Anything you sell is added to their stock, so you can buy it back (at the
 ## higher price). Each trader scene can have its own stock and prices.
+## Every morning they restock: each item in starting_stock is topped back up to
+## its starting amount (things you sold them on top of that are kept).
 ## TUNING: open shopkeeper.tscn, select the Shopkeeper node, and use the Inspector.
 
 const Inventory := preload("res://items/inventory.gd")
@@ -15,12 +17,18 @@ const Inventory := preload("res://items/inventory.gd")
 @export var buy_prices: Dictionary[String, int] = {
 	"pistol": 250, "crowbar": 60, "pistol_ammo": 4, "health_pack": 45, "canned_food": 15, "batteries": 12,
 }
+## Hour of the morning (0-23) when the day's restock arrives.
+@export_range(0, 23) var restock_hour := 6
 ## Dollars you get per item. Leave an item out and the trader won't buy it.
 @export var sell_prices: Dictionary[String, int] = {
 	"pistol": 90, "crowbar": 20, "pistol_ammo": 2, "health_pack": 18, "canned_food": 8, "batteries": 6,
 }
 
 var stock := Inventory.new()
+## Set by main.gd. Without it (e.g. a trader dropped into a test scene) they never restock.
+var day_night: Node
+## The last day they restocked; their starting stock counts as day 1's.
+var restocked_day := 1
 
 
 func _npc_ready() -> void:
@@ -31,6 +39,21 @@ func _npc_ready() -> void:
 	_drop_unknown(starting_stock, "stock")
 	for id: String in starting_stock:
 		stock.add(id, starting_stock[id])
+
+
+## Checked every physics frame; cheap. Comparing days (rather than reacting
+## to the clock passing an hour) means a loaded save can't restock twice.
+func _npc_physics(_delta: float) -> void:
+	if day_night and day_night.day > restocked_day and day_night.hour >= restock_hour:
+		restock()
+
+
+func restock() -> void:
+	restocked_day = day_night.day
+	for id: String in starting_stock:
+		var missing: int = starting_stock[id] - stock.count(id)
+		if missing > 0:
+			stock.add(id, missing)
 
 
 func buy_price(id: String) -> int:

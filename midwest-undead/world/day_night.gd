@@ -4,8 +4,8 @@ extends Node
 ## light_level() (0 = darkest night, 1 = full daylight).
 
 # Tunable values, set by main.gd from its inspector before setup().
-var start_hour := 17.0 # late afternoon; dusk arrives a few minutes in
-var seconds_per_game_hour := 40.0 # a full day is 16 real minutes
+var start_hour := 8.0 # morning: most of a day before dusk
+var seconds_per_game_hour := 120.0 # a full day is 48 real minutes
 var night_ambient := Color(0.05, 0.06, 0.1) # dark, but you can make out shapes
 
 const DAY_TOP := Color(0.3, 0.45, 0.72)

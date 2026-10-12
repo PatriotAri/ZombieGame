@@ -71,7 +71,8 @@ const Settings := preload("res://core/settings.gd")
 
 @export_group("Hunger")
 ## Hunger rises with in-game time: 4 per hour means fed to starving in about a
-## day (25 game hours, ~17 real minutes at the default clock speed).
+## day (25 game hours, ~50 real minutes at the default clock speed). Roughly
+## three cans of food a day keep it down.
 @export var hunger_per_game_hour := 4.0
 @export_range(0.0, 100.0) var starting_hunger := 20.0
 ## From here on you're hungry: stamina comes back at half speed.
@@ -769,7 +770,7 @@ func _update_footsteps(delta: float, sprinting: bool) -> void:
 func _update_hunger(delta: float) -> void:
 	if day_night == null:
 		day_night = get_tree().get_first_node_in_group("day_night")
-	var seconds_per_hour: float = day_night.seconds_per_game_hour if day_night else 40.0
+	var seconds_per_hour: float = day_night.seconds_per_game_hour if day_night else 120.0
 	hunger = minf(hunger + hunger_per_game_hour * delta / seconds_per_hour, 100.0)
 
 	var stage := _stage_for(hunger)
