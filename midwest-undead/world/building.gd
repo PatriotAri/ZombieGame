@@ -32,6 +32,7 @@ const DOOR_COLOR := Color(0.36, 0.24, 0.14)
 var loot_spots: Array = [] # containers inside, for main.gd to fill
 var interior_points: Array[Vector3] = [] # global spots inside where a zombie could stand
 var door_z := 0.0 # local z of the doorway's center
+var footprint := PackedVector2Array() # its corners on the ground (world x, z), for the map screen
 var _rng: RandomNumberGenerator
 var _boarded_chance := BOARDED_CHANCE
 var FLOOR_Y := SIDEWALK_FLOOR_Y # top of the floor slab for this building (set in build())
@@ -43,6 +44,9 @@ func build(depth: float, width: float, height: float, color: Color, rng: RandomN
 	FLOOR_Y = floor_y
 	_boarded_chance = boarded_chance
 	var half := width / 2.0
+	for corner: Vector3 in [Vector3(0, 0, -half), Vector3(depth, 0, -half), Vector3(depth, 0, half), Vector3(0, 0, half)]:
+		var world := transform * corner
+		footprint.append(Vector2(world.x, world.z))
 
 	# Floor and ceiling cover the whole footprint.
 	_solid(Vector3(depth, FLOOR_Y, width), Vector3(depth / 2.0, FLOOR_Y / 2.0, 0), FLOOR_COLOR)

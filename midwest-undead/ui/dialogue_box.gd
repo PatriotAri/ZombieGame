@@ -1,7 +1,11 @@
 extends CanvasLayer
 ## A conversation box along the bottom of the screen: speaker name, one line at a
 ## time, press to continue. Your controls freeze while it's open (the world keeps
-## running). Call start() with the lines and, optionally, what to do when it ends.
+## running, and getting hurt doesn't end it). Call start() with the lines and,
+## optionally, what to do when it ends.
+## Only two things end it early, both through close(): Esc / B / Start, and dying
+## (main.gd). Either way it's cancelled: what it leads to doesn't happen, so you
+## talk to them again to get it.
 
 const Controls := preload("res://core/controls.gd")
 
@@ -26,7 +30,7 @@ func is_open() -> bool:
 
 
 ## player: the player node (its controls freeze while talking).
-## on_finished: called when the last line is dismissed (or the talk is interrupted).
+## on_finished: called when the last line is dismissed (not if it's cancelled).
 func start(speaker: String, lines: Array[String], player: Node, on_finished := Callable()) -> void:
 	if visible or lines.is_empty():
 		return
@@ -40,17 +44,23 @@ func start(speaker: String, lines: Array[String], player: Node, on_finished := C
 	_show_line()
 
 
-## Ends the conversation early, e.g. if you get attacked mid-sentence. The
-## on_finished step still runs, so the story never gets stuck half-way.
-func interrupt() -> void:
-	if visible:
-		_finish()
+## Cancels it: on_finished doesn't run.
+func close() -> void:
+	if not visible:
+		return
+	visible = false
+	_on_finished = Callable()
+	_player.set("menu_open", false)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
 		return
-	if event.is_action_pressed("interact") or event.is_action_pressed("ui_accept") \
+	if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
+		# Handled here so the pause menu doesn't also open.
+		get_viewport().set_input_as_handled()
+		close()
+	elif event.is_action_pressed("interact") or event.is_action_pressed("ui_accept") \
 			or event.is_action_pressed("use_held"):
 		# Handled here so the same press doesn't also make you jump, shoot, or
 		# start talking to the NPC again.
@@ -65,7 +75,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _show_line() -> void:
 	_text_label.text = _lines[_index]
 	var more := "continue" if _index < _lines.size() - 1 else "close"
-	_hint_label.text = "%s: %s   (%d/%d)" % [Controls.hint("continue"), more, _index + 1, _lines.size()]
+	_hint_label.text = "%s: %s   ·   %s: leave   (%d/%d)" % [Controls.hint("continue"), more,
+			Controls.hint("leave"), _index + 1, _lines.size()]
 
 
 func _finish() -> void:

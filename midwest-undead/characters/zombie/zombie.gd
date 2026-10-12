@@ -127,7 +127,7 @@ func _physics_process(delta: float) -> void:
 					_face(to_target)
 				var height_gap := absf(target.global_position.y - global_position.y)
 				if to_target.length() < ATTACK_RANGE and height_gap < ATTACK_HEIGHT \
-						and target.has_method("take_damage"):
+						and target.has_method("take_damage") and _can_reach(target):
 					target.call("take_damage", damage_per_second * delta)
 		State.INVESTIGATE:
 			moving = _walk_to(investigate_pos, speed, delta)
@@ -238,6 +238,16 @@ func _clear_line(eye: Vector3, aim: Vector3, candidate: Node3D) -> bool:
 	var query := PhysicsRayQueryParameters3D.create(eye, aim, mask)
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	return hit.is_empty() or hit["collider"] == candidate
+
+
+## Nothing solid between its chest and the target's, windows and closed doors
+## included. Sight goes through glass, so without this it could bite through a
+## shop window it was pressed up against.
+func _can_reach(candidate: Node3D) -> bool:
+	var from := global_position + Vector3(0, 1.2, 0)
+	var to := candidate.global_position + Vector3(0, 1.0, 0)
+	var query := PhysicsRayQueryParameters3D.create(from, to, GameData.LAYER_WORLD | GameData.LAYER_GLASS)
+	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
 func _investigate(pos: Vector3) -> void:

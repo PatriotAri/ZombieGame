@@ -17,6 +17,7 @@ extends RefCounted
 ##   reload           R                  RB
 ##   quick heal       Q                  LB   (switches to a health pack and uses it)
 ##   flashlight       F                  D-pad up
+##   map              M                  Back / View
 ##   pause            Esc                Start (Menu button)
 ##   in menus: move a whole stack with Shift+click, or hold RB and press A.
 
@@ -33,6 +34,8 @@ const HINTS := {
 	"use_held": ["Click", "RT"],
 	"restart": ["R", "A"],
 	"continue": ["E / Space / Click", "A / X"],
+	"map": ["M", "Back"],
+	"leave": ["Esc", "B"],
 }
 
 
@@ -58,6 +61,7 @@ static func setup() -> void:
 	for i in range(1, 10):
 		_key("slot_%d" % i, (KEY_0 + i) as Key)
 	_key("flashlight", KEY_F); _button("flashlight", JOY_BUTTON_DPAD_UP)
+	_key("map", KEY_M); _button("map", JOY_BUTTON_BACK)
 	_key("pause", KEY_ESCAPE); _button("pause", JOY_BUTTON_START)
 	_key("menu_stack", KEY_SHIFT); _button("menu_stack", JOY_BUTTON_RIGHT_SHOULDER)
 	_key("restart", KEY_R); _button("restart", JOY_BUTTON_A)

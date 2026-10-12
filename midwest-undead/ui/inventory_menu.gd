@@ -1,6 +1,6 @@
 extends CanvasLayer
 ## Two-column transfer screen between you and an opened container.
-## The game keeps running while it's open, and it closes itself if you get hurt.
+## The game keeps running while it's open; Esc closes it (so does dying).
 
 const GameData := preload("res://core/game_data.gd")
 const Inventory := preload("res://items/inventory.gd")

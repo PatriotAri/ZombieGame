@@ -227,7 +227,7 @@ func _shoot_at(enemy: Node3D) -> void:
 		chance *= 0.7 # harder to hit someone on the move
 	if randf() < chance:
 		if enemy.is_in_group("player"):
-			enemy.call("take_damage", damage)
+			enemy.call("take_damage", damage, "shot")
 		else:
 			enemy.call("take_hit", damage, global_position, 0.8, self)
 	else:

@@ -113,7 +113,8 @@ var pistol_mag := PISTOL_MAG # rounds loaded in the gun (not in the inventory)
 ## in game_data.gd. The use button does whatever that item does.
 var held := "pistol"
 var is_dead := false
-var starved := false # died of hunger rather than bites (for the death message)
+## What killed you, for the death message: "bitten", "shot" or "starved".
+var death_cause := ""
 var is_crouching := false
 var hunger := 20.0 # 0 = just ate, 100 = starving; set to starting_hunger in _ready
 var flashlight_charge := 1.0 # what's left in the batteries in the flashlight, 0-1
@@ -313,7 +314,9 @@ func _physics_process(delta: float) -> void:
 	_hurt_sound_wait = maxf(_hurt_sound_wait - delta, 0.0)
 
 
-func take_damage(amount: float) -> void:
+## cause is what the death message blames if this kills you: zombies bite
+## (the default), bandits pass "shot".
+func take_damage(amount: float, cause := "bitten") -> void:
 	if is_dead:
 		return
 	health = maxf(health - amount, 0.0)
@@ -325,10 +328,11 @@ func take_damage(amount: float) -> void:
 		_cancel_use()
 		notify.emit("Interrupted!") # can't bandage up or eat while something's biting you
 	if health <= 0.0:
-		_die()
+		_die(cause)
 
 
-func _die() -> void:
+func _die(cause: String) -> void:
+	death_cause = cause
 	is_dead = true
 	flashlight.visible = false
 	weapon_pivot.visible = false
@@ -627,7 +631,7 @@ func _try_melee() -> void:
 
 
 ## Hits every zombie or person in range, roughly in front of you, and not behind a
-## wall. Friendly NPCs ignore your hits (see HumanNPC.player_can_hurt).
+## wall or a window. Friendly NPCs ignore your hits (see HumanNPC.player_can_hurt).
 func _apply_melee_hit(weapon: Dictionary) -> void:
 	if is_dead:
 		return
@@ -644,9 +648,10 @@ func _apply_melee_hit(weapon: Dictionary) -> void:
 			continue
 		if forward.dot(to_target.normalized()) < 0.6: # about a 100 degree swing arc
 			continue
-		var query := PhysicsRayQueryParameters3D.create(origin, origin + to_target, GameData.LAYER_WORLD)
+		var query := PhysicsRayQueryParameters3D.create(origin, origin + to_target,
+				GameData.LAYER_WORLD | GameData.LAYER_GLASS)
 		if not space.intersect_ray(query).is_empty():
-			continue # wall or car in the way
+			continue # wall, car, or window in the way
 		# call() because this script doesn't know the zombie script's functions.
 		victim.call("take_hit", weapon["damage"], global_position, weapon["knockback"], self)
 		hit_any = true
@@ -788,8 +793,7 @@ func _update_hunger(delta: float) -> void:
 		# Not take_damage(): starving shouldn't flash red or close menus every frame.
 		health = maxf(health - starving_damage_per_sec * delta, 0.0)
 		if health <= 0.0:
-			starved = true
-			_die()
+			_die("starved")
 
 
 func _stage_for(value: float) -> int:

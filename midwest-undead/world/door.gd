@@ -19,6 +19,7 @@ const Sound := preload("res://core/sound.gd")
 const OPEN_TIME := 0.6
 const BASH_WOBBLE := 0.04 # meters the leaf jumps per blow
 const BASH_INTERVAL := 0.6 # seconds between visible blows, however many zombies are at it
+const BODY_CLEARANCE := 0.45 # zombie / player radius plus a little, for clear_path_when_closing
 
 var label := "door"
 var max_health := 150.0
@@ -30,12 +31,19 @@ var is_broken := false
 var linked: Array = []
 ## Zombie paths through the opening, enabled only while it's open.
 var nav_links: Array[NavigationLink3D] = []
+## The compound gate: while it closes, zombies (and you) standing where a leaf is
+## about to be are moved out of its way, to whichever side of the gate line they're
+## on (the outside if dead center). Without this the leaves slide through bodies
+## and the physics engine pops them out on a random side, sometimes inside.
+var clear_path_when_closing := false
 
 var _closed := Transform3D.IDENTITY
 var _open_yaw := 0.0
 var _open_shift := Vector3.ZERO
 var _amount := 0.0 # 0 = shut, 1 = open; tweened in between
 var _leaf_offset := Vector3.ZERO
+var _leaf_size := Vector3.ZERO
+var _closing := false
 var _mesh: MeshInstance3D
 var _material: StandardMaterial3D
 var _base_color: Color
@@ -52,6 +60,7 @@ func setup(leaf_size: Vector3, leaf_offset: Vector3, color: Color, closed: Trans
 	_open_yaw = open_yaw
 	_open_shift = open_shift
 	_leaf_offset = leaf_offset
+	_leaf_size = leaf_size
 	transform = closed
 	_base_color = color
 	_material = StandardMaterial3D.new()
@@ -149,6 +158,7 @@ func _set_open_one(value: bool, animate: bool, duration := OPEN_TIME) -> void:
 	if value == is_open and animate:
 		return
 	is_open = value
+	_closing = not value
 	for link in nav_links:
 		link.enabled = value
 	if _move_tween:
@@ -167,3 +177,25 @@ func _set_open_one(value: bool, animate: bool, duration := OPEN_TIME) -> void:
 func _apply_amount(amount: float) -> void:
 	_amount = amount
 	transform = _closed * Transform3D(Basis(Vector3.UP, _open_yaw * amount), _open_shift * amount)
+	if clear_path_when_closing and _closing and is_inside_tree():
+		_clear_path()
+
+
+## For sliding leaves (clear_path_when_closing): works in the closed leaf's frame,
+## where the leaf runs along x and its thickness is z. Only the stretch the leaf
+## currently covers is cleared, so bodies are nudged as the leaf edge reaches them.
+func _clear_path() -> void:
+	var shift := _open_shift * _amount
+	var half := _leaf_size / 2.0
+	var x_min := _leaf_offset.x + shift.x - half.x - BODY_CLEARANCE
+	var x_max := _leaf_offset.x + shift.x + half.x + BODY_CLEARANCE
+	var depth := half.z + BODY_CLEARANCE
+	var to_local := _closed.affine_inverse()
+	for body: Node3D in get_tree().get_nodes_in_group("zombies") + get_tree().get_nodes_in_group("player"):
+		var local := to_local * body.global_position
+		var off := local.z - _leaf_offset.z
+		if local.x < x_min or local.x > x_max or absf(off) >= depth:
+			continue
+		# -z is the outside for the compound gate; a tie goes there too.
+		local.z = _leaf_offset.z + (1.0 if off > 0.0 else -1.0) * depth
+		body.global_position = _closed * local
