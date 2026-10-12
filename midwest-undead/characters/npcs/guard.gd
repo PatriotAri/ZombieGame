@@ -102,6 +102,7 @@ func _fire_at(target: Node3D) -> void:
 
 	var muzzle := rifle.global_transform * Vector3(0, 0, -0.9)
 	_tracer(muzzle, end)
+	Sound.play_at(self, "rifle_shot", muzzle, 0.0, 90.0, 0.06)
 	muzzle_flash.visible = true
 	get_tree().create_timer(0.05).timeout.connect(func() -> void: muzzle_flash.visible = false)
 	get_tree().call_group("noise_listeners", "hear_noise", global_position, noise_radius)

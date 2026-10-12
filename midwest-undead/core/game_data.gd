@@ -18,8 +18,8 @@ const ITEMS := {
 	"crowbar": {"name": "Crowbar", "color": Color(0.45, 0.12, 0.1), "size": Vector3(0.05, 0.05, 0.75), "use": "melee"},
 	"pistol_ammo": {"name": "Pistol ammo", "color": Color(0.75, 0.6, 0.2), "size": Vector3(0.16, 0.1, 0.1)},
 	"health_pack": {"name": "Health pack", "color": Color(0.9, 0.9, 0.88), "size": Vector3(0.32, 0.12, 0.24), "use": "heal"},
-	# Food can be eaten now. Batteries are still trade-only (a hook for a
-	# flashlight battery later).
+	# Food is eaten from your hands and staves off hunger. Batteries can't be held:
+	# the flashlight swaps a set in by itself when its charge runs out.
 	"canned_food": {"name": "Canned food", "color": Color(0.7, 0.25, 0.15), "size": Vector3(0.1, 0.14, 0.1), "use": "eat"},
 	"batteries": {"name": "Batteries", "color": Color(0.2, 0.45, 0.25), "size": Vector3(0.12, 0.06, 0.08)},
 }

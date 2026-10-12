@@ -15,6 +15,7 @@ extends CharacterBody3D
 const Player := preload("res://characters/player/player.gd")
 const GameData := preload("res://core/game_data.gd")
 const Door := preload("res://world/door.gd")
+const Sound := preload("res://core/sound.gd")
 
 enum State { IDLE, INVESTIGATE, HUNT }
 
@@ -57,6 +58,7 @@ var wander_timer := 0.0
 var sense_timer := 0.0
 var repath_timer := 0.0
 var stagger_timer := 0.0
+var groan_timer := 0.0
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
@@ -74,6 +76,7 @@ func _ready() -> void:
 	sense_timer = randf() * SENSE_INTERVAL
 	repath_timer = randf() * REPATH_INTERVAL
 	wander_timer = randf_range(1.0, 6.0)
+	groan_timer = randf_range(2.0, 12.0)
 	wander_target = global_position
 	_unique_materials()
 
@@ -109,6 +112,7 @@ func _physics_process(delta: float) -> void:
 	if sense_timer <= 0.0:
 		sense_timer = SENSE_INTERVAL
 		_update_sight()
+	_update_groan(delta)
 
 	var moving := false
 	match state:
@@ -179,6 +183,8 @@ func _update_sight() -> void:
 			best = candidate
 			best_dist = dist
 	if best:
+		if state != State.HUNT:
+			_alert_sound()
 		target = best
 		state = State.HUNT
 		last_seen_pos = best.global_position
@@ -261,12 +267,14 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 	velocity.z = away.z * knockback
 	stagger_timer = 0.4
 	_flash()
+	Sound.play_at(self, "zombie_hit", global_position + Vector3.UP, -4.0, 20.0, 0.15)
 	if health <= 0.0:
 		die()
 		return
 	if state == State.HUNT and _is_valid_target(target):
 		return # stay on its current target
 	if _is_valid_target(attacker):
+		_alert_sound()
 		target = attacker
 		state = State.HUNT
 		last_seen_pos = attacker.global_position
@@ -285,10 +293,29 @@ func die(animate := true) -> void:
 		visual.rotation.x = PI / 2.0
 		visual.position.y = 0.3
 		return
+	Sound.play_at(self, "zombie_death", global_position + Vector3.UP, -2.0, 25.0, 0.12)
 	var tween := create_tween()
 	tween.tween_property(visual, "rotation:x", PI / 2.0, 0.6) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN) # topple backward
 	tween.parallel().tween_property(visual, "position:y", 0.3, 0.6)
+
+
+## Every so often it moans: quietly while shuffling around, louder and more
+## often while chasing someone. It's how you hear one coming in the dark.
+func _update_groan(delta: float) -> void:
+	groan_timer -= delta
+	if groan_timer > 0.0:
+		return
+	var hunting := state == State.HUNT
+	groan_timer = randf_range(2.5, 5.0) if hunting else randf_range(6.0, 14.0)
+	Sound.play_at(self, "zombie_groan", global_position + Vector3(0, EYE_HEIGHT, 0),
+			-2.0 if hunting else -9.0, 22.0 if hunting else 16.0, 0.15)
+
+
+## Just spotted (or been hit by) someone.
+func _alert_sound() -> void:
+	groan_timer = randf_range(2.5, 5.0) # don't moan right on top of the snarl
+	Sound.play_at(self, "zombie_alert", global_position + Vector3(0, EYE_HEIGHT, 0), 0.0, 28.0, 0.15)
 
 
 func _flash() -> void:

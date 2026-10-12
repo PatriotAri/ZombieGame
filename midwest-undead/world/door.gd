@@ -14,6 +14,8 @@ extends AnimatableBody3D
 ## by open_yaw and moves it by open_shift, both in its closed frame, so the same
 ## script does swinging doors and sliding gate leaves.
 
+const Sound := preload("res://core/sound.gd")
+
 const OPEN_TIME := 0.6
 const BASH_WOBBLE := 0.04 # meters the leaf jumps per blow
 const BASH_INTERVAL := 0.6 # seconds between visible blows, however many zombies are at it
@@ -79,8 +81,13 @@ func interact_prompt() -> String:
 
 ## The player pressed interact on it.
 func toggle() -> void:
-	if not is_broken:
-		set_open(not is_open)
+	if is_broken:
+		return
+	set_open(not is_open)
+	if label == "gate":
+		Sound.play_at(self, "gate_slide", global_position, 0.0, 30.0, 0.05)
+	else:
+		Sound.play_at(self, "door_open" if is_open else "door_close", global_position, -4.0, 20.0)
 
 
 func set_open(value: bool, animate := true) -> void:
@@ -106,6 +113,7 @@ func bash(damage: float) -> void:
 	if now < _next_bash_ms:
 		return
 	_next_bash_ms = now + int(BASH_INTERVAL * 1000.0)
+	Sound.play_at(self, "door_bash", global_position + Vector3.UP, 0.0, 30.0, 0.12)
 	if _bash_tween:
 		_bash_tween.kill()
 	_mesh.position = _leaf_offset + Vector3(BASH_WOBBLE, 0.0, 0.0)
@@ -134,6 +142,7 @@ func _burst() -> void:
 	_material.albedo_color = _base_color.darkened(0.6)
 	_mesh.position = _leaf_offset
 	_set_open_one(true, true, 0.15)
+	Sound.play_at(self, "door_break", global_position + Vector3.UP, 2.0, 35.0, 0.08)
 
 
 func _set_open_one(value: bool, animate: bool, duration := OPEN_TIME) -> void:

@@ -234,6 +234,7 @@ func _shoot_at(enemy: Node3D) -> void:
 		end += Vector3(randf_range(-1.2, 1.2), randf_range(-0.5, 0.9), randf_range(-1.2, 1.2))
 
 	_tracer(gun.global_transform * Vector3(0, 0, -0.35), end)
+	Sound.play_at(self, "gunshot", gun.global_position, -2.0, 70.0, 0.08)
 	muzzle_flash.visible = true
 	get_tree().create_timer(0.05).timeout.connect(func() -> void: muzzle_flash.visible = false)
 	get_tree().call_group("noise_listeners", "hear_noise", global_position, noise_radius)

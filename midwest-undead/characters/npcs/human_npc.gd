@@ -17,6 +17,7 @@ signal died(npc: HumanNPC)
 enum Faction { SURVIVOR, BANDIT }
 
 const GameData := preload("res://core/game_data.gd")
+const Sound := preload("res://core/sound.gd")
 
 @export_group("Identity")
 @export var display_name := "Survivor"

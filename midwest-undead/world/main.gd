@@ -228,8 +228,8 @@ func _on_npc_interacted(npc: HumanNPC) -> void:
 
 func _process(_delta: float) -> void:
 	var crouch := "   (crouching)" if player.is_crouching else ""
-	status_label.text = "Health %d    Stamina %d%s\n%s    Health packs: %d    $%d" % [
-		ceili(player.health), floori(player.stamina), crouch,
+	status_label.text = "Health %d    Stamina %d%s\n%s\n%s    Health packs: %d    $%d" % [
+		ceili(player.health), floori(player.stamina), crouch, player.condition_text(),
 		player.held_label(), player.inventory.count("health_pack"), player.money,
 	]
 	prompt_label.text = player.prompt_text
@@ -238,10 +238,11 @@ func _process(_delta: float) -> void:
 	help_label.text = HELP_GAMEPAD if Controls.using_gamepad else HELP_KEYBOARD
 	_update_hotbar()
 	if player.is_dead:
+		var cause := "You starved." if player.starved else "You were bitten."
 		if _has_save_on_death:
-			message_label.text = "You were bitten.\nLoading your last save...   (%s to load now)" % Controls.hint("restart")
+			message_label.text = "%s\nLoading your last save...   (%s to load now)" % [cause, Controls.hint("restart")]
 		else:
-			message_label.text = "You were bitten. You never saved.\nPress %s to start over." % Controls.hint("restart")
+			message_label.text = "%s You never saved.\nPress %s to start over." % [cause, Controls.hint("restart")]
 
 
 ## _input sees every event before anything else handles it, so it's the place to

@@ -1,6 +1,7 @@
 extends CharacterBody3D
-## First-person survivor: movement, stamina, crouching, melee, the pistol,
-## an inventory, picking things up, trading, and the noise all of that makes.
+## First-person survivor: movement, stamina, hunger, crouching, melee, the pistol,
+## a battery-powered flashlight, an inventory, picking things up, trading, and the
+## noise all of that makes.
 ## The node tree (camera, flashlight, weapon models) lives in player.tscn.
 ## TUNING: open player.tscn, select the Player node, and use the Inspector.
 
@@ -19,6 +20,7 @@ const Controls := preload("res://core/controls.gd")
 const Inventory := preload("res://items/inventory.gd")
 const LootSpot := preload("res://items/loot_spot.gd")
 const GroundItem := preload("res://items/ground_item.gd")
+const Sound := preload("res://core/sound.gd")
 
 @export_group("Movement")
 @export var walk_speed := 4.0
@@ -61,6 +63,26 @@ const GroundItem := preload("res://items/ground_item.gd")
 @export var food_heal := 15.0
 ## Eating also restores this much stamina.
 @export var food_stamina := 100.0
+## How much a can of food takes off your hunger (0 = full, 100 = starving).
+@export var food_hunger := 35.0
+
+@export_group("Hunger")
+## Hunger rises with in-game time: 4 per hour means fed to starving in about a
+## day (25 game hours, ~17 real minutes at the default clock speed).
+@export var hunger_per_game_hour := 4.0
+@export_range(0.0, 100.0) var starting_hunger := 20.0
+## From here on you're hungry: stamina comes back at half speed.
+@export_range(0.0, 100.0) var hungry_at := 60.0
+## At 100 hunger you're starving and slowly lose health.
+@export var starving_damage_per_sec := 0.4
+
+@export_group("Flashlight")
+## Real seconds of light from one set of batteries.
+@export var battery_life := 240.0
+## Below this charge (0-1) the beam dims and flickers.
+@export_range(0.0, 1.0) var low_battery := 0.2
+## Spare sets of batteries you start with (one set is already in the flashlight).
+@export var starting_spare_batteries := 0
 
 @export_group("Pistol")
 @export var pistol_damage := 55.0
@@ -87,7 +109,10 @@ var pistol_mag := PISTOL_MAG # rounds loaded in the gun (not in the inventory)
 ## in game_data.gd. The use button does whatever that item does.
 var held := "pistol"
 var is_dead := false
+var starved := false # died of hunger rather than bites (for the death message)
 var is_crouching := false
+var hunger := 20.0 # 0 = just ate, 100 = starving; set to starting_hunger in _ready
+var flashlight_charge := 1.0 # what's left in the batteries in the flashlight, 0-1
 var menu_open := false # set by the inventory/shop screens; freezes your controls
 
 var prompt_text := "" # read by the HUD
@@ -118,6 +143,11 @@ var crouch_latched := false
 var suppress_next_attack := false # the click that re-grabs the mouse shouldn't fire
 var _last_physics_frame := 0 # to notice when we've just come back from a pause or menu
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+var day_night: Node # for hunger, which runs on in-game time
+var _flashlight_energy := 1.0 # the beam's full brightness, from player.tscn
+var _hunger_stage := 0 # 0 fed, 1 hungry, 2 starving: to announce each change once
+var _growl_timer := 0.0
+var _hurt_sound_wait := 0.0 # zombies hurt you every frame; grunt at most this often
 
 
 func _ready() -> void:
@@ -125,9 +155,13 @@ func _ready() -> void:
 	add_to_group("zombie_targets")
 	health = max_health
 	stamina = max_stamina
+	hunger = starting_hunger
+	_hunger_stage = _stage_for(hunger)
 	money = starting_money
 	inventory.add("pistol")
 	inventory.add("pistol_ammo", starting_spare_ammo)
+	inventory.add("batteries", starting_spare_batteries)
+	_flashlight_energy = flashlight.light_energy
 	_item_pivot_rest = item_pivot.position
 	_refresh_weapon_visuals()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -161,7 +195,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		# press that closes them.
 		_interact()
 	elif event.is_action_pressed("flashlight"):
-		flashlight.visible = not flashlight.visible
+		_toggle_flashlight()
 	elif event.is_action_pressed("use_health_pack"):
 		_quick_heal()
 	elif event.is_action_pressed("item_next"):
@@ -205,6 +239,8 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0.0, walk_speed)
 		move_and_slide()
 		_update_stamina(delta, false)
+		_update_hunger(delta)
+		_update_flashlight(delta)
 		return
 
 	# Coming back from the pause menu or a trade/inventory screen: the button that
@@ -265,8 +301,11 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	_update_stamina(delta, sprinting)
+	_update_hunger(delta)
+	_update_flashlight(delta)
 	_update_footsteps(delta, sprinting)
 	_update_prompt()
+	_hurt_sound_wait = maxf(_hurt_sound_wait - delta, 0.0)
 
 
 func take_damage(amount: float) -> void:
@@ -274,17 +313,38 @@ func take_damage(amount: float) -> void:
 		return
 	health = maxf(health - amount, 0.0)
 	damaged.emit()
+	if _hurt_sound_wait <= 0.0:
+		Sound.play_ui(self, "player_hurt", -4.0)
+		_hurt_sound_wait = 0.6
 	if _use_left > 0.0:
 		_cancel_use()
 		notify.emit("Interrupted!") # can't bandage up or eat while something's biting you
 	if health <= 0.0:
-		is_dead = true
-		flashlight.visible = false
-		weapon_pivot.visible = false
-		pistol_pivot.visible = false
-		item_pivot.visible = false
-		camera.position.y = 0.3 # collapse to the ground
-		died.emit()
+		_die()
+
+
+func _die() -> void:
+	is_dead = true
+	flashlight.visible = false
+	weapon_pivot.visible = false
+	pistol_pivot.visible = false
+	item_pivot.visible = false
+	camera.position.y = 0.3 # collapse to the ground
+	died.emit()
+
+
+## Hunger and flashlight for the HUD, e.g. "Hunger 64 (hungry)    Flashlight 38%  +2".
+func condition_text() -> String:
+	var text := "Hunger %d" % floori(hunger)
+	match _hunger_stage:
+		1:
+			text += " (hungry)"
+		2:
+			text += " (STARVING)"
+	text += "    Flashlight %d%%" % ceili(flashlight_charge * 100.0)
+	if inventory.has("batteries"):
+		text += "  +%d" % inventory.count("batteries")
+	return text
 
 
 ## Text for the HUD describing what's in your hands, e.g. "Pistol 5/7  (+12)".
@@ -345,6 +405,8 @@ func save_state() -> Dictionary:
 		"pistol_mag": pistol_mag,
 		"held": held,
 		"flashlight": flashlight.visible,
+		"flashlight_charge": flashlight_charge,
+		"hunger": hunger,
 	}
 
 
@@ -358,7 +420,10 @@ func load_state(data: Dictionary) -> void:
 	money = int(data.get("money", money))
 	inventory.from_dict(data.get("inventory", {}))
 	pistol_mag = int(data.get("pistol_mag", PISTOL_MAG))
-	flashlight.visible = bool(data.get("flashlight", false))
+	flashlight_charge = clampf(float(data.get("flashlight_charge", 1.0)), 0.0, 1.0)
+	flashlight.visible = bool(data.get("flashlight", false)) and flashlight_charge > 0.0
+	hunger = clampf(float(data.get("hunger", starting_hunger)), 0.0, 100.0)
+	_hunger_stage = _stage_for(hunger)
 	var saved_held: String = data.get("held", "hands")
 	held = saved_held if saved_held == "hands" or inventory.has(saved_held) else "hands"
 	_refresh_weapon_visuals()
@@ -433,6 +498,7 @@ func _start_use(duration: float) -> void:
 	if _use_left > 0.0 or attack_cooldown > 0.0:
 		return
 	_use_left = duration
+	Sound.play_ui(self, "eat" if GameData.item_use(held) == "eat" else "bandage", -4.0)
 	_use_tween = create_tween()
 	_use_tween.tween_property(item_pivot, "position", Vector3(0.0, -0.15, -0.35), 0.2)
 
@@ -450,6 +516,8 @@ func _finish_use() -> void:
 		"eat":
 			health = minf(health + food_heal, max_health)
 			stamina = minf(stamina + food_stamina, max_stamina)
+			hunger = maxf(hunger - food_hunger, 0.0)
+			_hunger_stage = _stage_for(hunger)
 			notify.emit("That hit the spot.")
 	attack_cooldown = 0.3
 	_drop_held_if_gone() # last one used: back to empty hands
@@ -505,11 +573,13 @@ func _interact() -> void:
 		var item := target as GroundItem
 		give_item(item.item_id, item.amount)
 		notify.emit("Picked up " + item.get_label())
+		Sound.play_ui(self, "pickup", -6.0)
 		item.queue_free()
 	elif target is LootSpot:
 		var spot := target as LootSpot
 		if spot.open():
 			make_noise(noise_search) # rummaging isn't quiet
+			Sound.play_ui(self, "rummage", -4.0)
 		container_opened.emit(spot)
 	elif _offers_interaction(target):
 		if target is HumanNPC:
@@ -542,6 +612,7 @@ func _try_melee() -> void:
 	attack_cooldown = weapon["cooldown"]
 	stamina -= cost
 	stamina_regen_wait = STAMINA_REGEN_DELAY
+	Sound.play_ui(self, "melee_swing", -6.0, 0.15)
 
 	# Quick strike, damage lands at the end of it, then a slower return.
 	var tween := create_tween()
@@ -576,6 +647,7 @@ func _apply_melee_hit(weapon: Dictionary) -> void:
 		hit_any = true
 	if hit_any:
 		make_noise(noise_melee_hit)
+		Sound.play_ui(self, "melee_hit", -2.0, 0.15)
 
 
 ## Hitscan: an instant ray from the center of the screen (where the crosshair is).
@@ -584,12 +656,14 @@ func _try_shoot() -> void:
 		return
 	if pistol_mag <= 0:
 		attack_cooldown = 0.3
+		Sound.play_ui(self, "dry_fire", -4.0)
 		notify.emit("Empty. Press %s to reload." % Controls.hint("reload") if inventory.has("pistol_ammo") else "Out of ammo.")
 		return
 	pistol_mag -= 1
 	attack_cooldown = pistol_cooldown
 	_pistol_kick()
 	make_noise(noise_gunshot)
+	Sound.play_ui(self, "gunshot")
 
 	var origin := camera.global_position
 	var end := origin - camera.global_basis.z * pistol_range
@@ -613,6 +687,7 @@ func _start_reload() -> void:
 		notify.emit("No pistol ammo.")
 		return
 	reload_timer = pistol_reload_time
+	Sound.play_ui(self, "reload", -4.0, 0.0)
 	reload_tween = create_tween()
 	reload_tween.tween_property(pistol_pivot, "rotation_degrees", Vector3(-40, 0, 20), 0.25)
 	reload_tween.tween_interval(maxf(pistol_reload_time - 0.5, 0.0))
@@ -669,7 +744,8 @@ func _update_stamina(delta: float, sprinting: bool) -> void:
 	elif stamina_regen_wait > 0.0:
 		stamina_regen_wait -= delta
 	else:
-		stamina = minf(stamina + stamina_regen_per_sec * delta, max_stamina)
+		var regen := stamina_regen_per_sec * (0.5 if hunger >= hungry_at else 1.0)
+		stamina = minf(stamina + regen * delta, max_stamina)
 
 
 func _update_footsteps(delta: float, sprinting: bool) -> void:
@@ -680,4 +756,80 @@ func _update_footsteps(delta: float, sprinting: bool) -> void:
 	step_timer -= delta
 	if step_timer <= 0.0:
 		make_noise(noise_sprint if sprinting else noise_walk)
+		Sound.play_ui(self, "footstep", -6.0 if sprinting else -11.0, 0.12)
 		step_timer = 0.3 if sprinting else 0.5
+
+
+# --- Hunger ------------------------------------------------------------------
+
+func _update_hunger(delta: float) -> void:
+	if day_night == null:
+		day_night = get_tree().get_first_node_in_group("day_night")
+	var seconds_per_hour: float = day_night.seconds_per_game_hour if day_night else 40.0
+	hunger = minf(hunger + hunger_per_game_hour * delta / seconds_per_hour, 100.0)
+
+	var stage := _stage_for(hunger)
+	if stage > _hunger_stage:
+		notify.emit("You're getting hungry." if stage == 1 else "You're starving! Find something to eat.")
+		_growl_timer = 0.0 # growl right away
+	_hunger_stage = stage
+
+	if stage >= 1:
+		_growl_timer -= delta
+		if _growl_timer <= 0.0:
+			Sound.play_ui(self, "stomach_growl", -8.0 if stage == 1 else -3.0)
+			_growl_timer = randf_range(40.0, 70.0) if stage == 1 else randf_range(15.0, 25.0)
+	if stage == 2:
+		# Not take_damage(): starving shouldn't flash red or close menus every frame.
+		health = maxf(health - starving_damage_per_sec * delta, 0.0)
+		if health <= 0.0:
+			starved = true
+			_die()
+
+
+func _stage_for(value: float) -> int:
+	if value >= 100.0:
+		return 2
+	return 1 if value >= hungry_at else 0
+
+
+# --- Flashlight --------------------------------------------------------------
+
+func _toggle_flashlight() -> void:
+	Sound.play_ui(self, "flashlight_click", -8.0)
+	if flashlight.visible:
+		flashlight.visible = false
+		return
+	if flashlight_charge <= 0.0 and not _swap_batteries():
+		notify.emit("The flashlight's dead. Find batteries.")
+		return
+	flashlight.visible = true
+
+
+## Drains the batteries while it's on. Runs low: dims and flickers. Runs out:
+## swaps in a spare set from your inventory, or goes dark.
+func _update_flashlight(delta: float) -> void:
+	if not flashlight.visible:
+		return
+	flashlight_charge = maxf(flashlight_charge - delta / battery_life, 0.0)
+	if flashlight_charge <= 0.0:
+		if _swap_batteries():
+			notify.emit("Swapped in fresh batteries (%d left)." % inventory.count("batteries"))
+		else:
+			flashlight.visible = false
+			notify.emit("The flashlight died.")
+			return
+	var energy := _flashlight_energy
+	if flashlight_charge < low_battery:
+		energy *= lerpf(0.35, 1.0, flashlight_charge / low_battery)
+		if randf() < 0.05:
+			energy *= 0.15 # flicker
+	flashlight.light_energy = energy
+
+
+func _swap_batteries() -> bool:
+	if inventory.remove("batteries") == 0:
+		return false
+	flashlight_charge = 1.0
+	Sound.play_ui(self, "battery_swap", -6.0)
+	return true
