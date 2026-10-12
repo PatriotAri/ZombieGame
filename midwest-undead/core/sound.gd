@@ -8,6 +8,8 @@ extends RefCounted
 ## To replace a placeholder, drop a new .wav or .ogg with the same name in
 ## assets/audio/ (and delete the old one if the extension changed).
 
+const Settings := preload("res://core/settings.gd")
+
 const DIR := "res://assets/audio/"
 const EXTENSIONS := ["wav", "ogg"]
 const MAX_VARIANTS := 9
@@ -32,6 +34,7 @@ static func play_at(context: Node, id: String, pos: Vector3, volume_db := 0.0,
 	if stream == null:
 		return
 	var player := AudioStreamPlayer3D.new()
+	player.bus = Settings.SFX_BUS # the Effects volume slider
 	player.stream = stream
 	player.volume_db = volume_db
 	player.max_distance = max_distance
@@ -51,6 +54,7 @@ static func play_ui(context: Node, id: String, volume_db := 0.0, pitch_jitter :=
 	if stream == null:
 		return
 	var player := AudioStreamPlayer.new()
+	player.bus = Settings.SFX_BUS
 	player.stream = stream
 	player.volume_db = volume_db
 	player.pitch_scale = randf_range(1.0 - pitch_jitter, 1.0 + pitch_jitter)

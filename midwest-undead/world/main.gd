@@ -39,6 +39,7 @@ const Bandit := preload("res://characters/npcs/bandit.gd")
 const BanditScene := preload("res://characters/npcs/bandit.tscn")
 const ShopkeeperScene := preload("res://characters/npcs/shopkeeper.tscn")
 const Door := preload("res://world/door.gd")
+const Settings := preload("res://core/settings.gd")
 
 @export_group("World")
 ## Same seed = same town layout and loot every run. Change it for a different town.
@@ -162,6 +163,7 @@ var hurt_tween: Tween
 
 func _ready() -> void:
 	Controls.setup()
+	Settings.load_settings() # before anything can play a sound: it creates the Effects bus
 	rng.seed = town_seed
 	door_rng.seed = town_seed + 1
 	_build_environment()

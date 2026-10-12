@@ -21,6 +21,7 @@ const Inventory := preload("res://items/inventory.gd")
 const LootSpot := preload("res://items/loot_spot.gd")
 const GroundItem := preload("res://items/ground_item.gd")
 const Sound := preload("res://core/sound.gd")
+const Settings := preload("res://core/settings.gd")
 
 @export_group("Movement")
 @export var walk_speed := 4.0
@@ -29,9 +30,11 @@ const Sound := preload("res://core/sound.gd")
 @export var jump_velocity := 4.5
 
 @export_group("Look")
+## Baselines: the pause menu's sensitivity sliders multiply these (1.0x = as set here).
 @export_range(0.0005, 0.01, 0.0001) var mouse_sensitivity := 0.002
 ## Right-stick turn speed at full tilt, in radians per second.
 @export_range(0.5, 10.0, 0.1) var stick_look_speed := 3.0
+## Default up/down direction; the pause menu's "Invert look" flips it.
 @export var invert_look_y := false
 
 @export_group("Health & Stamina")
@@ -177,7 +180,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var motion := event as InputEventMouseMotion
 	if motion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		_look(motion.relative * mouse_sensitivity)
+		_look(motion.relative * mouse_sensitivity * Settings.mouse_sensitivity)
 		return
 	# A real click (not the scroll wheel) re-grabs the mouse after it was freed.
 	if event is InputEventMouseButton and event.is_pressed() \
@@ -223,7 +226,8 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Turn the body left/right and tilt only the head up/down.
 func _look(amount: Vector2) -> void:
 	rotate_y(-amount.x)
-	camera.rotate_x(-amount.y * (-1.0 if invert_look_y else 1.0))
+	var inverted := invert_look_y != Settings.invert_y
+	camera.rotate_x(-amount.y * (-1.0 if inverted else 1.0))
 	camera.rotation.x = clampf(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
 
 
@@ -253,7 +257,7 @@ func _physics_process(delta: float) -> void:
 	# Right stick look. get_vector applies the stick deadzone for us.
 	var stick := Input.get_vector("look_left", "look_right", "look_up", "look_down")
 	if stick != Vector2.ZERO:
-		_look(stick * stick_look_speed * delta)
+		_look(stick * stick_look_speed * Settings.stick_sensitivity * delta)
 
 	# The use button is polled (not event-driven) so the analog trigger fires once per pull.
 	if Input.is_action_just_pressed("use_held") and not just_resumed:
