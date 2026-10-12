@@ -30,9 +30,16 @@ const ITEMS := {
 	# Fortifying (see world/fortifications.gd). Hold one, aim, and use it to place it.
 	"planks": {"name": "Planks", "color": Color(0.6, 0.47, 0.3), "size": Vector3(0.5, 0.06, 0.18), "use": "board"},
 	"barricade": {"name": "Barricade", "color": Color(0.5, 0.38, 0.24), "size": Vector3(0.6, 0.35, 0.12), "use": "barricade"},
+	# Building (see world/structures.gd), from the woodworker. Hold one and use it
+	# while looking at the ground (or at scaffolding / a fence to add on).
+	"scaffold": {"name": "Scaffolding", "color": Color(0.42, 0.43, 0.45), "size": Vector3(0.3, 0.06, 0.3), "use": "build"},
+	"guard_post": {"name": "Guard post", "color": Color(0.4, 0.3, 0.19), "size": Vector3(0.22, 0.16, 0.22), "use": "build"},
+	"fence": {"name": "Fence", "color": Color(0.55, 0.45, 0.3), "size": Vector3(0.34, 0.22, 0.04), "use": "build"},
+	"fence_gate": {"name": "Fence gate", "color": Color(0.58, 0.45, 0.28), "size": Vector3(0.3, 0.22, 0.05), "use": "build"},
 }
 # Order items appear in inventory lists.
-const ITEM_ORDER := ["pistol", "crowbar", "pistol_ammo", "health_pack", "canned_food", "batteries", "planks", "barricade"]
+const ITEM_ORDER := ["pistol", "crowbar", "pistol_ammo", "health_pack", "canned_food", "batteries", "planks", "barricade",
+		"scaffold", "guard_post", "fence", "fence_gate"]
 
 
 static func item_name(id: String) -> String:

@@ -41,7 +41,10 @@ const Zones := preload("res://world/zones.gd")
 const MapMenu := preload("res://ui/map_menu.gd")
 const BackpackMenu := preload("res://ui/backpack_menu.gd")
 const Discoveries := preload("res://world/discoveries.gd")
+const ZombiePopulation := preload("res://world/zombie_population.gd")
 const TraderArrival := preload("res://world/trader_arrival.gd")
+const WoodworkerRescue := preload("res://world/woodworker_rescue.gd")
+const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Hud := preload("res://ui/hud.gd")
 const WorldBuilder := preload("res://world/world_builder.gd")
 const Loot := preload("res://world/loot.gd")
@@ -53,6 +56,9 @@ const Housing := preload("res://world/areas/housing.gd")
 const SkyShader := preload("res://world/sky_clouds.gdshader")
 const Fortifications := preload("res://world/fortifications.gd")
 const Fortification := preload("res://world/fortification.gd")
+const Structures := preload("res://world/structures.gd")
+const StructurePiece := preload("res://world/structure_piece.gd")
+const GateLeaf := preload("res://world/gate_leaf.gd")
 const Grocery := preload("res://world/areas/grocery.gd")
 const GasStation := preload("res://world/areas/gas_station.gd")
 
@@ -62,6 +68,14 @@ const GasStation := preload("res://world/areas/gas_station.gd")
 @export_range(0, 100) var outdoor_zombies := 14
 ## Chance of a zombie at each of the ~2 spots inside every shop.
 @export_range(0.0, 1.0) var indoor_zombie_chance := 0.12
+## More zombies scattered around town at the start (never inside a zone).
+@export_range(0, 300) var extra_zombies := 60
+## How many zombies are up at once. When there are fewer, new ones turn up on the
+## outskirts of town now and then (see world/zombie_population.gd).
+@export_range(0, 400) var zombie_population := 100
+## Seconds between new arrivals while there are fewer than zombie_population.
+@export var zombie_respawn_seconds_day := 30.0
+@export var zombie_respawn_seconds_night := 10.0
 ## Loose items lying in the streets.
 @export_range(0, 60) var ground_items := 12
 @export_range(0.0, 1.0) var container_health_pack_chance := 0.4
@@ -98,7 +112,10 @@ var zones: Zones
 var map_menu: MapMenu
 var backpack_menu: BackpackMenu
 var discoveries: Discoveries
+var zombie_population_node: ZombiePopulation
+var zombie_rng := RandomNumberGenerator.new() # the extra zombies at the start
 var trader_arrival: TraderArrival # the wagon trader who comes once Zone 1 is cleared
+var woodworker_rescue: WoodworkerRescue # the woodworker held at the bandit camp
 var dialogue: DialogueBox
 var quest: MainQuest
 var chief: PoliceChief
@@ -114,6 +131,7 @@ var grocery_rng := RandomNumberGenerator.new()
 var gas_station_rng := RandomNumberGenerator.new()
 var fortify_rng := RandomNumberGenerator.new() # planks in containers
 var fortifications: Fortifications
+var structures: Structures # what you build: scaffolding, guard posts, fences, gates
 ## Chance each container holds some planks.
 const CONTAINER_PLANKS_CHANCE := 0.15
 var house_zombie_points: Array[Vector3] = [] # inside the houses and the gas station
@@ -158,6 +176,9 @@ func _ready() -> void:
 	fortifications = Fortifications.new()
 	add_child(fortifications)
 	fortifications.setup(nav_region, nav_region.get_children().filter(func(n: Node) -> bool: return n is Building))
+	structures = Structures.new()
+	add_child(structures)
+	structures.setup(nav_region, fortifications)
 	# Planks to find, rolled last with their own generator (see world_builder.gd).
 	fortify_rng.seed = town_seed + 5
 	for spot: LootSpot in loot_spots:
@@ -176,6 +197,16 @@ func _ready() -> void:
 	zones.bandits = bandits
 	add_child(zones)
 	zones.status_changed.connect(_on_zone_status_changed)
+	# More zombies around town, and new ones over time (their own generator, added
+	# after everything else, so the rest of the town and older saves line up).
+	zombie_population_node = ZombiePopulation.new()
+	add_child(zombie_population_node)
+	zombie_population_node.population = zombie_population
+	zombie_population_node.respawn_seconds_day = zombie_respawn_seconds_day
+	zombie_population_node.respawn_seconds_night = zombie_respawn_seconds_night
+	zombie_population_node.setup(self, nav_region, player, day_night, zones)
+	zombie_rng.seed = town_seed + 6
+	zombie_population_node.populate(extra_zombies, zombie_rng, player_spawn.origin)
 	hud.setup(player, day_night)
 	add_child(PauseMenu.new())
 	# Added last on purpose: Godot sends input to later nodes first, so while a menu
@@ -209,7 +240,15 @@ func _ready() -> void:
 		elif obj is Door:
 			(obj as Door).toggle()
 		elif obj is Fortification:
-			player.give_item(fortifications.take_down(obj as Fortification)))
+			player.give_item(fortifications.take_down(obj as Fortification))
+		elif obj is GateLeaf:
+			structures.toggle_gate((obj as GateLeaf).piece)
+		elif obj is StructurePiece:
+			var item := structures.take_down(obj as StructurePiece)
+			if item == "":
+				hud.show_toast("Take down what's on top of it first.")
+			else:
+				player.give_item(item))
 	# Getting hurt never closes a menu or a conversation: only Esc (each menu
 	# handles its own) or dying does.
 	for menu: Callable in [inventory_menu.close, shop_menu.close, dialogue.close, save_menu.close, map_menu.close,
@@ -228,6 +267,14 @@ func _ready() -> void:
 	trader_arrival.setup(player, zones, day_night, Vector3(compound_center.x, 0.0, compound_center.y))
 	trader_arrival.zone_cleared.connect(quest.zone_cleared)
 	trader_arrival.seen.connect(quest.trader_found)
+
+	woodworker_rescue = WoodworkerRescue.new()
+	add_child(woodworker_rescue)
+	woodworker_rescue.setup(player, day_night, dialogue)
+	woodworker_rescue.freed.connect(quest.woodworker_untied)
+	woodworker_rescue.seen.connect(func() -> void: quest.woodworker_found(WoodworkerRescue.HOME_STORY))
+	quest.woodworker = woodworker_rescue.woodworker
+	quest.woodworker_home = WoodworkerRescue.HOME_SPOT
 
 	# Coming from "Load": the town is freshly rebuilt; now put the saved state on top.
 	if not SaveGame.pending_load.is_empty():
@@ -273,7 +320,9 @@ func _discoverable_places() -> Array[Dictionary]:
 
 ## Pressing interact on an NPC: open whatever that kind of NPC offers.
 func _on_npc_interacted(npc: HumanNPC) -> void:
-	if npc is Shopkeeper:
+	if npc is Woodworker and (npc as Woodworker).state == Woodworker.State.CAPTIVE:
+		woodworker_rescue.untie()
+	elif npc is Shopkeeper:
 		shop_menu.open(player, npc as Shopkeeper)
 	elif npc is PoliceChief:
 		quest.talk_to_chief()
@@ -409,8 +458,13 @@ func _save_game() -> bool:
 		if not item.is_queued_for_deletion(): # (picked up this frame)
 			ground.append({"id": item.item_id, "amount": item.amount,
 					"position": SaveGame.vec_to_array(item.global_position), "yaw": item.rotation.y})
+	# Every zombie placed at the start (dead or alive, one entry each), then the
+	# ones that turned up during play and are still up.
 	var zombie_data := []
-	for zombie in zombies:
+	for i in zombies.size():
+		var zombie := zombies[i]
+		if i >= zombie_population_node.first_dynamic() and zombie.is_dead:
+			continue
 		zombie_data.append({"position": SaveGame.vec_to_array(zombie.global_position),
 				"yaw": zombie.rotation.y, "health": zombie.health, "dead": zombie.is_dead})
 	var door_data := []
@@ -429,13 +483,16 @@ func _save_game() -> bool:
 		"containers": containers,
 		"ground_items": ground,
 		"zombies": zombie_data,
+		"initial_zombies": zombie_population_node.first_dynamic(),
 		"bandits": bandit_data,
 		"doors": door_data,
 		"fortifications": fortifications.save_state(),
+		"structures": structures.save_state(),
 		"discovered": discoveries.save_state(),
 		"shop_stock": trader.stock.to_dict(),
 		"shop_restocked_day": trader.restocked_day,
 		"wagon_trader": trader_arrival.save_state(),
+		"woodworker": woodworker_rescue.save_state(),
 	})
 
 
@@ -459,6 +516,7 @@ func _apply_save(data: Dictionary) -> void:
 	for i in mini(door_data.size(), doors.size()):
 		doors[i].load_state(door_data[i])
 	fortifications.load_state(data.get("fortifications", {}))
+	structures.load_state(data.get("structures", []))
 	if data.has("discovered"):
 		discoveries.load_state(data["discovered"])
 	else: # older saves: you've met the Chief, and maybe been to the safe house
@@ -481,10 +539,19 @@ func _apply_save(data: Dictionary) -> void:
 	# freed, so nobody is ever left aiming at a deleted node. Older saves listed
 	# only the living (no "dead" flags): those fill the first zombies and the rest
 	# are laid down dead.
+	# Entries past "initial_zombies" are ones that turned up during play: those
+	# are recreated. (Older saves have no such entries, and none of the extra
+	# zombies placed at the start: those extras are laid down dead.)
 	var zombie_data: Array = data.get("zombies", [])
-	for i in zombies.size():
+	var saved_initial := mini(int(data.get("initial_zombies", zombie_data.size())), zombie_data.size())
+	for j in range(saved_initial, zombie_data.size()):
+		var later: Dictionary = zombie_data[j]
+		var arrival := _add_zombie(SaveGame.array_to_vec(later["position"]))
+		arrival.rotation.y = float(later.get("yaw", 0.0))
+		arrival.health = float(later.get("health", arrival.max_health))
+	for i in zombie_population_node.first_dynamic():
 		var zombie := zombies[i]
-		if i >= zombie_data.size():
+		if i >= saved_initial:
 			zombie.die(false)
 			continue
 		var entry: Dictionary = zombie_data[i]
@@ -510,7 +577,9 @@ func _apply_save(data: Dictionary) -> void:
 	trader.stock.from_dict(data.get("shop_stock", trader.stock.to_dict()))
 	trader.restocked_day = int(data.get("shop_restocked_day", day_night.day))
 	trader_arrival.load_state(data.get("wagon_trader", {}))
-	quest.sync_progress(trader_arrival.cleared, trader_arrival.was_seen)
+	woodworker_rescue.load_state(data.get("woodworker", {}))
+	quest.sync_progress(trader_arrival.cleared, trader_arrival.was_seen,
+			woodworker_rescue.state() != Woodworker.State.CAPTIVE, woodworker_rescue.was_seen)
 	player.load_state(data.get("player", {}))
 
 
@@ -546,7 +615,7 @@ func _spawn_zombies() -> void:
 
 
 ## rng: whose dice pick its facing; the town's unless said otherwise.
-func _add_zombie(pos: Vector3, rng: RandomNumberGenerator = null) -> void:
+func _add_zombie(pos: Vector3, rng: RandomNumberGenerator = null) -> Zombie:
 	if rng == null:
 		rng = builder.rng
 	var zombie := ZombieScene.instantiate() as Zombie
@@ -554,6 +623,7 @@ func _add_zombie(pos: Vector3, rng: RandomNumberGenerator = null) -> void:
 	zombie.rotation.y = rng.randf_range(0.0, TAU)
 	add_child(zombie)
 	zombies.append(zombie)
+	return zombie
 
 
 func _on_player_died() -> void:

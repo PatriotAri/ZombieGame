@@ -3,7 +3,9 @@ extends Node
 ## station, see world/zones.gd) is clear of zombies, word gets around, and a
 ## trader's wagon comes to the station yard. It turns up while you're away
 ## (ARRIVE_DISTANCE from the station), so you never see it pop in, and it stays
-## for good. Zombies wandering back into the zone later don't undo it.
+## for good. Zombies wandering back into the zone later don't drive them off,
+## but they won't restock while there are zombies in it: the morning's restock
+## waits until the zone is clear again.
 ## Coming back near it the first time is the "a trader is here" moment.
 ## main.gd creates it and listens to the signals; the quest follows along.
 ##
@@ -88,7 +90,8 @@ func _arrive() -> void:
 	_build_wagon()
 	trader = TraderScene.instantiate() as Shopkeeper
 	trader.position = TRADER_SPOT
-	trader.day_night = _day_night # restocks each morning, like the Quartermaster
+	trader.day_night = _day_night # restocks each morning, like the Quartermaster...
+	trader.can_restock = func() -> bool: return _zones.status_of(ZONE) != Zones.Status.DANGER # ...when Zone 1 is clear
 	get_parent().add_child(trader)
 	# Their first restock is the morning after they arrive.
 	trader.restocked_day = _day_night.day

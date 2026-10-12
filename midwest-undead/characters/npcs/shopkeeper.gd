@@ -32,6 +32,10 @@ var stock := Inventory.new()
 var day_night: Node
 ## The last day they restocked; their starting stock counts as day 1's.
 var restocked_day := 1
+## Optional: returns false while they can't restock (the wagon trader waits for
+## the streets around the station to be clear). A missed morning is made up as
+## soon as it returns true again.
+var can_restock := Callable()
 
 
 func _npc_ready() -> void:
@@ -47,7 +51,8 @@ func _npc_ready() -> void:
 ## Checked every physics frame; cheap. Comparing days (rather than reacting
 ## to the clock passing an hour) means a loaded save can't restock twice.
 func _npc_physics(_delta: float) -> void:
-	if day_night and day_night.day > restocked_day and day_night.hour >= restock_hour:
+	if day_night and day_night.day > restocked_day and day_night.hour >= restock_hour \
+			and (not can_restock.is_valid() or can_restock.call()):
 		restock()
 
 

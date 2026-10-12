@@ -29,6 +29,8 @@ const Fortifications := preload("res://world/fortifications.gd")
 @export var sprint_speed := 7.0
 @export var crouch_speed := 2.0
 @export var jump_velocity := 4.5
+## Meters per second up or down a ladder.
+@export var climb_speed := 2.5
 
 @export_group("Look")
 ## Baselines: the pause menu's sensitivity sliders multiply these (1.0x = as set here).
@@ -158,6 +160,9 @@ var _hunger_stage := 0 # 0 fed, 1 hungry, 2 starving: to announce each change on
 var _growl_timer := 0.0
 var _hurt_sound_wait := 0.0 # zombies hurt you every frame; grunt at most this often
 var fortifications: Node # world/fortifications.gd, found through its group
+var structures: Node # world/structures.gd, found through its group
+var _build_view := {} # where the held piece would go this frame (structures.preview), or empty
+var _ladders: Array[Area3D] = [] # the ladders you're touching (structures.gd tells us)
 var _barricade_ghost: MeshInstance3D # where a held barricade would go
 var _ghost_material: StandardMaterial3D
 
@@ -245,7 +250,11 @@ func _look(amount: Vector2) -> void:
 func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
-	if not is_on_floor():
+	_ladders = _ladders.filter(func(l: Area3D) -> bool: return is_instance_valid(l))
+	var climbing := not _ladders.is_empty()
+	if climbing:
+		velocity.y = 0.0 # holding on: no falling (_climb moves you up and down)
+	elif not is_on_floor():
 		velocity.y -= gravity * delta
 
 	if menu_open:
@@ -257,6 +266,7 @@ func _physics_process(delta: float) -> void:
 		_update_hunger(delta)
 		_update_flashlight(delta)
 		_update_barricade_ghost() # hides it while a menu is up
+		_update_build_view()
 		return
 
 	# Coming back from the pause menu or a trade/inventory screen: the button that
@@ -314,12 +324,15 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, speed)
 		velocity.z = move_toward(velocity.z, 0.0, speed)
+	if climbing:
+		_climb(input_dir)
 	move_and_slide()
 
 	_update_stamina(delta, sprinting)
 	_update_hunger(delta)
 	_update_flashlight(delta)
 	_update_footsteps(delta, sprinting)
+	_update_build_view()
 	_update_prompt()
 	_update_barricade_ghost()
 	_hurt_sound_wait = maxf(_hurt_sound_wait - delta, 0.0)
@@ -347,6 +360,8 @@ func _die(cause: String) -> void:
 	is_dead = true
 	if _barricade_ghost:
 		_barricade_ghost.visible = false
+	_update_build_view() # hides the building preview
+	_ladders.clear()
 	flashlight.visible = false
 	weapon_pivot.visible = false
 	pistol_pivot.visible = false
@@ -522,6 +537,8 @@ func _use_held() -> void:
 			_try_board()
 		"barricade":
 			_try_barricade()
+		"build":
+			_try_build()
 
 
 ## Bandaging and eating take a moment: the item comes up toward your face, and
@@ -678,6 +695,8 @@ func _fortify_prompt() -> String:
 			return "%s: board up the %s" % [key, fort.describe(index)]
 	elif held == "barricade":
 		return "%s: place barricade" % key if fort.can_place_barricade(_barricade_transform()) else "No room for a barricade here"
+	elif not _build_view.is_empty():
+		return ("%s: %s" % [key, _build_view["text"]]) if _build_view["ok"] else _build_view["text"]
 	return ""
 
 
@@ -703,6 +722,65 @@ func _try_barricade() -> void:
 	fort.place_barricade(xform)
 	take_item("barricade")
 	attack_cooldown = 0.6
+
+
+# --- Building (scaffolding, guard posts, fences; see world/structures.gd) ----------
+
+func _structures() -> Node:
+	if structures == null:
+		structures = get_tree().get_first_node_in_group("structures")
+	return structures
+
+
+## Where the piece you're holding would go, and its see-through preview.
+func _update_build_view() -> void:
+	var builder := _structures()
+	if builder == null:
+		return
+	if is_dead or menu_open or GameData.item_use(held) != "build":
+		_build_view = {}
+		builder.call("show_ghost", "", {})
+		return
+	var skip: Array[RID] = [get_rid()]
+	_build_view = builder.call("preview", held, camera.global_position, -camera.global_basis.z, global_position, skip)
+	builder.call("show_ghost", held, _build_view)
+
+
+func _try_build() -> void:
+	if _build_view.is_empty() or attack_cooldown > 0.0:
+		return
+	if not _build_view["ok"]:
+		notify.emit(_build_view["text"] + ".")
+		return
+	_structures().call("build", held, _build_view["xform"], _build_view["on"])
+	take_item(held)
+	attack_cooldown = 0.6
+	_update_build_view()
+
+
+## On a ladder: forward climbs up (or down, if you're looking down), back climbs
+## down. Partway up you hang on (no stepping off into the air); at the bottom
+## or the top you can walk off.
+func _climb(input_dir: Vector2) -> void:
+	var ladder := _ladders[_ladders.size() - 1]
+	var top_y: float = ladder.get_meta("top_y", global_position.y)
+	var push := -input_dir.y # forward is +1
+	if camera.rotation.x < deg_to_rad(-35.0):
+		push = -push
+	velocity.y = push * climb_speed
+	if not is_on_floor() and global_position.y < top_y - 0.1:
+		velocity.x = 0.0
+		velocity.z = 0.0
+
+
+## Ladders (structures.gd calls these as you touch them and let go).
+func enter_ladder(ladder: Area3D) -> void:
+	if not ladder in _ladders:
+		_ladders.append(ladder)
+
+
+func exit_ladder(ladder: Area3D) -> void:
+	_ladders.erase(ladder)
 
 
 ## A see-through preview of the barricade while you hold one: green where it fits,
@@ -857,6 +935,8 @@ func _refresh_weapon_visuals() -> void:
 	weapon_pivot.visible = held == "hands" or held == "crowbar"
 	fist_mesh.visible = held == "hands"
 	crowbar_mesh.visible = held == "crowbar"
+	# (Building pieces show nothing in your hands: the see-through preview of
+	# where it'll go is what you look at.)
 	item_pivot.visible = use in ["heal", "eat", "board", "barricade"]
 	if item_pivot.visible:
 		# Consumables reuse their ground-item look (size and color from game_data.gd),

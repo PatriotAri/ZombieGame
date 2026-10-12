@@ -7,6 +7,9 @@ extends Node
 ##   CLEAR_ZONE       -> kill the zombies on the streets around the station
 ##   WAIT_FOR_TRADER  -> go out; a trader's wagon comes while you're away
 ##                       (world/trader_arrival.gd), and finding it ends the stage
+##   RESCUE_WOODWORKER-> the trader says the bandits are holding a woodworker:
+##                       untie him at their camp (world/woodworker_rescue.gd)
+##   MEET_WOODWORKER  -> he makes his own way to the station; find him in the yard
 ##   WAIT_FOR_NEXT    -> end of the current story (more quests go here later)
 ##
 ## It owns the objective text (shown on the HUD) and a waypoint marker you can
@@ -17,10 +20,11 @@ signal objective_changed(text: String)
 ## A big story moment shown in the middle of the screen.
 signal story_beat(text: String)
 
-## Saved as numbers, so only ever add stages, never reorder. (CLEAR_ZONE took
-## WAIT_FOR_NEXT's old number on purpose: saves from before it existed pick up
-## the new job.)
-enum Stage { TALK_TO_CHIEF, REACH_SAFE_HOUSE, REPORT_BACK, CLEAR_ZONE, WAIT_FOR_TRADER, WAIT_FOR_NEXT }
+## Saved as numbers, so only ever add stages, never reorder. (New stages take
+## WAIT_FOR_NEXT's old number on purpose: saves from the end of the story as it
+## was pick up the new part.)
+enum Stage { TALK_TO_CHIEF, REACH_SAFE_HOUSE, REPORT_BACK, CLEAR_ZONE, WAIT_FOR_TRADER,
+		RESCUE_WOODWORKER, MEET_WOODWORKER, WAIT_FOR_NEXT }
 
 const CHIEF := "Police Chief"
 const REWARD_MONEY := 100
@@ -70,8 +74,17 @@ const WAIT_FOR_TRADER_LINES: Array[String] = [
 	"Give it time. Anyone out there with goods to sell will hear about it. Go see what else is out there.",
 ]
 const TRADER_STORY := "A trader's wagon has pulled into the station yard."
+const TRADER_NEWS := "\nThe trader says the bandits are holding a woodworker at their camp."
+const RESCUE_LINES: Array[String] = [
+	"The trader told you too? A woodworker, held at that bandit camp north of 7th.",
+	"Someone who can build is worth more to us than all the ammo in town. Watch towers, fences, gates.",
+	"Get him out of there. Quietly, if you can.",
+]
+const MEET_LINES: Array[String] = [
+	"You got him out? Good work. He'll be setting up in the yard; go and see him.",
+]
 const IDLE_LINES: Array[String] = [
-	"A trader in our own yard. Almost feels like a town again.",
+	"A trader in our own yard, and a woodworker. Almost feels like a town again.",
 	"Still working out what comes next. Keep your head down, and keep that gun clean.",
 ]
 
@@ -82,6 +95,12 @@ var safe_house_investigated := false
 ## you've come back and found the trader's wagon.
 var area_cleared := false
 var trader_seen := false
+## Set from world/woodworker_rescue.gd: you untied him, and found him at the station.
+var woodworker_freed := false
+var woodworker_seen := false
+## For the waypoint (set by main.gd): the woodworker himself, and his spot in the yard.
+var woodworker: Node3D
+var woodworker_home := Vector3.INF
 ## Stages that have already been autosaved near their objective (so it happens once each).
 var autosaved_stages: Array[int] = []
 var player: Node3D
@@ -124,6 +143,10 @@ func objective_text() -> String:
 			return "Clear Zone 1: kill the zombies on the streets around the station (M for the map)"
 		Stage.WAIT_FOR_TRADER:
 			return "Zone 1 is clear. Head out and scavenge; word will get around"
+		Stage.RESCUE_WOODWORKER:
+			return "Rescue the woodworker the bandits are holding at their camp"
+		Stage.MEET_WOODWORKER:
+			return "Find the woodworker in the station yard"
 	return ""
 
 
@@ -143,6 +166,10 @@ func talk_to_chief() -> void:
 			dialogue.start(CHIEF, CLEAR_ZONE_LINES, player)
 		Stage.WAIT_FOR_TRADER:
 			dialogue.start(CHIEF, WAIT_FOR_TRADER_LINES, player)
+		Stage.RESCUE_WOODWORKER:
+			dialogue.start(CHIEF, RESCUE_LINES, player)
+		Stage.MEET_WOODWORKER:
+			dialogue.start(CHIEF, MEET_LINES, player)
 		Stage.WAIT_FOR_NEXT:
 			dialogue.start(CHIEF, IDLE_LINES, player)
 
@@ -182,14 +209,30 @@ func zone_cleared() -> void:
 ## world/trader_arrival.gd: you came back and found the wagon.
 func trader_found() -> void:
 	trader_seen = true
-	story_beat.emit(TRADER_STORY)
+	# The news about the woodworker, unless you've already got him out.
+	story_beat.emit(TRADER_STORY + ("" if woodworker_freed else TRADER_NEWS))
+	_catch_up()
+
+
+## world/woodworker_rescue.gd: you untied him.
+func woodworker_untied() -> void:
+	woodworker_freed = true
+	_catch_up()
+
+
+## world/woodworker_rescue.gd: you found him set up in the station yard.
+func woodworker_found(story: String) -> void:
+	woodworker_seen = true
+	story_beat.emit(story)
 	_catch_up()
 
 
 ## After loading: where things stand, without the story moments.
-func sync_progress(cleared: bool, seen: bool) -> void:
+func sync_progress(cleared: bool, seen: bool, freed := false, found := false) -> void:
 	area_cleared = cleared
 	trader_seen = seen
+	woodworker_freed = freed
+	woodworker_seen = found
 	_catch_up()
 
 
@@ -199,6 +242,10 @@ func _catch_up() -> void:
 	if stage == Stage.CLEAR_ZONE and area_cleared:
 		_set_stage(Stage.WAIT_FOR_TRADER)
 	if stage == Stage.WAIT_FOR_TRADER and trader_seen:
+		_set_stage(Stage.RESCUE_WOODWORKER)
+	if stage == Stage.RESCUE_WOODWORKER and woodworker_freed:
+		_set_stage(Stage.MEET_WOODWORKER)
+	if stage == Stage.MEET_WOODWORKER and woodworker_seen:
 		_set_stage(Stage.WAIT_FOR_NEXT)
 
 
@@ -237,7 +284,12 @@ func _process(_delta: float) -> void:
 	marker.visible = dist > MARKER_HIDE_DISTANCE and dist != INF and not in_screen
 	if marker.visible:
 		marker.global_position = target + Vector3(0, 3.2, 0)
-		var place := "Safe house" if stage == Stage.REACH_SAFE_HOUSE else CHIEF
+		var place := CHIEF
+		match stage:
+			Stage.REACH_SAFE_HOUSE:
+				place = "Safe house"
+			Stage.RESCUE_WOODWORKER, Stage.MEET_WOODWORKER:
+				place = "Woodworker"
 		marker.text = "%s\n%d m\n▼" % [place, roundi(dist)]
 
 
@@ -247,4 +299,8 @@ func _marker_target() -> Vector3:
 			return chief.global_position
 		Stage.REACH_SAFE_HOUSE:
 			return safe_house_point
+		Stage.RESCUE_WOODWORKER:
+			return woodworker.global_position if woodworker else Vector3.INF
+		Stage.MEET_WOODWORKER:
+			return woodworker_home
 	return Vector3.INF

@@ -101,7 +101,7 @@ func board(index: int, quiet := false) -> void:
 		(o["link"] as NavigationLink3D).enabled = false
 	if not quiet:
 		Sound.play_at(planks, "hammer", planks.global_position, 0.0, 30.0)
-		_rebake()
+		rebake()
 
 
 func place_barricade(xform: Transform3D, quiet := false) -> void:
@@ -119,7 +119,7 @@ func place_barricade(xform: Transform3D, quiet := false) -> void:
 	barricades.append(body)
 	if not quiet:
 		Sound.play_at(body, "hammer", body.global_position, 0.0, 30.0)
-		_rebake()
+		rebake()
 
 
 ## Takes down planks or a barricade. Returns the item to give back.
@@ -137,7 +137,7 @@ func take_down(piece: Fortification) -> String:
 	Sound.play_at(piece, "hammer", piece.global_position, -3.0, 25.0)
 	piece.get_parent().remove_child(piece) # gone before the re-bake reads the scene
 	piece.queue_free()
-	_rebake()
+	rebake()
 	return piece.item_id()
 
 
@@ -171,7 +171,7 @@ func load_state(data: Dictionary) -> void:
 	for b in data.get("barricades", []):
 		place_barricade(Transform3D(Basis(Vector3.UP, float(b[3])), Vector3(float(b[0]), float(b[1]), float(b[2]))), true)
 	if not data.get("boarded", []).is_empty() or not data.get("barricades", []).is_empty():
-		_rebake()
+		rebake()
 
 
 # --- Building the pieces ---------------------------------------------------------
@@ -259,8 +259,8 @@ func _box_collision(parent: Node3D, size: Vector3, pos: Vector3) -> void:
 # --- Navigation ------------------------------------------------------------------
 
 ## Re-bake on a thread. Changes that land while one is running wait for it, then
-## bake once more.
-func _rebake() -> void:
+## bake once more. structures.gd uses this too, so only one bake runs at a time.
+func rebake() -> void:
 	if _baking:
 		_rebake_again = true
 		return
@@ -272,4 +272,4 @@ func _on_bake_finished() -> void:
 	_baking = false
 	if _rebake_again:
 		_rebake_again = false
-		_rebake()
+		rebake()

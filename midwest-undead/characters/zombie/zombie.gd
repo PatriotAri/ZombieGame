@@ -1,6 +1,10 @@
 extends CharacterBody3D
 ## A shambler with three moods:
-##   IDLE        - shuffles around near where it stands
+##   IDLE        - shuffles around near where it stands, and now and then sets off
+##                 roaming (more at night): a long walk that keeps roughly the way
+##                 it was going, drifting along with others nearby. Nobody steers
+##                 them anywhere; over time they just spread around town, back
+##                 into places you'd cleared too.
 ##   INVESTIGATE - heard something, or lost sight of its target; walks there and lingers
 ##   HUNT        - chasing the closest target it can currently see
 ## Targets are anything in the "zombie_targets" group (the player and the guards).
@@ -34,6 +38,11 @@ enum State { IDLE, INVESTIGATE, HUNT }
 @export var max_speed := 2.2
 ## Seconds it keeps searching a spot before losing interest.
 @export var linger_time := 4.0
+## Each time it's idle and decides what to do next, the chance it sets off
+## roaming (a long walk) instead of shuffling. Higher = zombies spread around
+## town, and back into places you've cleared, faster.
+@export_range(0.0, 1.0) var roam_chance_day := 0.05
+@export_range(0.0, 1.0) var roam_chance_night := 0.5
 
 const VIEW_DOT := 0.5 # cos(60 degrees): it sees a 120 degree cone in front of it
 const PROXIMITY_RANGE := 2.0 # this close, it notices you no matter what
@@ -41,7 +50,20 @@ const EYE_HEIGHT := 1.6
 const ATTACK_RANGE := 1.3
 const ATTACK_HEIGHT := 1.5 # can't bite something more than this far above or below it
 const SENSE_INTERVAL := 0.2 # sight checks are raycasts; 5 per second is plenty
-const REPATH_INTERVAL := 0.3
+const REPATH_INTERVAL := 0.3 # while hunting (the target moves)
+const CALM_REPATH_INTERVAL := 2.0 # otherwise (the destination stays put)
+# Roaming (see _next_wander).
+const ROAM_LEG := Vector2(15.0, 45.0) # meters per leg, min and max
+const ROAM_SPEED := 0.45 # times its walking speed
+const SHUFFLE_SPEED := 0.35
+const ROAM_TURN := 0.8 # radians: how far each leg can veer from the last
+const HERD_RADIUS := 15.0 # roamers this close pull its heading toward theirs
+const HERD_PULL := 0.7
+# Far from the camera and not after anyone, it only thinks and moves every
+# FAR_TICK physics frames (covering the same ground): a town's worth of
+# zombies costs much less, and nobody's close enough to see the difference.
+const FAR_DISTANCE := 80.0
+const FAR_TICK := 3
 
 var state := State.IDLE
 var health := 100.0 # set to max_health in _ready
@@ -55,6 +77,8 @@ var base_colors: Array[Color] = []
 var investigate_pos := Vector3.ZERO
 var last_seen_pos := Vector3.ZERO
 var wander_target := Vector3.ZERO
+var roam_heading := Vector3.FORWARD # the way it's been roaming (flat, unit length)
+var roaming := false # on a roaming leg right now (others read this to herd)
 var linger_timer := 0.0
 var wander_timer := 0.0
 var sense_timer := 0.0
@@ -67,6 +91,10 @@ var _window_entry := Vector3.ZERO
 var _window_exit := Vector3.ZERO
 var _vaulting := false
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+var _far_phase := 0 # which of the FAR_TICK frames is its turn (spread across zombies)
+var _far_frame := 0
+var _far_delta := 0.0 # time saved up between its turns
+var _step_scale := 1.0 # how many frames' worth this physics step moves it
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 @onready var visual: Node3D = $Visual # all meshes hang off this, so they can tip over on death
@@ -85,6 +113,8 @@ func _ready() -> void:
 	wander_timer = randf_range(1.0, 6.0)
 	groan_timer = randf_range(2.0, 12.0)
 	wander_target = global_position
+	roam_heading = Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU)
+	_far_phase = randi() % FAR_TICK
 	# Layer 1 is the ground; layer 2 is the links through windows (fortifications.gd).
 	agent.navigation_layers = 1 | 2
 	agent.link_reached.connect(_on_link_reached)
@@ -109,6 +139,17 @@ func _unique_materials() -> void:
 func _physics_process(delta: float) -> void:
 	if _vaulting:
 		return # a tween is carrying it over a windowsill
+	_step_scale = 1.0
+	if state == State.IDLE and stagger_timer <= 0.0 and _far_from_camera():
+		_far_delta += delta
+		_far_frame = (_far_frame + 1) % FAR_TICK
+		if _far_frame != _far_phase:
+			return
+		_step_scale = _far_delta / delta
+		delta = _far_delta
+		_far_delta = 0.0
+	else:
+		_far_delta = 0.0
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 
@@ -150,14 +191,20 @@ func _physics_process(delta: float) -> void:
 		State.IDLE:
 			wander_timer -= delta
 			if wander_timer <= 0.0:
-				wander_timer = randf_range(4.0, 9.0)
-				wander_target = global_position + Vector3(randf_range(-6.0, 6.0), 0.0, randf_range(-6.0, 6.0))
-			moving = _walk_to(wander_target, speed * 0.35, delta)
+				_next_wander()
+			moving = _walk_to(wander_target, speed * (ROAM_SPEED if roaming else SHUFFLE_SPEED), delta)
+			if roaming and not moving and _navigation_ready():
+				roaming = false # got there: stand around a while
+				wander_timer = randf_range(3.0, 12.0) * lerpf(1.0, 0.5, 1.0 - _light())
 
 	if not moving:
 		velocity.x = move_toward(velocity.x, 0.0, speed)
 		velocity.z = move_toward(velocity.z, 0.0, speed)
-	move_and_slide()
+		# Standing still on solid ground: nothing to move, so skip the physics
+		# step. Most zombies are standing around most of the time.
+		if is_on_floor() and velocity.length_squared() < 0.0001:
+			return
+	_move(_step_scale)
 	if moving and state != State.IDLE:
 		_bash_doors(delta)
 		_handle_window(delta)
@@ -269,11 +316,7 @@ func _can_see(candidate: Node3D, dist: float) -> bool:
 
 	# Darkness shrinks how far it can see. The player can also crouch to be harder
 	# to spot, and a lit flashlight is visible from far away day or night.
-	var light := 1.0
-	if day_night == null:
-		day_night = get_tree().get_first_node_in_group("day_night")
-	if day_night:
-		light = day_night.call("light_level")
+	var light := _light()
 	var sight := sight_range * lerpf(night_sight_factor, 1.0, light)
 	var player := candidate as Player
 	if player:
@@ -312,8 +355,54 @@ func _can_reach(candidate: Node3D) -> bool:
 	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
+## Idle and done with what it was doing: shuffle a few steps, or set off roaming.
+func _next_wander() -> void:
+	var night := 1.0 - _light()
+	if _navigation_ready() and randf() < lerpf(roam_chance_day, roam_chance_night, night):
+		_start_roam_leg()
+		return
+	roaming = false
+	wander_timer = randf_range(4.0, 9.0) * lerpf(1.0, 0.5, night)
+	wander_target = global_position + Vector3(randf_range(-6.0, 6.0), 0.0, randf_range(-6.0, 6.0))
+
+
+## One roaming leg: roughly the way it was going, pulled toward the way any
+## roamers nearby are going (so loose packs form), with a wobble. If that runs
+## into the edge of town or a solid block, it turns around instead.
+func _start_roam_leg() -> void:
+	var heading := roam_heading
+	var nearby := Vector3.ZERO
+	for other in get_tree().get_nodes_in_group("zombies"):
+		if other != self and other.roaming \
+				and global_position.distance_squared_to(other.global_position) < HERD_RADIUS * HERD_RADIUS:
+			nearby += other.roam_heading
+	if nearby.length_squared() > 0.0001:
+		heading = (heading + nearby.normalized() * HERD_PULL).normalized()
+	heading = heading.rotated(Vector3.UP, randf_range(-ROAM_TURN, ROAM_TURN))
+	var length := randf_range(ROAM_LEG.x, ROAM_LEG.y)
+	var map := agent.get_navigation_map()
+	var goal := global_position + heading * length
+	var reachable := NavigationServer3D.map_get_closest_point(map, goal)
+	if _flat(reachable - goal).length() > 6.0:
+		heading = (-heading).rotated(Vector3.UP, randf_range(-1.0, 1.0))
+		reachable = NavigationServer3D.map_get_closest_point(map, global_position + heading * length)
+	roam_heading = heading
+	wander_target = reachable
+	roaming = true
+	# Give up and rethink if it hasn't arrived well after it should have.
+	wander_timer = length / maxf(speed * ROAM_SPEED, 0.1) + 15.0
+
+
+## 0 at darkest night, 1 in full day.
+func _light() -> float:
+	if day_night == null:
+		day_night = get_tree().get_first_node_in_group("day_night")
+	return day_night.call("light_level") if day_night else 1.0
+
+
 func _investigate(pos: Vector3) -> void:
 	state = State.INVESTIGATE
+	roaming = false
 	investigate_pos = pos
 	linger_timer = linger_time
 	repath_timer = 0.0
@@ -321,6 +410,7 @@ func _investigate(pos: Vector3) -> void:
 
 func _set_idle() -> void:
 	state = State.IDLE
+	roaming = false
 	target = null
 	wander_timer = randf_range(2.0, 5.0)
 	wander_target = global_position
@@ -406,7 +496,7 @@ func _walk_to(point: Vector3, move_speed: float, delta: float) -> bool:
 	repath_timer -= delta
 	if repath_timer <= 0.0 or point.distance_squared_to(agent.target_position) > 1.0:
 		agent.target_position = point
-		repath_timer = REPATH_INTERVAL
+		repath_timer = REPATH_INTERVAL if state == State.HUNT else CALM_REPATH_INTERVAL
 	if agent.is_navigation_finished():
 		return false
 	var dir := _flat(agent.get_next_path_position() - global_position)
@@ -417,6 +507,22 @@ func _walk_to(point: Vector3, move_speed: float, delta: float) -> bool:
 	velocity.z = dir.z * move_speed
 	_face(dir)
 	return true
+
+
+## move_and_slide covers one physics frame; on a far zombie's turn it covers the
+## frames it skipped.
+func _move(frames: float) -> void:
+	if frames == 1.0:
+		move_and_slide()
+		return
+	velocity *= frames
+	move_and_slide()
+	velocity /= frames
+
+
+func _far_from_camera() -> bool:
+	var camera := get_viewport().get_camera_3d()
+	return camera != null and global_position.distance_squared_to(camera.global_position) > FAR_DISTANCE * FAR_DISTANCE
 
 
 func _face(dir: Vector3) -> void:
