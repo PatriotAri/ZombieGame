@@ -38,6 +38,7 @@ const SaveMenu := preload("res://save_menu.gd")
 const Bandit := preload("res://bandit.gd")
 const BanditScene := preload("res://bandit.tscn")
 const ShopkeeperScene := preload("res://shopkeeper.tscn")
+const Door := preload("res://door.gd")
 
 @export_group("World")
 ## Same seed = same town layout and loot every run. Change it for a different town.
@@ -50,6 +51,8 @@ const ShopkeeperScene := preload("res://shopkeeper.tscn")
 @export_range(0.0, 1.0) var container_health_pack_chance := 0.4
 @export_range(0.0, 1.0) var container_ammo_chance := 0.35
 @export_range(0.0, 1.0) var container_trade_goods_chance := 0.35
+## Chance a shop's front door is standing open when you arrive.
+@export_range(0.0, 1.0) var door_open_chance := 0.35
 
 @export_group("Time of Day")
 @export_range(0.0, 23.99) var start_hour := 17.0
@@ -86,6 +89,7 @@ const STATION_FRONT_Z := 9.0
 const COMPOUND_MIN := Vector2(36.0, 6.0) # fence corners (x, z)
 const COMPOUND_MAX := Vector2(68.0, 30.0)
 const GATE_HALF_WIDTH := 5.0
+const GATE_COLOR := Color(0.3, 0.32, 0.34) # steel
 
 # The Westside safe house: the far west end of the cross street, mirroring the
 # station on the east end, so reaching it means crossing the whole town.
@@ -105,8 +109,8 @@ const BANDIT_COUNT := 5
 ## Autosave once you're this close to the safe house while it's your objective.
 const AUTOSAVE_DISTANCE := 20.0
 
-const HELP_KEYBOARD := "WASD move  ·  Shift sprint  ·  Ctrl crouch  ·  Space jump  ·  Click use held item  ·  Wheel / 1-9 pick item  ·  R reload  ·  E search/pick up/trade  ·  Q quick heal  ·  F flashlight  ·  Esc pause"
-const HELP_GAMEPAD := "L stick move  ·  R stick look  ·  L3 sprint  ·  B crouch  ·  A jump  ·  RT use held item  ·  Y / D-pad pick item  ·  RB reload  ·  X search/pick up/trade  ·  LB quick heal  ·  D-pad up flashlight  ·  Start pause"
+const HELP_KEYBOARD := "WASD move  ·  Shift sprint  ·  Ctrl crouch  ·  Space jump  ·  Click use held item  ·  Wheel / 1-9 pick item  ·  R reload  ·  E search/pick up/trade/open  ·  Q quick heal  ·  F flashlight  ·  Esc pause"
+const HELP_GAMEPAD := "L stick move  ·  R stick look  ·  L3 sprint  ·  B crouch  ·  A jump  ·  RT use held item  ·  Y / D-pad pick item  ·  RB reload  ·  X search/pick up/trade/open  ·  LB quick heal  ·  D-pad up flashlight  ·  Start pause"
 
 var player: Player
 ## Where you start: on the cross street, one block west of the police station
@@ -119,6 +123,10 @@ var interior_points: Array[Vector3] = [] # inside shops, where zombies can lurk
 var car_spots: Array[Vector3] = [] # so nothing else gets spawned inside a car
 var day_night: DayNight
 var rng := RandomNumberGenerator.new()
+## Separate from rng so adding doors didn't reshuffle the rest of the town.
+var door_rng := RandomNumberGenerator.new()
+var doors: Array[Door] = [] # every door and gate leaf, in build order (for saving)
+var _gate_nav_blocker: StaticBody3D # stands in for the shut gate during the navigation bake
 
 # HUD
 var status_label: Label
@@ -153,6 +161,7 @@ var hurt_tween: Tween
 func _ready() -> void:
 	Controls.setup()
 	rng.seed = town_seed
+	door_rng.seed = town_seed + 1
 	_build_environment()
 	_setup_navigation()
 	_build_town()
@@ -163,6 +172,7 @@ func _ready() -> void:
 	# Bake the walkable area from the town's collision shapes. Runs once at startup
 	# and blocks briefly; fine for one small town.
 	nav_region.bake_navigation_mesh(false)
+	_gate_nav_blocker.queue_free() # the real gate (and its nav links) takes over now
 	_scatter_ground_items()
 	_build_hud()
 	_spawn_player()
@@ -183,7 +193,9 @@ func _ready() -> void:
 	add_child(save_menu)
 	player.object_interacted.connect(func(obj: Node) -> void:
 		if obj is SavePoint:
-			save_menu.open(player, _save_game))
+			save_menu.open(player, _save_game)
+		elif obj is Door:
+			(obj as Door).toggle())
 	# Getting bitten snaps you out of any menu or conversation.
 	player.damaged.connect(inventory_menu.close)
 	player.damaged.connect(shop_menu.close)
@@ -343,6 +355,7 @@ func _build_block(side: int, dir: int) -> void:
 		building.build(depth, width - 0.2, height, color, rng)
 		loot_spots.append_array(building.loot_spots)
 		interior_points.append_array(building.interior_points)
+		_add_door(building.make_door(), door_rng.randf() < door_open_chance)
 		# Sometimes a pile of boxes someone dragged out and abandoned, kept clear of the door.
 		if rng.randf() < 0.3:
 			var door_world_z := center_z + building.door_z * (1.0 if side == 1 else -1.0)
@@ -412,6 +425,7 @@ func _build_police_station() -> void:
 	sign.position = Vector3(-0.06, 4.1, station.door_z) # just in front of the facade, over the door
 	sign.rotation.y = -PI / 2.0 # Label3D reads from its +Z side; turn that to face the street
 	station.add_child(sign)
+	_add_door(station.make_door(), false)
 
 	# Inside: a counter across the room, the trader behind it, and a generator-powered lamp.
 	_add_box(Vector3(0.8, 1.0, 6.0), station.transform * Vector3(8.0, 0.6, 0.0), TIMBER, station.rotation.y)
@@ -451,6 +465,7 @@ func _build_police_station() -> void:
 	_add_box(Vector3(x1 - x0, fence_h, 0.15), Vector3((x0 + x1) / 2.0, fence_h / 2.0, z1), PLYWOOD)
 	for x in [x0, x1]:
 		_add_box(Vector3(0.15, fence_h, z1 - z0), Vector3(x, fence_h / 2.0, (z0 + z1) / 2.0), PLYWOOD)
+	_build_gate(gate0, gate1, z0, fence_h)
 
 	# Guard towers in the two front corners, covering the street and the gate.
 	for tower_x in [x0 + 2.5, x1 - 2.5]:
@@ -460,6 +475,61 @@ func _build_police_station() -> void:
 		guard.exclude = tower_rids
 		guard.position = base + Vector3(0, 4.2, 0)
 		add_child(guard) # starts facing -z (the street); turns toward targets as it fires
+
+
+## Two steel leaves that slide sideways behind the fence. Zombies can't break it.
+## The navigation bake sees a wall where the gate is (_gate_nav_blocker, removed
+## right after baking), so with the gate shut zombies have no path into the
+## compound; while it's open, NavigationLinks across the gap give them one.
+func _build_gate(gate0: float, gate1: float, fence_z: float, height: float) -> void:
+	var z := fence_z + 0.2 # just inside the fence line, so open leaves slide behind it
+	var half := (gate1 - gate0) / 2.0
+	var leaf := Vector3(half + 0.2, height, 0.1) # overlaps the fence a little at the outer end
+	var leaves: Array[Door] = []
+	for s: int in [-1, 1]:
+		var center := Vector3((gate0 + gate1) / 2.0 + s * (half + 0.2) / 2.0, height / 2.0, z)
+		var gate := Door.new()
+		gate.label = "gate"
+		gate.breakable = false
+		gate.setup(leaf, Vector3.ZERO, GATE_COLOR, Transform3D(Basis.IDENTITY, center), 0.0,
+				Vector3(s * half, 0.0, 0.0))
+		leaves.append(gate)
+	leaves[0].linked = [leaves[1]]
+	leaves[1].linked = [leaves[0]]
+
+	var x := gate0 + 1.0
+	while x <= gate1 - 1.0:
+		var link := NavigationLink3D.new()
+		# Ends just off the navmesh edges on either side of the gap. Kept short on
+		# purpose: zombies repath every 0.3 s, and a start point far behind one that's
+		# already in the gap would turn it around (path_desired_distance is 0.6 m).
+		link.start_position = Vector3(x, 0.0, fence_z - 0.5) # street side
+		link.end_position = Vector3(x, 0.0, fence_z + 0.7) # compound side
+		link.enabled = false
+		add_child(link)
+		leaves[0].nav_links.append(link)
+		x += 2.0
+
+	for gate in leaves:
+		_add_door(gate, false)
+
+	_gate_nav_blocker = StaticBody3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(gate1 - gate0, height, 0.15)
+	var col := CollisionShape3D.new()
+	col.shape = shape
+	_gate_nav_blocker.add_child(col)
+	_gate_nav_blocker.position = Vector3((gate0 + gate1) / 2.0, height / 2.0, z)
+	nav_region.add_child(_gate_nav_blocker)
+
+
+## Doors go straight under Main, not nav_region, so the navigation bake ignores
+## them (see door.gd).
+func _add_door(door: Door, open: bool) -> void:
+	add_child(door)
+	if open:
+		door.set_open(true, false)
+	doors.append(door)
 
 
 ## Four timber legs, a platform at 4 m and a waist-high railing. Returns the
@@ -642,6 +712,9 @@ func _save_game() -> bool:
 	for zombie: Zombie in get_tree().get_nodes_in_group("zombies"):
 		zombies.append({"position": SaveGame.vec_to_array(zombie.global_position),
 				"yaw": zombie.rotation.y, "health": zombie.health})
+	var door_data := []
+	for door in doors:
+		door_data.append(door.save_state())
 	var bandit_data := []
 	for bandit in bandits:
 		bandit_data.append({"position": SaveGame.vec_to_array(bandit.global_position),
@@ -656,6 +729,7 @@ func _save_game() -> bool:
 		"ground_items": ground,
 		"zombies": zombies,
 		"bandits": bandit_data,
+		"doors": door_data,
 		"shop_stock": trader.stock.to_dict(),
 	})
 
@@ -674,6 +748,11 @@ func _apply_save(data: Dictionary) -> void:
 		spot.inventory.from_dict(containers[i].get("inventory", {}))
 		if containers[i].get("opened", false):
 			spot.open() # darkens it like when you searched it
+
+	# Older saves have no doors: those keep their freshly built state.
+	var door_data: Array = data.get("doors", [])
+	for i in mini(door_data.size(), doors.size()):
+		doors[i].load_state(door_data[i])
 
 	# Ground items, zombies: throw away the freshly spawned ones and recreate
 	# exactly what the save recorded.

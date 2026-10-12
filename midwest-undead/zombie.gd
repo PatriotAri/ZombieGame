@@ -7,11 +7,14 @@ extends CharacterBody3D
 ## Every sense tick it re-picks the closest visible target, so getting shot doesn't
 ## pull it off whoever it's already chasing; damage only matters if it had no target.
 ## Sight needs a clear line (buildings and cars block it), mostly in front of it.
-## Sound goes through walls. The node tree lives in zombie.tscn.
+## Sound goes through walls. A closed door in its way gets bashed until it breaks
+## (only while it's going somewhere: hunting or investigating, not idly wandering).
+## The node tree lives in zombie.tscn.
 ## TUNING: open zombie.tscn, select the Zombie node, and use the Inspector.
 
 const Player := preload("res://player.gd")
 const GameData := preload("res://game_data.gd")
+const Door := preload("res://door.gd")
 
 enum State { IDLE, INVESTIGATE, HUNT }
 
@@ -20,6 +23,9 @@ enum State { IDLE, INVESTIGATE, HUNT }
 ## Sight range multiplier at full night (0.45 = 9 m out of 20).
 @export_range(0.0, 1.0) var night_sight_factor := 0.45
 @export var damage_per_second := 20.0
+## Damage to a door it's pushing against. Doors have 150 health, so one zombie
+## gets through in about 8 seconds; a crowd much faster.
+@export var door_damage_per_second := 18.0
 ## Each zombie picks a random walking speed in this range.
 @export var min_speed := 1.2
 @export var max_speed := 2.2
@@ -136,6 +142,18 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, speed)
 		velocity.z = move_toward(velocity.z, 0.0, speed)
 	move_and_slide()
+	if moving and state != State.IDLE:
+		_bash_doors(delta)
+
+
+## Its path runs through doorways (doors aren't in the navigation mesh), so a
+## closed door shows up as something it bumped into while walking.
+func _bash_doors(delta: float) -> void:
+	for i in get_slide_collision_count():
+		var door := get_slide_collision(i).get_collider() as Door
+		if door and door.can_be_bashed():
+			door.bash(door_damage_per_second * delta)
+			return
 
 
 # --- Senses ------------------------------------------------------------------

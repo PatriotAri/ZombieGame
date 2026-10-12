@@ -9,6 +9,7 @@ extends Node3D
 
 const GameData := preload("res://game_data.gd")
 const LootSpot := preload("res://loot_spot.gd")
+const Door := preload("res://door.gd")
 
 const WALL := 0.2
 ## Default floor height: matches the sidewalk, so you step straight in from it.
@@ -26,6 +27,7 @@ const CEILING_COLOR := Color(0.32, 0.32, 0.3)
 const WOOD := Color(0.42, 0.3, 0.18)
 const GLASS := Color(0.55, 0.65, 0.7, 0.22)
 const DARK_WINDOW := Color(0.05, 0.06, 0.08)
+const DOOR_COLOR := Color(0.36, 0.24, 0.14)
 
 var loot_spots: Array = [] # containers inside, for main.gd to fill
 var interior_points: Array[Vector3] = [] # global spots inside where a zombie could stand
@@ -102,6 +104,22 @@ func _furnish(depth: float, width: float) -> void:
 
 	for p: Vector3 in [Vector3(depth * 0.25, FLOOR_Y, half * 0.4), Vector3(depth * 0.8, FLOOR_Y, -half * 0.3)]:
 		interior_points.append(transform * p)
+
+
+## A door for the doorway, hinged on its left edge (seen from the street) and
+## swinging inward. Not added to the tree: main.gd puts it outside the
+## navigation region so zombie paths still run through the doorway.
+func make_door() -> Door:
+	var thickness := 0.08
+	var height := DOOR_TOP - FLOOR_Y - 0.02
+	var leaf := Vector3(thickness, height, DOOR_WIDTH - 0.1)
+	# The hinge sits in the middle of the wall at the doorway's edge; the panel
+	# runs along +z from it, so turning +90 degrees swings it into the room (+x).
+	var hinge := Vector3(WALL / 2.0, FLOOR_Y, door_z - DOOR_WIDTH / 2.0)
+	var door := Door.new()
+	door.setup(leaf, Vector3(0.0, height / 2.0, DOOR_WIDTH / 2.0), DOOR_COLOR,
+			transform * Transform3D(Basis.IDENTITY, hinge), PI / 2.0)
+	return door
 
 
 ## Adds a window opening covering [z_from, z_to] if there's room for one.
