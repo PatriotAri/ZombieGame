@@ -7,6 +7,7 @@ const Inventory := preload("res://items/inventory.gd")
 var label := "Boxes"
 var inventory := Inventory.new()
 var opened := false
+var salvaged := false # stripped for materials with the crowbar (world/salvage.gd)
 var _material: StandardMaterial3D
 
 

@@ -38,6 +38,7 @@ var nav_region: NavigationRegion3D
 var openings: Array[Dictionary] = []
 var barricades: Array[Fortification] = []
 var _baking := false
+var _generated_boards: Array[int] = [] # boarded when the town was built (board_building)
 var _rebake_again := false
 
 
@@ -59,6 +60,15 @@ func setup(region: NavigationRegion3D, buildings: Array) -> void:
 ## The opening an "openings" area belongs to, or -1.
 func opening_of(area: Object) -> int:
 	return int(area.get_meta("opening", -1)) if area else -1
+
+
+## Planks over every door and window of a building (quietly: call rebake() after).
+## Survivors hole up in buildings like this (world/survivors.gd).
+func board_building(building: Building) -> void:
+	for i in openings.size():
+		if openings[i]["building"] == building:
+			board(i, true)
+			_generated_boards.append(i)
 
 
 func is_boarded(index: int) -> bool:
@@ -84,12 +94,14 @@ func can_place_barricade(xform: Transform3D) -> bool:
 
 # --- Changes -------------------------------------------------------------------
 
-func board(index: int, quiet := false) -> void:
+## used: nailed up from used planks (taking them down again destroys them).
+func board(index: int, quiet := false, used := false) -> void:
 	var o := openings[index]
 	if o["planks"] != null:
 		return
 	var planks := _make_planks(o)
 	planks.opening = index
+	planks.used = used
 	o["planks"] = planks
 	if o["kind"] == "door":
 		var door: Door = o["door"]
@@ -122,8 +134,15 @@ func place_barricade(xform: Transform3D, quiet := false) -> void:
 		rebake()
 
 
-## Takes down planks or a barricade. Returns the item to give back.
-func take_down(piece: Fortification) -> String:
+## Planks gone without a trace (loading a save where you'd taken them down).
+func _unboard(index: int) -> void:
+	var piece: Fortification = openings[index]["planks"]
+	take_down(piece, true)
+
+
+## Takes down planks or a barricade. Returns the item to give back: a
+## barricade, used planks, or "" (used planks splinter coming down again).
+func take_down(piece: Fortification, quiet := false) -> String:
 	if piece.kind == "planks":
 		var o := openings[piece.opening]
 		o["planks"] = null
@@ -134,10 +153,12 @@ func take_down(piece: Fortification) -> String:
 			(o["link"] as NavigationLink3D).enabled = true
 	else:
 		barricades.erase(piece)
-	Sound.play_at(piece, "hammer", piece.global_position, -3.0, 25.0)
+	if not quiet:
+		Sound.play_at(piece, "hammer", piece.global_position, -3.0, 25.0)
 	piece.get_parent().remove_child(piece) # gone before the re-bake reads the scene
 	piece.queue_free()
-	rebake()
+	if not quiet:
+		rebake()
 	return piece.item_id()
 
 
@@ -145,10 +166,13 @@ func take_down(piece: Fortification) -> String:
 
 func save_state() -> Dictionary:
 	var boarded := []
+	var used := [] # the boarded ones nailed up from used planks
 	var windows := {}
 	for i in openings.size():
 		if openings[i]["planks"] != null:
 			boarded.append(i)
+			if (openings[i]["planks"] as Fortification).used:
+				used.append(i)
 		if openings[i]["kind"] == "window":
 			var pane: WindowPane = openings[i]["window"]
 			if pane.is_broken or pane.health < pane.max_health:
@@ -156,21 +180,33 @@ func save_state() -> Dictionary:
 	var placed := []
 	for b in barricades:
 		placed.append([b.global_position.x, b.global_position.y, b.global_position.z, b.rotation.y])
-	return {"boarded": boarded, "windows": windows, "barricades": placed}
+	# "generated": this save also records planks you took off the boarded-up
+	# buildings (by leaving them out of "boarded").
+	return {"boarded": boarded, "used": used, "windows": windows, "barricades": placed, "generated": true}
 
 
 func load_state(data: Dictionary) -> void:
+	# Planks the town was built with that you'd taken down. (Older saves don't
+	# say: those keep the boarded-up buildings boarded.)
+	var changed := false
+	if data.get("generated", false):
+		var saved: Array = data.get("boarded", []).map(func(i: Variant) -> int: return int(i))
+		for i in _generated_boards:
+			if not i in saved and openings[i]["planks"] != null:
+				_unboard(i)
+				changed = true
 	var windows: Dictionary = data.get("windows", {})
 	for key in windows:
 		var i := int(key)
 		if i < openings.size() and openings[i]["kind"] == "window":
 			(openings[i]["window"] as WindowPane).load_state(windows[key])
+	var used: Array = data.get("used", []).map(func(i: Variant) -> int: return int(i))
 	for i in data.get("boarded", []):
 		if int(i) < openings.size():
-			board(int(i), true)
+			board(int(i), true, int(i) in used)
 	for b in data.get("barricades", []):
 		place_barricade(Transform3D(Basis(Vector3.UP, float(b[3])), Vector3(float(b[0]), float(b[1]), float(b[2]))), true)
-	if not data.get("boarded", []).is_empty() or not data.get("barricades", []).is_empty():
+	if changed or not data.get("boarded", []).is_empty() or not data.get("barricades", []).is_empty():
 		rebake()
 
 
@@ -187,6 +223,7 @@ func _opening_transform(building: Building, record: Dictionary) -> Transform3D:
 
 func _add_opening(building: Building, record: Dictionary) -> void:
 	var o := record.duplicate()
+	o["building"] = building
 	o["transform"] = _opening_transform(building, record)
 	o["planks"] = null
 	var index := openings.size()

@@ -146,8 +146,9 @@ static func _build_cars(b: WorldBuilder) -> void:
 		b.car_spots.append(pos)
 		var yaw := rng.randf_range(-0.5, 0.5) + (PI if rng.randf() < 0.5 else 0.0)
 		var color: Color = CAR_COLORS[rng.randi_range(0, CAR_COLORS.size() - 1)]
-		b.add_loot(Vector3(1.9, 0.8, 4.4), pos + Vector3(0, 0.55, 0), color, "Car", yaw)
-		b.add_box(Vector3(1.7, 0.6, 2.2), pos + Vector3(0, 1.25, 0), color.darkened(0.3), yaw)
+		var car := b.add_loot(Vector3(1.9, 0.8, 4.4), pos + Vector3(0, 0.55, 0), color, "Car", yaw)
+		var roof := b.add_box(Vector3(1.7, 0.6, 2.2), pos + Vector3(0, 1.25, 0), color.darkened(0.3), yaw)
+		roof.set_meta("part_of", car) # looking at the roof is looking at the car (player.gd)
 
 
 static func _build_water_tower(b: WorldBuilder, base: Vector3) -> void:

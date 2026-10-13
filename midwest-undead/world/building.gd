@@ -42,6 +42,12 @@ var footprint := PackedVector2Array() # its corners on the ground (world x, z), 
 var boardables: Array[Dictionary] = []
 var size_depth := 0.0 # set in build(): how far back from the front wall it goes
 var size_width := 0.0 # set in build(): along the front wall
+var is_house := false # furnished as a home (set in build())
+## A home's bed: its center on the floor, in the building's own space, and which
+## way (along z) the room's open middle is from it. Set by _furnish_house.
+var bed_center := Vector3.ZERO
+var bed_toward_room := 0.0
+var bed: StaticBody3D = null # the bed itself (world/salvage.gd strips it for plywood)
 var _rng: RandomNumberGenerator
 var _boarded_chance := BOARDED_CHANCE
 var FLOOR_Y := SIDEWALK_FLOOR_Y # top of the floor slab for this building (set in build())
@@ -101,6 +107,7 @@ func build(depth: float, width: float, height: float, color: Color, rng: RandomN
 
 	if furnish:
 		if house:
+			is_house = true
 			_furnish_house(depth, width)
 		else:
 			_furnish(depth, width)
@@ -135,8 +142,12 @@ func _furnish_house(depth: float, width: float) -> void:
 			Vector3(depth - WALL - 0.35, FLOOR_Y + 0.45, -half * 0.4), Color(0.6, 0.58, 0.52), "Kitchen cabinet")
 	_add_loot(Vector3(1.2, 1.1, 0.5), Vector3(depth * 0.55, FLOOR_Y + 0.55, side * (half - WALL - 0.3)),
 			WOOD, "Dresser")
-	_solid(Vector3(2.0, 0.5, 1.4), Vector3(depth * 0.72, FLOOR_Y + 0.25, -side * (half - WALL - 0.75)),
-			Color(0.45, 0.4, 0.5)) # bed
+	bed_center = Vector3(depth * 0.72, FLOOR_Y, -side * (half - WALL - 0.75))
+	bed_toward_room = side
+	var bed_mat := StandardMaterial3D.new()
+	bed_mat.albedo_color = Color(0.45, 0.4, 0.5)
+	bed = _body(Vector3(2.0, 0.5, 1.4), bed_center + Vector3(0, 0.25, 0), bed_mat)
+	bed.set_meta("salvage_label", "Bed")
 	for p: Vector3 in [Vector3(depth * 0.35, FLOOR_Y, -side * half * 0.3), Vector3(depth * 0.6, FLOOR_Y, 0.0)]:
 		interior_points.append(transform * p)
 

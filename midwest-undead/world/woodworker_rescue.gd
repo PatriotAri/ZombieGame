@@ -5,11 +5,12 @@ extends Node
 ##   TRAVELLING - making his own way to the station. He leaves once you're out of
 ##                sight of him and of the station yard (so you never see him pop
 ##                between the two).
-##   HOME       - at his workbench in the station yard, selling scaffolding, guard
-##                posts, fences and fence gates (world/structures.gd).
+##   HOME       - at his workbench in the station yard. Bring him materials and
+##                he makes scaffolding, guard posts, fences, fence gates and
+##                garden plots (core/recipes.gd).
 ## Finding him there the first time is announced. main.gd creates it, sends the
 ## interaction here, and the quest follows along through the signals.
-## Saved: where he's got to, whether you've found him at home, and his stock.
+## Saved: where he's got to, and whether you've found him at home.
 
 signal freed
 signal seen # the first time you find him in the station yard
@@ -30,7 +31,7 @@ const UNTIE_LINES: Array[String] = [
 	"I'm a woodworker. Scaffolding, lookout posts, fences, gates. If it's made of wood, I can build it.",
 	"The police station? Then that's where I'm going. Find me in the yard. I owe you one.",
 ]
-const HOME_STORY := "The woodworker has set up in the station yard.\nScaffolding, guard posts and fences are for sale."
+const HOME_STORY := "The woodworker has set up in the station yard.\nBring him planks, plywood and scrap metal and he'll build for you."
 
 var woodworker: Woodworker
 var was_seen := false
@@ -41,11 +42,10 @@ var _bench: Node3D
 var _timer := 0.0
 
 
-func setup(player: Node3D, day_night: Node, dialogue: Node) -> void:
+func setup(player: Node3D, _day_night: Node, dialogue: Node) -> void:
 	_player = player
 	_dialogue = dialogue
 	woodworker = WoodworkerScene.instantiate() as Woodworker
-	woodworker.day_night = day_night # restocks each morning, once he's home
 	get_parent().add_child(woodworker)
 	_place(Woodworker.State.CAPTIVE)
 
@@ -81,8 +81,7 @@ func _process(delta: float) -> void:
 
 
 func save_state() -> Dictionary:
-	return {"state": woodworker.state, "seen": was_seen, "stock": woodworker.stock.to_dict(),
-			"restocked_day": woodworker.restocked_day}
+	return {"state": woodworker.state, "seen": was_seen}
 
 
 func load_state(data: Dictionary) -> void:
@@ -91,9 +90,6 @@ func load_state(data: Dictionary) -> void:
 	was_seen = bool(data.get("seen", false))
 	var saved := int(data.get("state", Woodworker.State.CAPTIVE))
 	_place(saved as Woodworker.State if saved >= 0 and saved < Woodworker.State.size() else Woodworker.State.CAPTIVE)
-	if data.has("stock"):
-		woodworker.stock.from_dict(data["stock"])
-	woodworker.restocked_day = int(data.get("restocked_day", woodworker.restocked_day))
 
 
 ## Puts him where his state says, with the post or the workbench to match.
@@ -107,8 +103,6 @@ func _place(new_state: Woodworker.State) -> void:
 			_post = null
 		if _bench == null:
 			_bench = _prop(Vector3(1.8, 0.9, 0.8), HOME_SPOT + Vector3(-1.4, 0.35, 1.8), Color(0.5, 0.36, 0.22))
-		# The day he arrives counts as restocked; his first restock is the next morning.
-		woodworker.restocked_day = int(woodworker.day_night.get("day")) if woodworker.day_night else 1
 	elif new_state == Woodworker.State.CAPTIVE:
 		woodworker.position = CAPTIVE_SPOT
 		woodworker.rotation.y = PI # facing into the camp

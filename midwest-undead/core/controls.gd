@@ -52,6 +52,7 @@ const TABLE := [
 	["Switch item", "Wheel / 1-9", "D-pad left / right"],
 	["Inventory", "Tab", "Y"],
 	["Search / pick up / talk / open", "E", "X"],
+	["Salvage (holding the crowbar)", "Hold E", "Hold X"],
 	["Reload", "R", "RB"],
 	["Quick heal", "Q", "LB"],
 	["Flashlight", "F", "D-pad up"],

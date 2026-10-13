@@ -163,6 +163,11 @@ var fortifications: Node # world/fortifications.gd, found through its group
 var structures: Node # world/structures.gd, found through its group
 var _build_view := {} # where the held piece would go this frame (structures.preview), or empty
 var _ladders: Array[Area3D] = [] # the ladders you're touching (structures.gd tells us)
+var salvage: Node # world/salvage.gd, found through its group
+var _salvage_target: Node3D = null # what you're holding interact on with the crowbar
+var _salvage_held := 0.0
+var _salvage_sound_wait := 0.0
+const SALVAGE_TAP := 0.3 # let go sooner than this and it's an ordinary interact
 var _barricade_ghost: MeshInstance3D # where a held barricade would go
 var _ghost_material: StandardMaterial3D
 
@@ -212,7 +217,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		# Handled here (not polled) so the inventory/shop screens can swallow the
 		# press that closes them.
-		_interact()
+		var target := _looked_at()
+		if held == "crowbar" and not _salvage_yield(target).is_empty():
+			_salvage_target = target # a tap still opens it; holding strips it (_update_salvage)
+			_salvage_held = 0.0
+		else:
+			_interact()
 	elif event.is_action_pressed("flashlight"):
 		_toggle_flashlight()
 	elif event.is_action_pressed("use_health_pack"):
@@ -267,6 +277,7 @@ func _physics_process(delta: float) -> void:
 		_update_flashlight(delta)
 		_update_barricade_ghost() # hides it while a menu is up
 		_update_build_view()
+		_salvage_target = null
 		return
 
 	# Coming back from the pause menu or a trade/inventory screen: the button that
@@ -333,6 +344,7 @@ func _physics_process(delta: float) -> void:
 	_update_flashlight(delta)
 	_update_footsteps(delta, sprinting)
 	_update_build_view()
+	_update_salvage(delta)
 	_update_prompt()
 	_update_barricade_ghost()
 	_hurt_sound_wait = maxf(_hurt_sound_wait - delta, 0.0)
@@ -595,7 +607,11 @@ func _looked_at() -> Node3D:
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
 		return null
-	return hit["collider"] as Node3D
+	var thing := hit["collider"] as Node3D
+	# Part of something bigger (a car's roof): that's what you're looking at.
+	if thing and thing.has_meta("part_of"):
+		return thing.get_meta("part_of") as Node3D
+	return thing
 
 
 func _update_prompt() -> void:
@@ -616,6 +632,14 @@ func _update_prompt() -> void:
 		prompt_text = "%s: %s" % [key, target.call("interact_prompt")]
 	if prompt_text == "":
 		prompt_text = _fortify_prompt()
+	# With the crowbar, things you can strip for materials say so.
+	var got := _salvage_yield(target) if held == "crowbar" else []
+	if not got.is_empty():
+		if _salvage_target == target and _salvage_held >= SALVAGE_TAP:
+			prompt_text = "Salvaging...  %d%%" % roundi(100.0 * _salvage_held / float(salvage.get("TIME")))
+		else:
+			var line := "Hold %s: salvage %d %s" % [key, got[1], GameData.item_name(got[0]).to_lower()]
+			prompt_text = line if prompt_text == "" else prompt_text + "   ·   " + line
 
 
 func _interact() -> void:
@@ -689,7 +713,7 @@ func _fortify_prompt() -> String:
 	if fort == null:
 		return ""
 	var key := Controls.hint("use_held")
-	if held == "planks":
+	if GameData.item_use(held) == "board":
 		var index := _aimed_opening()
 		if index >= 0 and not fort.is_boarded(index):
 			return "%s: board up the %s" % [key, fort.describe(index)]
@@ -708,8 +732,8 @@ func _try_board() -> void:
 	elif fort.is_boarded(index):
 		notify.emit("That's already boarded up.")
 	else:
-		fort.board(index)
-		take_item("planks")
+		fort.board(index, false, held == "used_planks")
+		take_item(held)
 		attack_cooldown = 0.6
 
 
@@ -771,6 +795,44 @@ func _climb(input_dir: Vector2) -> void:
 	if not is_on_floor() and global_position.y < top_y - 0.1:
 		velocity.x = 0.0
 		velocity.z = 0.0
+
+
+# --- Salvaging (world/salvage.gd) --------------------------------------------------
+
+## [item, amount] that thing would give you, or [].
+func _salvage_yield(thing: Node3D) -> Array:
+	if salvage == null:
+		salvage = get_tree().get_first_node_in_group("salvage")
+	if salvage == null or thing == null:
+		return []
+	return salvage.call("yield_of", thing)
+
+
+## Holding interact on something with the crowbar: strip it once the bar fills.
+## Let go early and it was just a press (open it as usual).
+func _update_salvage(delta: float) -> void:
+	if _salvage_target == null:
+		return
+	if not is_instance_valid(_salvage_target) or held != "crowbar" or _looked_at() != _salvage_target:
+		_salvage_target = null # looked away or switched hands: cancelled
+		return
+	if not Input.is_action_pressed("interact"):
+		if _salvage_held < SALVAGE_TAP:
+			_interact()
+		_salvage_target = null
+		return
+	_salvage_held += delta
+	_salvage_sound_wait -= delta
+	if _salvage_held >= SALVAGE_TAP and _salvage_sound_wait <= 0.0:
+		_salvage_sound_wait = 0.6
+		Sound.play_ui(self, "melee_hit", -6.0, 0.2) # prying and banging
+		make_noise(float(salvage.get("NOISE")))
+	if _salvage_held >= float(salvage.get("TIME")):
+		var got: Array = salvage.call("strip", _salvage_target)
+		_salvage_target = null
+		if not got.is_empty():
+			give_item(got[0], got[1])
+			notify.emit("Salvaged %d %s." % [got[1], GameData.item_name(got[0]).to_lower()])
 
 
 ## Ladders (structures.gd calls these as you touch them and let go).

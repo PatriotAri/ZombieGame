@@ -1,6 +1,8 @@
 extends Node
-## Building: scaffolding, guard posts, fences and fence gates (bought from the
-## woodworker). Hold one and press use:
+## Building: scaffolding, guard posts, fences, fence gates, garden plots and ammo
+## benches (made by the woodworker and the machinist). Base objects like these
+## only go inside a zone, and only while it's clear of zombies. Hold one and
+## press use:
 ##   - Looking at the ground, it goes there, facing you.
 ##   - Looking at scaffolding you built, scaffolding or a guard post snaps on top
 ##     of it. A guard post on top makes it a guard tower: a ladder runs down the
@@ -19,8 +21,13 @@ const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
 const StructurePiece := preload("res://world/structure_piece.gd")
 const GateLeaf := preload("res://world/gate_leaf.gd")
+const Zones := preload("res://world/zones.gd")
 
-const KINDS := ["scaffold", "guard_post", "fence", "fence_gate"]
+const KINDS := ["scaffold", "guard_post", "fence", "fence_gate", "garden_plot", "ammo_bench"]
+const GARDEN := Vector3(3.0, 0.35, 2.0)
+const BENCH := Vector3(1.8, 1.0, 0.8)
+const SOIL := Color(0.25, 0.18, 0.12)
+const LEAVES := Color(0.3, 0.55, 0.22)
 const BUILD_RANGE := 6.0
 const SCAFFOLD := Vector3(2.4, 3.0, 2.4)
 const POST_HEIGHT := 2.5 # floor to roof
@@ -38,6 +45,7 @@ const PLYWOOD := Color(0.55, 0.45, 0.3)
 var pieces: Array[StructurePiece] = []
 var _nav_region: NavigationRegion3D
 var _fortifications: Node # owns the shared navigation re-bake
+var zones: Zones # set by main.gd once the zones exist (for the clear-zone rule)
 var _materials := {} # Color -> StandardMaterial3D, shared by every piece
 var _ghost: Node3D
 var _ghost_key := "" # what the ghost currently shows, so it's only rebuilt when that changes
@@ -64,6 +72,29 @@ static func is_buildable(item_id: String) -> bool:
 ## (meters of ladder it'd get, 0 for none), "text" (the prompt: what it'd do, or
 ## why it can't)}.
 func preview(kind: String, origin: Vector3, dir: Vector3, viewer: Vector3, exclude: Array[RID]) -> Dictionary:
+	var result := _where(kind, origin, dir, viewer, exclude)
+	if result.has("aimed"):
+		var problem := _zone_problem((result["xform"] as Transform3D).origin)
+		if problem != "":
+			result["ok"] = false
+			result["text"] = problem
+	return result
+
+
+## Base objects only go inside a zone, and only while it's clear: why not here,
+## or "" if it's fine.
+func _zone_problem(at: Vector3) -> String:
+	if zones == null:
+		return ""
+	var zone := zones.zone_at(at)
+	if zone == "":
+		return "Base objects only go inside a zone"
+	if zones.status_of(zone) != Zones.Status.SAFE:
+		return zones.full_name(zone) + " isn't clear"
+	return ""
+
+
+func _where(kind: String, origin: Vector3, dir: Vector3, viewer: Vector3, exclude: Array[RID]) -> Dictionary:
 	var result := {"ok": false, "xform": Transform3D(), "on": null, "ladder": 0.0, "text": ""}
 	var query := PhysicsRayQueryParameters3D.create(origin, origin + dir * BUILD_RANGE, GameData.LAYER_WORLD, exclude)
 	var hit := get_viewport().get_world_3d().direct_space_state.intersect_ray(query)
@@ -71,6 +102,7 @@ func preview(kind: String, origin: Vector3, dir: Vector3, viewer: Vector3, exclu
 	if hit.is_empty():
 		result["text"] = "Look at the ground to build"
 		return result
+	result["aimed"] = true # it's pointing at something: the zone rule applies
 	var thing: Object = hit["collider"]
 	if thing is GateLeaf:
 		thing = (thing as GateLeaf).piece
@@ -107,9 +139,11 @@ func preview(kind: String, origin: Vector3, dir: Vector3, viewer: Vector3, exclu
 		return result
 
 	if thing is StructurePiece:
+		result.erase("aimed")
 		result["text"] = "Can't build on that"
 		return result
 	if (hit["normal"] as Vector3).y < 0.8:
+		result.erase("aimed")
 		result["text"] = "Look at the ground to build"
 		return result
 	# On the ground, facing you. Scaffolding and posts square up to the compass so
@@ -176,6 +210,10 @@ func _size(kind: String) -> Vector3:
 			return SCAFFOLD
 		"guard_post":
 			return Vector3(SCAFFOLD.x, POST_HEIGHT + 0.1, SCAFFOLD.z)
+		"garden_plot":
+			return Vector3(GARDEN.x, 0.6, GARDEN.z)
+		"ammo_bench":
+			return Vector3(BENCH.x, 1.2, BENCH.z)
 	return FENCE
 
 
@@ -340,6 +378,28 @@ func _model(kind: String, parent: Node3D, mat: StandardMaterial3D) -> void:
 		"fence_gate":
 			for x: float in [-FENCE.x / 2.0, FENCE.x / 2.0]:
 				_box(parent, Vector3(0.16, FENCE.y + 0.2, 0.16), Vector3(x, (FENCE.y + 0.2) / 2.0, 0), 0.0, 0.0, WOOD_DARK, mat)
+		"garden_plot": # a raised bed of soil with rows of something growing
+			var g := GARDEN / 2.0
+			for z: float in [-g.z, g.z]:
+				_box(parent, Vector3(GARDEN.x, GARDEN.y, 0.08), Vector3(0, g.y, z), 0.0, 0.0, WOOD, mat)
+			for x: float in [-g.x, g.x]:
+				_box(parent, Vector3(0.08, GARDEN.y, GARDEN.z), Vector3(x, g.y, 0), 0.0, 0.0, WOOD, mat)
+			_box(parent, Vector3(GARDEN.x - 0.1, 0.05, GARDEN.z - 0.1), Vector3(0, GARDEN.y - 0.06, 0), 0.0, 0.0, SOIL, mat)
+			for row in 3:
+				for k in 6:
+					var at := Vector3(-g.x + 0.3 + k * (GARDEN.x - 0.6) / 5.0, GARDEN.y + 0.08, -g.z + 0.45 + row * 0.55)
+					_box(parent, Vector3(0.22, 0.18, 0.22), at, k * 0.7, 0.0, LEAVES, mat)
+		"ammo_bench": # a heavy workbench with a press and a vise
+			var b := BENCH / 2.0
+			for x: float in [-b.x + 0.08, b.x - 0.08]:
+				for z: float in [-b.z + 0.08, b.z - 0.08]:
+					_box(parent, Vector3(0.08, BENCH.y - 0.08, 0.08), Vector3(x, (BENCH.y - 0.08) / 2.0, z), 0.0, 0.0, WOOD_DARK, mat)
+			_box(parent, Vector3(BENCH.x, 0.08, BENCH.z), Vector3(0, BENCH.y - 0.04, 0), 0.0, 0.0, WOOD, mat)
+			_box(parent, Vector3(BENCH.x - 0.2, 0.05, BENCH.z - 0.15), Vector3(0, 0.25, 0), 0.0, 0.0, WOOD_DARK, mat) # shelf
+			_box(parent, Vector3(0.2, 0.55, 0.2), Vector3(-0.55, BENCH.y + 0.27, -0.15), 0.0, 0.0, STEEL, mat) # reloading press
+			_box(parent, Vector3(0.08, 0.3, 0.45), Vector3(-0.55, BENCH.y + 0.5, 0.05), 0.0, 0.0, STEEL, mat) # its lever
+			_box(parent, Vector3(0.25, 0.15, 0.18), Vector3(0.6, BENCH.y + 0.08, 0.1), 0.0, 0.0, STEEL, mat) # vise
+			_box(parent, Vector3(0.3, 0.1, 0.2), Vector3(0.1, BENCH.y + 0.05, -0.1), 0.3, 0.0, Color(0.75, 0.6, 0.2), mat) # brass
 
 
 ## The guard post's railing: three full sides and two short pieces either side of
@@ -374,6 +434,10 @@ func _collision(kind: String, piece: StructurePiece) -> void:
 		"fence_gate":
 			for x: float in [-FENCE.x / 2.0, FENCE.x / 2.0]:
 				_shape(piece, Vector3(0.16, FENCE.y + 0.2, 0.16), Vector3(x, (FENCE.y + 0.2) / 2.0, 0))
+		"garden_plot":
+			_shape(piece, GARDEN, Vector3(0, GARDEN.y / 2.0, 0))
+		"ammo_bench":
+			_shape(piece, BENCH, Vector3(0, BENCH.y / 2.0, 0))
 
 
 ## The gate's leaf: hinged on the -x post, swings open toward +z.

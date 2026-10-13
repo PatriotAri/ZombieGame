@@ -44,6 +44,13 @@ const Discoveries := preload("res://world/discoveries.gd")
 const ZombiePopulation := preload("res://world/zombie_population.gd")
 const TraderArrival := preload("res://world/trader_arrival.gd")
 const WoodworkerRescue := preload("res://world/woodworker_rescue.gd")
+const Survivors := preload("res://world/survivors.gd")
+const BaseCamp := preload("res://world/base_camp.gd")
+const Salvage := preload("res://world/salvage.gd")
+const Recipes := preload("res://core/recipes.gd")
+const CraftMenu := preload("res://ui/craft_menu.gd")
+const ChoiceMenu := preload("res://ui/choice_menu.gd")
+const Survivor := preload("res://characters/npcs/survivor.gd")
 const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Hud := preload("res://ui/hud.gd")
 const WorldBuilder := preload("res://world/world_builder.gd")
@@ -116,6 +123,12 @@ var zombie_population_node: ZombiePopulation
 var zombie_rng := RandomNumberGenerator.new() # the extra zombies at the start
 var trader_arrival: TraderArrival # the wagon trader who comes once Zone 1 is cleared
 var woodworker_rescue: WoodworkerRescue # the woodworker held at the bandit camp
+var survivors: Survivors # the ones holed up in boarded-up houses
+var base_camp: BaseCamp # how many the base holds, jobs, the supply crate
+var salvage: Salvage # stripping cars and furniture for materials
+var craft_menu: CraftMenu
+var choice_menu: ChoiceMenu
+var materials_rng := RandomNumberGenerator.new() # plywood and scrap metal to find
 var dialogue: DialogueBox
 var quest: MainQuest
 var chief: PoliceChief
@@ -134,6 +147,10 @@ var fortifications: Fortifications
 var structures: Structures # what you build: scaffolding, guard posts, fences, gates
 ## Chance each container holds some planks.
 const CONTAINER_PLANKS_CHANCE := 0.15
+const CONTAINER_PLYWOOD_CHANCE := 0.12
+const CONTAINER_SCRAP_CHANCE := 0.1
+const CAR_SCRAP_CHANCE := 0.35 # cars have more scrap metal to find
+const GROUND_MATERIALS := 5 # pieces each of plywood and scrap metal lying around town
 var house_zombie_points: Array[Vector3] = [] # inside the houses and the gas station
 var save_menu: SaveMenu
 var inventory_menu: InventoryMenu
@@ -184,7 +201,11 @@ func _ready() -> void:
 	for spot: LootSpot in loot_spots:
 		if fortify_rng.randf() < CONTAINER_PLANKS_CHANCE:
 			spot.inventory.add("planks", fortify_rng.randi_range(1, 2))
+	_scatter_materials()
 	Loot.scatter(builder, ground_items)
+	survivors = Survivors.new()
+	add_child(survivors)
+	survivors.setup(nav_region.get_children(), fortifications, builder)
 	hud = Hud.new()
 	add_child(hud)
 	_spawn_player()
@@ -197,6 +218,7 @@ func _ready() -> void:
 	zones.bandits = bandits
 	add_child(zones)
 	zones.status_changed.connect(_on_zone_status_changed)
+	structures.zones = zones
 	# More zombies around town, and new ones over time (their own generator, added
 	# after everything else, so the rest of the town and older saves line up).
 	zombie_population_node = ZombiePopulation.new()
@@ -207,10 +229,15 @@ func _ready() -> void:
 	zombie_population_node.setup(self, nav_region, player, day_night, zones)
 	zombie_rng.seed = town_seed + 6
 	zombie_population_node.populate(extra_zombies, zombie_rng, player_spawn.origin)
+	survivors.move_zombies_out(zombies)
 	hud.setup(player, day_night)
 	add_child(PauseMenu.new())
 	# Added last on purpose: Godot sends input to later nodes first, so while a menu
 	# is open it gets Esc/E before the pause menu and the player do.
+	craft_menu = CraftMenu.new()
+	add_child(craft_menu)
+	choice_menu = ChoiceMenu.new()
+	add_child(choice_menu)
 	inventory_menu = InventoryMenu.new()
 	add_child(inventory_menu)
 	shop_menu = ShopMenu.new()
@@ -240,7 +267,11 @@ func _ready() -> void:
 		elif obj is Door:
 			(obj as Door).toggle()
 		elif obj is Fortification:
-			player.give_item(fortifications.take_down(obj as Fortification))
+			var back := fortifications.take_down(obj as Fortification)
+			if back == "":
+				hud.show_toast("The used planks splinter apart. Nothing left to save.")
+			else:
+				player.give_item(back)
 		elif obj is GateLeaf:
 			structures.toggle_gate((obj as GateLeaf).piece)
 		elif obj is StructurePiece:
@@ -252,7 +283,7 @@ func _ready() -> void:
 	# Getting hurt never closes a menu or a conversation: only Esc (each menu
 	# handles its own) or dying does.
 	for menu: Callable in [inventory_menu.close, shop_menu.close, dialogue.close, save_menu.close, map_menu.close,
-			backpack_menu.close]:
+			backpack_menu.close, craft_menu.close, choice_menu.close]:
 		player.died.connect(menu)
 
 	quest = MainQuest.new()
@@ -274,6 +305,13 @@ func _ready() -> void:
 	woodworker_rescue.freed.connect(quest.woodworker_untied)
 	woodworker_rescue.seen.connect(func() -> void: quest.woodworker_found(WoodworkerRescue.HOME_STORY))
 	quest.woodworker = woodworker_rescue.woodworker
+	salvage = Salvage.new()
+	add_child(salvage)
+	salvage.setup(loot_spots, nav_region.get_children().filter(func(n: Node) -> bool: return n is Building))
+	base_camp = BaseCamp.new()
+	add_child(base_camp)
+	base_camp.setup(builder, survivors, woodworker_rescue, structures, day_night, player) # adds the supply crate (last container)
+	survivors.attach(player, dialogue, choice_menu, craft_menu, base_camp, woodworker_rescue)
 	quest.woodworker_home = WoodworkerRescue.HOME_SPOT
 
 	# Coming from "Load": the town is freshly rebuilt; now put the saved state on top.
@@ -318,10 +356,34 @@ func _discoverable_places() -> Array[Dictionary]:
 	return places
 
 
+## Plywood and scrap metal to find: in some containers (scrap mostly in cars),
+## and a few pieces lying in the streets. Rolled with their own generator, after
+## everything else, so the rest of the town comes out the same.
+func _scatter_materials() -> void:
+	materials_rng.seed = town_seed + 7
+	for spot: LootSpot in loot_spots:
+		if materials_rng.randf() < CONTAINER_PLYWOOD_CHANCE:
+			spot.inventory.add("plywood", materials_rng.randi_range(1, 2))
+		var scrap := CAR_SCRAP_CHANCE if spot.label == "Car" else CONTAINER_SCRAP_CHANCE
+		if materials_rng.randf() < scrap:
+			spot.inventory.add("scrap_metal", materials_rng.randi_range(1, 2))
+	for id in ["plywood", "scrap_metal"]:
+		for i in GROUND_MATERIALS:
+			# Along Main Street, or out along 7th Street toward the safe house.
+			var pos := Vector3(materials_rng.randf_range(-4.0, 4.0), 0.05, materials_rng.randf_range(-70.0, 35.0))
+			if materials_rng.randf() < 0.5:
+				pos = Vector3(materials_rng.randf_range(-130.0, -8.0), 0.05, materials_rng.randf_range(-3.0, 3.0))
+			builder.add_ground_item(id, 1, pos, materials_rng.randf_range(0.0, TAU))
+
+
 ## Pressing interact on an NPC: open whatever that kind of NPC offers.
 func _on_npc_interacted(npc: HumanNPC) -> void:
 	if npc is Woodworker and (npc as Woodworker).state == Woodworker.State.CAPTIVE:
 		woodworker_rescue.untie()
+	elif npc is Woodworker and (npc as Woodworker).state == Woodworker.State.HOME:
+		craft_menu.open(player, npc.display_name, Recipes.WOODWORKER)
+	elif npc is Survivor:
+		survivors.talk(npc as Survivor)
 	elif npc is Shopkeeper:
 		shop_menu.open(player, npc as Shopkeeper)
 	elif npc is PoliceChief:
@@ -493,6 +555,9 @@ func _save_game() -> bool:
 		"shop_restocked_day": trader.restocked_day,
 		"wagon_trader": trader_arrival.save_state(),
 		"woodworker": woodworker_rescue.save_state(),
+		"survivors": survivors.save_state(),
+		"base": base_camp.save_state(),
+		"salvaged": salvage.save_state(),
 	})
 
 
@@ -578,6 +643,9 @@ func _apply_save(data: Dictionary) -> void:
 	trader.restocked_day = int(data.get("shop_restocked_day", day_night.day))
 	trader_arrival.load_state(data.get("wagon_trader", {}))
 	woodworker_rescue.load_state(data.get("woodworker", {}))
+	survivors.load_state(data.get("survivors", []))
+	base_camp.load_state(data.get("base", {}))
+	salvage.load_state(data.get("salvaged", []))
 	quest.sync_progress(trader_arrival.cleared, trader_arrival.was_seen,
 			woodworker_rescue.state() != Woodworker.State.CAPTIVE, woodworker_rescue.was_seen)
 	player.load_state(data.get("player", {}))

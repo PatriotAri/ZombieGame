@@ -67,6 +67,9 @@ func _hold(id: String) -> void:
 
 func _refresh() -> void:
 	_info.text = "$%d    ·    %s" % [player.money, player.flashlight_text()]
+	var base := get_tree().get_first_node_in_group("base_camp")
+	if base:
+		_info.text += "    ·    Base: %d / %d people" % [base.call("population"), base.call("capacity")]
 	_footer.text = ("A: hold it   ·   Y / B: close" if Controls.using_gamepad
 			else "Click: hold it   ·   Tab / Esc: close")
 	for child in _list.get_children():

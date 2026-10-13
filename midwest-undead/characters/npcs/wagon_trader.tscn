@@ -12,7 +12,9 @@ starting_stock = Dictionary[String, int]({
 "canned_food": 10,
 "crowbar": 1,
 "health_pack": 2,
-"planks": 16
+"planks": 16,
+"plywood": 6,
+"scrap_metal": 6
 })
 buy_prices = Dictionary[String, int]({
 "barricade": 28,
@@ -20,7 +22,9 @@ buy_prices = Dictionary[String, int]({
 "canned_food": 12,
 "crowbar": 55,
 "health_pack": 50,
-"planks": 8
+"planks": 8,
+"plywood": 10,
+"scrap_metal": 9
 })
 sell_prices = Dictionary[String, int]({
 "barricade": 16,
@@ -30,5 +34,7 @@ sell_prices = Dictionary[String, int]({
 "health_pack": 20,
 "pistol": 100,
 "pistol_ammo": 2,
-"planks": 5
+"planks": 5,
+"plywood": 5,
+"scrap_metal": 4
 })

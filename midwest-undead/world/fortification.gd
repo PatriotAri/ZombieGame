@@ -6,12 +6,16 @@ extends StaticBody3D
 
 var kind := "barricade" # or "planks"
 var opening := -1 # for planks: the index of the opening it covers (fortifications.gd)
+var used := false # planks nailed up from used planks: they won't come down in one piece
 
 
 func interact_prompt() -> String:
 	return "take down the barricade" if kind == "barricade" else "take down the planks"
 
 
-## The item you get back for it.
+## The item you get back for it: fresh planks come down as used planks, and
+## used planks don't come down in one piece at all ("").
 func item_id() -> String:
-	return "barricade" if kind == "barricade" else "planks"
+	if kind == "barricade":
+		return "barricade"
+	return "" if used else "used_planks"
