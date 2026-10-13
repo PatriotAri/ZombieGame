@@ -13,6 +13,13 @@ extends CharacterBody3D
 ## Sight needs a clear line (buildings and cars block it), mostly in front of it.
 ## Sound goes through walls. A closed door in its way gets bashed until it breaks
 ## (only while it's going somewhere: hunting or investigating, not idly wandering).
+## In a horde (world/horde.gd) it has somewhere to walk to across town
+## (march_to): while idle it heads there instead of shuffling or roaming, and
+## once it arrives it's an ordinary zombie. It finds its way on the horde's
+## outdoor map (march_map), so it goes around buildings rather than up against
+## their doors. Hunting and investigating come first (on the town's map, doors
+## and all); afterwards it picks the walk back up, unless it's ended up
+## somewhere it can't get across from (indoors).
 ## Its paths can also run through windows (world/fortifications.gd): it smashes the
 ## glass, then climbs over the sill. Boarded windows and doors stop it for good.
 ## Three kinds (set `kind` before adding it to the tree; main.gd rolls it):
@@ -74,6 +81,9 @@ const CALM_REPATH_INTERVAL := 2.0 # otherwise (the destination stays put)
 # Roaming (see _next_wander).
 const ROAM_LEG := Vector2(15.0, 45.0) # meters per leg, min and max
 const ROAM_SPEED := 0.45 # times its walking speed
+const MARCH_SPEED := 1.2 # m/s in a horde (or its own speed, if slower), so the group keeps together
+const MARCH_ARRIVED := 6.0 # meters from march_to that counts as there
+const UNSTICK_AFTER := 1.5 # seconds hardly moving (jammed in a crowd, against a wall) before it gives up getting closer
 const SHUFFLE_SPEED := 0.35
 const ROAM_TURN := 0.8 # radians: how far each leg can veer from the last
 const HERD_RADIUS := 15.0 # roamers this close pull its heading toward theirs
@@ -99,6 +109,10 @@ var last_seen_pos := Vector3.ZERO
 var wander_target := Vector3.ZERO
 var roam_heading := Vector3.FORWARD # the way it's been roaming (flat, unit length)
 var roaming := false # on a roaming leg right now (others read this to herd)
+var march_to := Vector3.INF # in a horde: where it's walking to (INF: not in one; main.gd saves it)
+var march_map := RID() # in a horde: the outdoor map it walks there on (horde.gd)
+var _march_time_left := INF # gives up on the walk when this runs out (set when it starts)
+var _stuck_time := 0.0
 var linger_timer := 0.0
 var wander_timer := 0.0
 var sense_timer := 0.0
@@ -249,18 +263,30 @@ func _physics_process(delta: float) -> void:
 					target.call("take_damage", damage_per_second * delta)
 		State.INVESTIGATE:
 			moving = _walk_to(investigate_pos, speed, delta)
-			if not moving:
+			# Jammed against a wall or a crowd short of the spot counts as there:
+			# as close as it's going to get.
+			if not moving or _stuck_time >= UNSTICK_AFTER:
 				linger_timer -= delta
 				if linger_timer <= 0.0:
 					_set_idle()
 		State.IDLE:
+			if march_to != Vector3.INF:
+				_march_time_left -= delta
+				if _march_time_left <= 0.0:
+					_end_march() # long overdue: stuck somewhere, so it gives up on the horde's walk
 			wander_timer -= delta
 			if wander_timer <= 0.0:
 				_next_wander()
-			moving = _walk_to(wander_target, speed * (ROAM_SPEED if roaming else SHUFFLE_SPEED), delta)
+			var walk_speed := minf(speed, MARCH_SPEED) if march_to != Vector3.INF \
+					else speed * (ROAM_SPEED if roaming else SHUFFLE_SPEED)
+			moving = _walk_to(wander_target, walk_speed, delta)
 			if roaming and not moving and _navigation_ready():
 				roaming = false # got there: stand around a while
-				wander_timer = randf_range(3.0, 12.0) * lerpf(1.0, 0.5, 1.0 - _light())
+				if march_to != Vector3.INF and _flat(march_to - global_position).length() > MARCH_ARRIVED:
+					wander_timer = 0.5 # not there yet (its path came up short): set off again
+				else:
+					_end_march()
+					wander_timer = randf_range(3.0, 12.0) * lerpf(1.0, 0.5, 1.0 - _light())
 
 	if not moving:
 		velocity.x = move_toward(velocity.x, 0.0, speed)
@@ -269,21 +295,29 @@ func _physics_process(delta: float) -> void:
 		# step. Most zombies are standing around most of the time.
 		if is_on_floor() and velocity.length_squared() < 0.0001:
 			return
+	var before := global_position
 	_move(_step_scale)
+	var bashing := false
 	if moving and state != State.IDLE:
-		_bash_doors(delta)
-		_handle_window(delta)
+		bashing = _bash_doors(delta)
+		bashing = _handle_window(delta) or bashing
+	if bashing: # held up by a door or window it's breaking: that's not stuck
+		_stuck_time = 0.0
+	elif moving and (state == State.INVESTIGATE or (state == State.IDLE and march_to != Vector3.INF)):
+		_check_stuck(before, delta)
 
 
 ## Its path runs through doorways (doors aren't in the navigation mesh), so a
 ## closed door shows up as something it bumped into while walking. (Anything
 ## with can_be_bashed() and bash(); planks and barricades have neither.)
-func _bash_doors(delta: float) -> void:
+## True if it's bashing one.
+func _bash_doors(delta: float) -> bool:
 	for i in get_slide_collision_count():
 		var thing := get_slide_collision(i).get_collider()
 		if thing and thing.has_method("can_be_bashed") and thing.call("can_be_bashed"):
 			thing.call("bash", door_damage_per_second * delta)
-			return
+			return true
+	return false
 
 
 # --- Windows -------------------------------------------------------------------
@@ -300,18 +334,21 @@ func _on_link_reached(details: Dictionary) -> void:
 ## At a window on its path: beat on the glass, or climb through once it's gone.
 ## (It can't reach the glass to bump it: the wall below the window sticks out
 ## further, so the blows are dealt here rather than by _bash_doors.)
-func _handle_window(delta: float) -> void:
+## True if it's beating on the glass.
+func _handle_window(delta: float) -> bool:
 	if _window_link == null:
-		return
+		return false
 	var pane: WindowPane = _window_link.get_meta("window")
 	if not is_instance_valid(pane) or _flat(global_position - _window_entry).length() > 2.0:
 		_window_link = null # moved on
 	elif pane.can_be_bashed():
 		pane.bash(door_damage_per_second * delta)
+		return true
 	elif pane.is_passable():
 		_vault()
 	else:
 		_window_link = null # boarded up: its next path won't use this window
+	return false
 
 
 ## Over the sill and in (or out): up to just above it, then down the other side.
@@ -422,6 +459,8 @@ func _can_reach(candidate: Node3D) -> bool:
 
 ## Idle and done with what it was doing: shuffle a few steps, or set off roaming.
 func _next_wander() -> void:
+	if march_to != Vector3.INF and _navigation_ready() and _start_march():
+		return
 	var night := 1.0 - _light()
 	if _navigation_ready() and randf() < lerpf(roam_chance_day, roam_chance_night, night):
 		_start_roam_leg()
@@ -458,6 +497,51 @@ func _start_roam_leg() -> void:
 	wander_timer = length / maxf(speed * ROAM_SPEED, 0.1) + 15.0
 
 
+## In a horde: straight for march_to. It counts as roaming, so others roaming
+## nearby get pulled along the same way (_start_roam_leg).
+## False if it can't get there from here: it's out of the horde.
+func _start_march() -> bool:
+	if march_map.is_valid() and NavigationServer3D.map_get_iteration_id(march_map) > 0:
+		var from := NavigationServer3D.map_get_closest_point(march_map, global_position)
+		var path := NavigationServer3D.map_get_path(march_map, from, march_to, true)
+		if from.distance_to(global_position) > 1.5 or path.is_empty() \
+				or _flat(path[path.size() - 1] - march_to).length() > MARCH_ARRIVED:
+			_end_march()
+			return false
+	var to := _flat(march_to - global_position)
+	if to.length_squared() > 0.0001:
+		roam_heading = to.normalized()
+	if _march_time_left == INF: # gives up if it isn't there well after it should be
+		_march_time_left = to.length() / minf(speed, MARCH_SPEED) * 2.0 + 60.0
+	wander_target = march_to
+	roaming = true
+	wander_timer = 60.0 # then finds the way again from wherever it's got to
+	return true
+
+
+func _end_march() -> void:
+	march_to = Vector3.INF
+	_march_time_left = INF
+	_stuck_time = 0.0
+
+
+## Hardly moving for a while: jammed in a crowd (two in a gap at once, walkers
+## behind a crawler, a crowd round the spot they all heard something at) or
+## pushing into a wall. Investigating, it then lingers where it is (see
+## _physics_process); marching in a horde, it steps aside, then carries on.
+func _check_stuck(before: Vector3, delta: float) -> void:
+	if _flat(global_position - before).length() > minf(speed, MARCH_SPEED) * delta * 0.25:
+		_stuck_time = 0.0
+		return
+	_stuck_time += delta
+	if state != State.IDLE or _stuck_time < UNSTICK_AFTER:
+		return
+	_stuck_time = 0.0
+	roaming = false
+	wander_target = global_position + Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU) * randf_range(2.0, 4.0)
+	wander_timer = randf_range(1.0, 2.5) # then _next_wander picks the walk back up
+
+
 ## 0 at darkest night, 1 in full day.
 func _light() -> float:
 	if day_night == null:
@@ -468,6 +552,7 @@ func _light() -> float:
 func _investigate(pos: Vector3) -> void:
 	state = State.INVESTIGATE
 	roaming = false
+	_stuck_time = 0.0
 	investigate_pos = pos
 	linger_timer = linger_time
 	repath_timer = 0.0
@@ -476,6 +561,7 @@ func _investigate(pos: Vector3) -> void:
 func _set_idle() -> void:
 	state = State.IDLE
 	roaming = false
+	_stuck_time = 0.0
 	target = null
 	wander_timer = randf_range(2.0, 5.0)
 	wander_target = global_position
@@ -560,6 +646,11 @@ func _flash() -> void:
 
 ## Steps along a navigation path toward a point. Returns false once arrived (or no path).
 func _walk_to(point: Vector3, move_speed: float, delta: float) -> bool:
+	var map := march_map if state == State.IDLE and march_to != Vector3.INF and march_map.is_valid() \
+			else get_world_3d().navigation_map
+	if agent.get_navigation_map() != map: # in a horde: the outdoor map while marching
+		agent.set_navigation_map(map)
+		repath_timer = 0.0
 	if not _navigation_ready():
 		return false
 	repath_timer -= delta

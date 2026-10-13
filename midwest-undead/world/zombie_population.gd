@@ -9,6 +9,8 @@ extends Node
 ## turns up now and then on the outskirts of town, far from you and away from
 ## the zones, more often at night. Nothing sends them anywhere: they roam like
 ## the rest (zombie.gd), so over time some drift back into places you cleared.
+## A horde (world/horde.gd) can push the count over `population`; nobody new
+## turns up until it's back under.
 ##
 ## Bodies are cleared away a while after they fall, once you're well away. The
 ## living are saved (main.gd).
@@ -34,7 +36,7 @@ var _main: Node # main.gd: owns the zombies list and _add_zombie
 var _player: Node3D
 var _day_night: Node
 var _zones: Zones
-var _bounds := Rect2() # the walkable area, (x, z) (the navigation bake's box)
+var bounds := Rect2() # the walkable area, (x, z) (the navigation bake's box)
 var _triangles: Array[PackedVector3Array] = [] # the navigation mesh, for picking random spots
 var _cumulative_area: PackedFloat32Array = []
 var _check_timer := 0.0
@@ -49,7 +51,7 @@ func setup(main: Node, nav_region: NavigationRegion3D, player: Node3D, day_night
 	_day_night = day_night
 	_zones = zones
 	var box := nav_region.navigation_mesh.filter_baking_aabb
-	_bounds = Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
+	bounds = Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
 	_index_triangles(nav_region.navigation_mesh, nav_region.global_transform)
 
 
@@ -59,7 +61,7 @@ func populate(count: int, rng: RandomNumberGenerator, start: Vector3) -> void:
 	for attempt in count * 20:
 		if placed >= count:
 			break
-		var pos := _random_point(rng)
+		var pos := random_point(rng)
 		if pos.y > MAX_SPAWN_HEIGHT or _zones.zone_at(pos) != "" or pos.distance_to(start) < START_MIN_DISTANCE:
 			continue
 		_main.call("_add_zombie", pos + Vector3(0, 0.1, 0), rng)
@@ -90,9 +92,9 @@ func _alive() -> int:
 ## A random spot near the edge of town, far from you and from every zone, or
 ## Vector3.INF if none turned up this time (it tries again next spawn).
 func _outskirts_point() -> Vector3:
-	var inner := _bounds.grow(-OUTSKIRTS)
+	var inner := bounds.grow(-OUTSKIRTS)
 	for attempt in 30:
-		var pos := _random_point(null)
+		var pos := random_point(null)
 		if pos.y > MAX_SPAWN_HEIGHT:
 			continue
 		if inner.has_point(Vector2(pos.x, pos.z)):
@@ -146,7 +148,7 @@ func _index_triangles(mesh: NavigationMesh, xform: Transform3D) -> void:
 
 
 ## Anywhere walkable, every square meter equally likely. rng null = any randomness.
-func _random_point(rng: RandomNumberGenerator) -> Vector3:
+func random_point(rng: RandomNumberGenerator) -> Vector3:
 	if _triangles.is_empty():
 		return Vector3.ZERO
 	var r1 := rng.randf() if rng else randf()

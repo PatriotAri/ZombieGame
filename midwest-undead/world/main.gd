@@ -13,7 +13,8 @@ extends Node3D
 ## What's fixed and what's random: the town, its containers and the items lying
 ## around are exactly what the town scene has. What's in the containers (beyond
 ## their fixed items), which zombies turn up at the ZombieSpawn markers, the
-## extra zombies and the ones arriving over time are random every new game.
+## extra zombies, the ones arriving over time and the hordes (world/horde.gd)
+## are random every new game.
 ##
 ## TUNING: select the Main node in the Scene dock and use the Inspector. Every
 ## @export below shows up there, grouped. Values you change in the Inspector are
@@ -58,6 +59,7 @@ const MapMenu := preload("res://ui/map_menu.gd")
 const BackpackMenu := preload("res://ui/backpack_menu.gd")
 const Discoveries := preload("res://world/discoveries.gd")
 const ZombiePopulation := preload("res://world/zombie_population.gd")
+const Horde := preload("res://world/horde.gd")
 const TraderArrival := preload("res://world/trader_arrival.gd")
 const WoodworkerRescue := preload("res://world/woodworker_rescue.gd")
 const Survivors := preload("res://world/survivors.gd")
@@ -132,6 +134,7 @@ var map_menu: MapMenu
 var backpack_menu: BackpackMenu
 var discoveries: Discoveries
 var zombie_population_node: ZombiePopulation
+var horde: Horde # every couple of weeks, a horde crosses town
 var trader_arrival: TraderArrival # the wagon trader who comes once Zone 1 is cleared
 var woodworker_rescue: WoodworkerRescue # the woodworker held at the bandit camp
 var survivors: Survivors # the ones holed up in boarded-up houses
@@ -194,6 +197,9 @@ func _ready() -> void:
 	zombie_population_node.respawn_seconds_night = zombie_respawn_seconds_night
 	zombie_population_node.setup(self, nav_region, player, day_night, zones)
 	zombie_population_node.populate(extra_zombies, rng, player_spawn.origin)
+	horde = Horde.new()
+	add_child(horde)
+	horde.setup(self, zombie_population_node, nav_region, player, day_night)
 	survivors.move_zombies_out(zombies)
 	hud.setup(player, day_night)
 	add_child(PauseMenu.new())
@@ -608,8 +614,11 @@ func _save_game(path: String) -> bool:
 	var zombie_data := [] # the ones still up
 	for zombie in zombies:
 		if is_instance_valid(zombie) and not zombie.is_dead:
-			zombie_data.append({"position": SaveGame.vec_to_array(zombie.global_position),
-					"yaw": zombie.rotation.y, "health": zombie.health, "kind": zombie.kind})
+			var entry := {"position": SaveGame.vec_to_array(zombie.global_position),
+					"yaw": zombie.rotation.y, "health": zombie.health, "kind": zombie.kind}
+			if zombie.march_to != Vector3.INF:
+				entry["march"] = SaveGame.vec_to_array(zombie.march_to)
+			zombie_data.append(entry)
 	var door_data := {}
 	for door in doors:
 		door_data[door.get_meta("town_id")] = door.save_state()
@@ -626,6 +635,7 @@ func _save_game(path: String) -> bool:
 		"containers": containers,
 		"ground_items": ground,
 		"zombies": zombie_data,
+		"horde": horde.save_state(),
 		"bandits": bandit_data,
 		"doors": door_data,
 		"fortifications": fortifications.save_state(),
@@ -685,6 +695,9 @@ func _apply_save(data: Dictionary) -> void:
 		var zombie := _add_zombie(SaveGame.array_to_vec(entry["position"]), null, str(entry.get("kind", "walker")))
 		zombie.rotation.y = float(entry.get("yaw", 0.0))
 		zombie.health = float(entry.get("health", zombie.max_health))
+		if entry.has("march"):
+			zombie.march_to = SaveGame.array_to_vec(entry["march"])
+	horde.load_state(data.get("horde", {}))
 
 	var bandit_data: Dictionary = data.get("bandits", {})
 	for bandit in bandits:
