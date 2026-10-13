@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_6ptan"]
+[ext_resource type="Material" path="res://world/kit/materials/plywood.tres" id="2_ud2wu"]
+
+[node name="Fence" type="StaticBody3D" unique_id=574815030]
+script = ExtResource("1_6ptan")
+size = Vector3(4, 2.2, 0.15)
+material = ExtResource("2_ud2wu")
+sits_on_floor = true

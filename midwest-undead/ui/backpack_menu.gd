@@ -103,8 +103,8 @@ func _item_text(id: String) -> String:
 	match id:
 		"hands":
 			return "Fists"
-		"pistol":
-			return "Pistol  (%d/%d loaded)" % [player.pistol_mag, Player.PISTOL_MAG]
+		"pistol", "shotgun", "rifle":
+			return player.gun_text(id)
 	var count := player.inventory.count(id)
 	return GameData.item_name(id) + ("  x%d" % count if count > 1 else "")
 

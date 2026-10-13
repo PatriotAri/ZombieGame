@@ -1,0 +1,16 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_msjr4"]
+[ext_resource type="Material" path="res://world/kit/materials/crate_wood.tres" id="2_jtwoy"]
+
+[node name="SupplyCrate" type="StaticBody3D" unique_id=2131243322]
+script = ExtResource("1_msjr4")
+label = "Supply crate"
+fixed_items = Dictionary[String, int]({
+"canned_food": 2,
+"health_pack": 1
+})
+loot_table = "none"
+size = Vector3(1, 0.9, 1.4)
+material = ExtResource("2_jtwoy")
+sits_on_floor = true

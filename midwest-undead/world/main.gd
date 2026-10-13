@@ -1,12 +1,18 @@
 extends Node3D
-## The game scene's root. Builds a gray-box Midwest town a couple of months into
-## the outbreak, then adds loot, the player, the zombies, the HUD and the menus,
-## and handles saving and loading. Everything is generated in code, so the scene
-## file (main.tscn) stays tiny. The pieces live in their own scripts:
-##   world/world_builder.gd    shared state and helpers while the town is built
-##   world/areas/*.gd          Main Street, the police station, the safe house, the bandit camp
-##   world/loot.gd             what's in the containers and on the street
-##   ui/hud.gd                 everything on screen during play
+## The game scene's root. Loads the town (world/town/town.tscn: open it, or one
+## of its districts in world/town/districts/, to change the town in the editor),
+## then adds the loot, the player, the zombies, the NPCs, the HUD and the menus,
+## and handles saving and loading. The pieces live in their own scripts:
+##   world/town/          the town itself: buildings, containers, doors, items, props
+##   world/kit/           the building kit the town is made of (see HOW_TO_BUILD.md)
+##   world/markers/       markers in the town: where people and zombies start, places
+##   world/loot.gd        the containers' loot tables
+##   ui/hud.gd            everything on screen during play
+##
+## What's fixed and what's random: the town, its containers and the items lying
+## around are exactly what the town scene has. What's in the containers (beyond
+## their fixed items), which zombies turn up at the ZombieSpawn markers, the
+## extra zombies and the ones arriving over time are random every new game.
 ##
 ## TUNING: select the Main node in the Scene dock and use the Inspector. Every
 ## @export below shows up there, grouped. Values you change in the Inspector are
@@ -22,20 +28,28 @@ const ZombieScene := preload("res://characters/zombie/zombie.tscn")
 const Controls := preload("res://core/controls.gd")
 const GameData := preload("res://core/game_data.gd")
 const LootSpot := preload("res://items/loot_spot.gd")
+const GroundItem := preload("res://items/ground_item.gd")
 const PauseMenu := preload("res://ui/pause_menu.gd")
 const InventoryMenu := preload("res://ui/inventory_menu.gd")
 const ShopMenu := preload("res://ui/shop_menu.gd")
 const Building := preload("res://world/building.gd")
 const DayNight := preload("res://world/day_night.gd")
 const Shopkeeper := preload("res://characters/npcs/shopkeeper.gd")
+const ShopkeeperScene := preload("res://characters/npcs/shopkeeper.tscn")
 const PoliceChief := preload("res://characters/npcs/police_chief.gd")
+const PoliceChiefScene := preload("res://characters/npcs/police_chief.tscn")
+const Guard := preload("res://characters/npcs/guard.gd")
+const GuardScene := preload("res://characters/npcs/guard.tscn")
+const HumanNPCScene := preload("res://characters/npcs/human_npc.tscn")
 const DialogueBox := preload("res://ui/dialogue_box.gd")
 const MainQuest := preload("res://quests/main_quest.gd")
 const SaveGame := preload("res://core/save_game.gd")
 const SavePoint := preload("res://world/save_point.gd")
 const SaveMenu := preload("res://ui/save_menu.gd")
 const Bandit := preload("res://characters/npcs/bandit.gd")
+const BanditScene := preload("res://characters/npcs/bandit.tscn")
 const Door := preload("res://world/door.gd")
+const WindowPane := preload("res://world/window_pane.gd")
 const Settings := preload("res://core/settings.gd")
 const Zones := preload("res://world/zones.gd")
 const MapMenu := preload("res://ui/map_menu.gd")
@@ -53,43 +67,33 @@ const ChoiceMenu := preload("res://ui/choice_menu.gd")
 const Survivor := preload("res://characters/npcs/survivor.gd")
 const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Hud := preload("res://ui/hud.gd")
-const WorldBuilder := preload("res://world/world_builder.gd")
 const Loot := preload("res://world/loot.gd")
-const Town := preload("res://world/areas/town.gd")
-const PoliceStation := preload("res://world/areas/police_station.gd")
-const SafeHouse := preload("res://world/areas/safe_house.gd")
-const BanditCamp := preload("res://world/areas/bandit_camp.gd")
-const Housing := preload("res://world/areas/housing.gd")
 const SkyShader := preload("res://world/sky_clouds.gdshader")
 const Fortifications := preload("res://world/fortifications.gd")
 const Fortification := preload("res://world/fortification.gd")
 const Structures := preload("res://world/structures.gd")
 const StructurePiece := preload("res://world/structure_piece.gd")
 const GateLeaf := preload("res://world/gate_leaf.gd")
-const Grocery := preload("res://world/areas/grocery.gd")
-const GasStation := preload("res://world/areas/gas_station.gd")
+const SpawnPoint := preload("res://world/markers/spawn_point.gd")
+const ZombieSpawn := preload("res://world/markers/zombie_spawn.gd")
+const Place := preload("res://world/markers/place.gd")
 
 @export_group("World")
-## Same seed = same town layout and loot every run. Change it for a different town.
-@export var town_seed := 1979
-@export_range(0, 100) var outdoor_zombies := 14
-## Chance of a zombie at each of the ~2 spots inside every shop.
-@export_range(0.0, 1.0) var indoor_zombie_chance := 0.12
-## More zombies scattered around town at the start (never inside a zone).
+## The town to play in. Edit world/town/town.tscn (or its districts) to change it.
+@export var town_scene: PackedScene = preload("res://world/town/town.tscn")
+## More zombies scattered around town at the start (never inside a zone), on top
+## of the ones at the town's ZombieSpawn markers.
 @export_range(0, 300) var extra_zombies := 60
 ## How many zombies are up at once. When there are fewer, new ones turn up on the
 ## outskirts of town now and then (see world/zombie_population.gd).
 @export_range(0, 400) var zombie_population := 100
+## Every zombie (at the start and arriving later) has these chances of being a
+## crawler or a runner instead of an ordinary walker (characters/zombie/zombie.gd).
+@export_range(0.0, 1.0) var crawler_chance := 0.08
+@export_range(0.0, 1.0) var runner_chance := 0.03
 ## Seconds between new arrivals while there are fewer than zombie_population.
 @export var zombie_respawn_seconds_day := 30.0
 @export var zombie_respawn_seconds_night := 10.0
-## Loose items lying in the streets.
-@export_range(0, 60) var ground_items := 12
-@export_range(0.0, 1.0) var container_health_pack_chance := 0.4
-@export_range(0.0, 1.0) var container_ammo_chance := 0.35
-@export_range(0.0, 1.0) var container_trade_goods_chance := 0.35
-## Chance a shop's front door is standing open when you arrive.
-@export_range(0.0, 1.0) var door_open_chance := 0.35
 
 @export_group("Time of Day")
 ## 8:00 AM: a full day of light to get your bearings before the first night.
@@ -102,25 +106,30 @@ const GasStation := preload("res://world/areas/gas_station.gd")
 
 ## Autosave once you're this close to the safe house while it's your objective.
 const AUTOSAVE_DISTANCE := 20.0
+## Street zombies (a ZombieSpawn with a spread) don't start this close to a car or other container.
+const ZOMBIE_CONTAINER_CLEARANCE := 2.5
 
 var player: Player
-## Where you start: on the cross street, one block west of the police station
-## compound (toward Main Street), facing east so the station is the first thing
-## you see. Rotation -90 degrees turns the player's forward (-z) to face +x.
-var player_spawn := Transform3D(Basis(Vector3.UP, -PI / 2.0), Vector3(24.0, 0.1, 0.0))
+## Where you start: the town's "player" SpawnPoint.
+var player_spawn := Transform3D.IDENTITY
 var nav_region: NavigationRegion3D # all town geometry lives under this node
-var builder: WorldBuilder
+var town: Node3D # the town scene, under nav_region
 var day_night: DayNight
-# These are the builder's own lists (the same arrays), named here for saving.
-var loot_spots: Array = []
-var doors: Array[Door] = []
+# What's in the town, found when it's loaded. Everything that's saved carries a
+# "town_id" (its path in the town scene), so saves find it again.
+var loot_spots: Array[LootSpot] = []
+var doors: Array[Door] = [] # moved out of the town, under main (see _load_town)
+var windows: Array[WindowPane] = []
+var spawn_points: Array[SpawnPoint] = []
+var zombie_spawns: Array[ZombieSpawn] = []
+var places: Array[Place] = []
+var salvage_others: Array[Node3D] = [] # things with a "salvage_label" that aren't containers (beds)
 var hud: Hud
 var zones: Zones
 var map_menu: MapMenu
 var backpack_menu: BackpackMenu
 var discoveries: Discoveries
 var zombie_population_node: ZombiePopulation
-var zombie_rng := RandomNumberGenerator.new() # the extra zombies at the start
 var trader_arrival: TraderArrival # the wagon trader who comes once Zone 1 is cleared
 var woodworker_rescue: WoodworkerRescue # the woodworker held at the bandit camp
 var survivors: Survivors # the ones holed up in boarded-up houses
@@ -128,30 +137,17 @@ var base_camp: BaseCamp # how many the base holds, jobs, the supply crate
 var salvage: Salvage # stripping cars and furniture for materials
 var craft_menu: CraftMenu
 var choice_menu: ChoiceMenu
-var materials_rng := RandomNumberGenerator.new() # plywood and scrap metal to find
 var dialogue: DialogueBox
 var quest: MainQuest
 var chief: PoliceChief
 var trader: Shopkeeper
-var safe_house_point := Vector3.ZERO # middle of the safe house yard (quest marker target)
-var safe_house_zombie_points: Array[Vector3] = []
+var safe_house_point := Vector3.ZERO # the "Safe House" place (quest marker target)
 var bandits: Array[Bandit] = []
-var zombies: Array[Zombie] = [] # every zombie spawned, dead or alive, in spawn order (for saving)
-## Everything added after the original town rolls its own dice, so it never
-## reshuffles what came before it (see world_builder.gd).
-var housing_rng := RandomNumberGenerator.new()
-var grocery_rng := RandomNumberGenerator.new()
-var gas_station_rng := RandomNumberGenerator.new()
-var fortify_rng := RandomNumberGenerator.new() # planks in containers
+var zombies: Array[Zombie] = [] # every zombie up (and bodies not yet cleared away)
+## A new game's random rolls: what's in the containers, which zombies turn up.
+var rng := RandomNumberGenerator.new()
 var fortifications: Fortifications
 var structures: Structures # what you build: scaffolding, guard posts, fences, gates
-## Chance each container holds some planks.
-const CONTAINER_PLANKS_CHANCE := 0.15
-const CONTAINER_PLYWOOD_CHANCE := 0.12
-const CONTAINER_SCRAP_CHANCE := 0.1
-const CAR_SCRAP_CHANCE := 0.35 # cars have more scrap metal to find
-const GROUND_MATERIALS := 5 # pieces each of plywood and scrap metal lying around town
-var house_zombie_points: Array[Vector3] = [] # inside the houses and the gas station
 var save_menu: SaveMenu
 var inventory_menu: InventoryMenu
 var shop_menu: ShopMenu
@@ -160,75 +156,41 @@ var shop_menu: ShopMenu
 func _ready() -> void:
 	Controls.setup()
 	Settings.load_settings() # before anything can play a sound: it creates the Effects bus
+	rng.randomize()
 	_build_environment()
 	_setup_navigation()
-	# The build order below is the order of every random roll: keep it (see world_builder.gd).
-	builder = WorldBuilder.new(self, nav_region, town_seed)
-	loot_spots = builder.loot_spots
-	doors = builder.doors
-	Town.build(builder, door_open_chance)
-	var station := PoliceStation.build(builder)
-	trader = station["trader"]
-	chief = station["chief"]
-	trader.day_night = day_night # restocks each morning
-	Loot.fill_containers(builder, player_spawn.origin, container_health_pack_chance,
-			container_ammo_chance, container_trade_goods_chance)
-	# After the loot: the safe house crates get fixed supplies, not random loot.
-	var safe_house := SafeHouse.build(builder, func() -> void: quest.reached_safe_house())
-	safe_house_point = safe_house["point"]
-	safe_house_zombie_points = safe_house["zombie_points"]
-	BanditCamp.build(builder)
-	# Last of the build, with its own generator, so it doesn't reshuffle anything above.
-	housing_rng.seed = town_seed + 2
-	house_zombie_points = Housing.build(builder, housing_rng, door_open_chance,
-			container_health_pack_chance, container_ammo_chance, container_trade_goods_chance)
-	grocery_rng.seed = town_seed + 3
-	Grocery.build(builder, grocery_rng)
-	gas_station_rng.seed = town_seed + 4
-	house_zombie_points.append_array(GasStation.build(builder, gas_station_rng, door_open_chance,
-			container_health_pack_chance, container_ammo_chance, container_trade_goods_chance))
+	_load_town()
+	Loot.fill(loot_spots, rng)
+	fortifications = Fortifications.new()
+	add_child(fortifications)
+	fortifications.setup(nav_region, windows, doors) # planks on what's boarded at start, before the bake
 	# Bake the walkable area from the town's collision shapes. Runs once at startup
 	# and blocks briefly; fine for one small town.
 	nav_region.bake_navigation_mesh(false)
-	fortifications = Fortifications.new()
-	add_child(fortifications)
-	fortifications.setup(nav_region, nav_region.get_children().filter(func(n: Node) -> bool: return n is Building))
 	structures = Structures.new()
 	add_child(structures)
 	structures.setup(nav_region, fortifications)
-	# Planks to find, rolled last with their own generator (see world_builder.gd).
-	fortify_rng.seed = town_seed + 5
-	for spot: LootSpot in loot_spots:
-		if fortify_rng.randf() < CONTAINER_PLANKS_CHANCE:
-			spot.inventory.add("planks", fortify_rng.randi_range(1, 2))
-	_scatter_materials()
-	Loot.scatter(builder, ground_items)
+	_spawn_npcs()
 	survivors = Survivors.new()
 	add_child(survivors)
-	survivors.setup(nav_region.get_children(), fortifications, builder)
+	survivors.setup(spawn_points)
 	hud = Hud.new()
 	add_child(hud)
 	_spawn_player()
 	_spawn_zombies()
-	bandits = BanditCamp.spawn(builder)
-	for point in house_zombie_points:
-		if housing_rng.randf() < indoor_zombie_chance:
-			_add_zombie(point + Vector3(0, 0.1, 0), housing_rng)
 	zones = Zones.new()
 	zones.bandits = bandits
 	add_child(zones)
 	zones.status_changed.connect(_on_zone_status_changed)
 	structures.zones = zones
-	# More zombies around town, and new ones over time (their own generator, added
-	# after everything else, so the rest of the town and older saves line up).
+	# More zombies around town, and new ones over time.
 	zombie_population_node = ZombiePopulation.new()
 	add_child(zombie_population_node)
 	zombie_population_node.population = zombie_population
 	zombie_population_node.respawn_seconds_day = zombie_respawn_seconds_day
 	zombie_population_node.respawn_seconds_night = zombie_respawn_seconds_night
 	zombie_population_node.setup(self, nav_region, player, day_night, zones)
-	zombie_rng.seed = town_seed + 6
-	zombie_population_node.populate(extra_zombies, zombie_rng, player_spawn.origin)
+	zombie_population_node.populate(extra_zombies, rng, player_spawn.origin)
 	survivors.move_zombies_out(zombies)
 	hud.setup(player, day_night)
 	add_child(PauseMenu.new())
@@ -256,8 +218,8 @@ func _ready() -> void:
 		hud.show_toast("Discovered: " + ", ".join(names)))
 	map_menu = MapMenu.new()
 	add_child(map_menu)
-	map_menu.setup(player, zones, discoveries, Town.map_roads() + Housing.map_roads(), _map_buildings(),
-			[PoliceStation.map_fence()], _map_streets())
+	map_menu.setup(player, zones, discoveries, _map_rects("map_road"), _map_buildings(),
+			_map_rects("map_fence"), _map_streets())
 	backpack_menu = BackpackMenu.new()
 	add_child(backpack_menu)
 	backpack_menu.setup(player)
@@ -290,90 +252,182 @@ func _ready() -> void:
 	add_child(quest)
 	quest.objective_changed.connect(hud.set_objective)
 	quest.story_beat.connect(hud.show_story)
+	safe_house_point = _place_position("Safe House")
 	quest.setup(player, chief, safe_house_point, dialogue)
+	for trigger in get_tree().get_nodes_in_group("safe_house_trigger"):
+		# Walking into the safe house's yard (or the house) is what "reaching" it means.
+		(trigger as Area3D).body_entered.connect(func(body: Node3D) -> void:
+			if body.is_in_group("player"):
+				quest.reached_safe_house())
 
 	trader_arrival = TraderArrival.new()
 	add_child(trader_arrival)
-	var compound_center := (PoliceStation.COMPOUND_MIN + PoliceStation.COMPOUND_MAX) / 2.0
-	trader_arrival.setup(player, zones, day_night, Vector3(compound_center.x, 0.0, compound_center.y))
+	trader_arrival.setup(player, zones, day_night, _place_position("Police Station"),
+			_spawn_transform("wagon"), _spawn_transform("wagon_trader"))
 	trader_arrival.zone_cleared.connect(quest.zone_cleared)
 	trader_arrival.seen.connect(quest.trader_found)
 
 	woodworker_rescue = WoodworkerRescue.new()
 	add_child(woodworker_rescue)
-	woodworker_rescue.setup(player, day_night, dialogue)
+	woodworker_rescue.setup(player, dialogue, _spawn_transform("woodworker_captive"),
+			_spawn_transform("woodworker_home"))
 	woodworker_rescue.freed.connect(quest.woodworker_untied)
 	woodworker_rescue.seen.connect(func() -> void: quest.woodworker_found(WoodworkerRescue.HOME_STORY))
 	quest.woodworker = woodworker_rescue.woodworker
 	salvage = Salvage.new()
 	add_child(salvage)
-	salvage.setup(loot_spots, nav_region.get_children().filter(func(n: Node) -> bool: return n is Building))
+	salvage.setup(loot_spots, salvage_others)
 	base_camp = BaseCamp.new()
 	add_child(base_camp)
-	base_camp.setup(builder, survivors, woodworker_rescue, structures, day_night, player) # adds the supply crate (last container)
+	base_camp.setup(get_tree().get_first_node_in_group("base_supply_crate") as Node3D, survivors,
+			woodworker_rescue, structures, day_night, player)
 	survivors.attach(player, dialogue, choice_menu, craft_menu, base_camp, woodworker_rescue)
-	quest.woodworker_home = WoodworkerRescue.HOME_SPOT
+	quest.woodworker_home = woodworker_rescue.home_spot.origin
 
-	# Coming from "Load": the town is freshly rebuilt; now put the saved state on top.
+	# Coming from "Load": the town is freshly loaded; now put the saved state on top.
 	if not SaveGame.pending_load.is_empty():
 		_apply_save(SaveGame.pending_load)
 		SaveGame.pending_load = {}
 		hud.show_toast("Game loaded.")
 
 
+# --- The town --------------------------------------------------------------------
+
+## Puts the town scene under nav_region and finds what the game needs in it.
+## Doors move out first, under main, so the navigation bake ignores them (zombie
+## paths run through doorways; see door.gd). Everything that's saved gets its
+## "town_id" before that, while it still has its place in the town.
+func _load_town() -> void:
+	town = town_scene.instantiate() as Node3D
+	# Buildings and kit pieces make their walls, glass and doors from their
+	# settings; have them do it now, so the doors and windows are there to find.
+	for node in town.find_children("*", "", true, false):
+		if node.has_method("ensure_built"):
+			node.call("ensure_built")
+	var door_holder := Node3D.new()
+	door_holder.name = "Doors"
+	add_child(door_holder)
+	for node in town.find_children("*", "", true, false):
+		if node is LootSpot or node is Door or node is WindowPane or node is SpawnPoint \
+				or node.has_meta("salvage_label"):
+			node.set_meta("town_id", _town_path(node))
+		if node is LootSpot:
+			loot_spots.append(node)
+		elif node is WindowPane:
+			windows.append(node)
+		elif node is SpawnPoint:
+			spawn_points.append(node)
+		elif node is ZombieSpawn:
+			zombie_spawns.append(node)
+		elif node is Place:
+			places.append(node)
+		elif node is Door:
+			doors.append(node)
+		if node.has_meta("salvage_label") and not node is LootSpot:
+			salvage_others.append(node)
+	for door in doors:
+		# Where it is in the town (the town's own nodes aren't in the tree yet).
+		var xform := door.transform
+		var parent := door.get_parent()
+		while parent != town:
+			if parent is Node3D:
+				xform = (parent as Node3D).transform * xform
+			parent = parent.get_parent()
+		door.get_parent().remove_child(door)
+		door.owner = null # no longer part of the town scene
+		door.transform = town.transform * xform
+		door_holder.add_child(door, true)
+	nav_region.add_child(town)
+	var start := _spawn_point("player")
+	player_spawn = Transform3D(Basis(Vector3.UP, start.global_rotation.y), start.global_position) if start \
+			else Transform3D(Basis.IDENTITY, Vector3(0, 0.1, 0))
+
+
+## A node's path in the town scene, from the town's root ("MainStreet/Shop3/FrontDoor").
+func _town_path(node: Node) -> String:
+	var parts := PackedStringArray()
+	while node != town:
+		parts.insert(0, str(node.name))
+		node = node.get_parent()
+	return "/".join(parts)
+
+
+## The first SpawnPoint with this role, or null (with a warning).
+func _spawn_point(role: String) -> SpawnPoint:
+	for spot in spawn_points:
+		if spot.role == role:
+			return spot
+	push_warning("The town scene has no SpawnPoint with the role \"%s\"." % role)
+	return null
+
+
+## Where a SpawnPoint is, turned only about the vertical (an NPC stands upright).
+func _spawn_transform(role: String) -> Transform3D:
+	var spot := _spawn_point(role)
+	if spot == null:
+		return Transform3D.IDENTITY
+	return Transform3D(Basis(Vector3.UP, spot.global_rotation.y), spot.global_position)
+
+
+func _place_position(place_name: String) -> Vector3:
+	for place in places:
+		if place.place_name == place_name:
+			return place.global_position
+	push_warning("The town scene has no Place called \"%s\"." % place_name)
+	return Vector3.ZERO
+
+
 func _map_buildings() -> Array[PackedVector2Array]:
 	var result: Array[PackedVector2Array] = []
-	for node in nav_region.get_children():
-		if node is Building:
-			result.append((node as Building).footprint)
+	for node in town.find_children("*", "Node3D", true, false):
+		if node is Building and (node as Building).size_depth > 0.0:
+			result.append((node as Building).ground_corners())
+	return result
+
+
+## One rectangle on the ground (x, z) for each node in the group, covering its
+## box collision shapes: the roads ("map_road") and the compound fence ("map_fence").
+func _map_rects(group: String) -> Array[Rect2]:
+	var result: Array[Rect2] = []
+	for node in get_tree().get_nodes_in_group(group):
+		var rect := Rect2()
+		var first := true
+		for col: CollisionShape3D in node.find_children("*", "CollisionShape3D", true, false):
+			if not col.shape is BoxShape3D:
+				continue
+			var half := (col.shape as BoxShape3D).size / 2.0
+			for corner: Vector3 in [Vector3(-half.x, 0, -half.z), Vector3(half.x, 0, -half.z),
+					Vector3(-half.x, 0, half.z), Vector3(half.x, 0, half.z)]:
+				var p := col.global_transform * corner
+				if first:
+					rect = Rect2(p.x, p.z, 0, 0)
+					first = false
+				else:
+					rect = rect.expand(Vector2(p.x, p.z))
+		if not first:
+			result.append(rect)
 	return result
 
 
 ## Street names for the map screen, as [name, (x, z)]. Always shown.
 func _map_streets() -> Array:
-	return [
-		["Main Street", Vector2(0.0, -82.0)],
-		["Elm Street", Housing.ELM_STREET.get_center() + Vector2(0.0, 18.0)],
-		["7th Street", Vector2(-100.0, 0.0)],
-	]
+	var result := []
+	for place in places:
+		if place.kind == "street":
+			result.append([place.place_name, Vector2(place.global_position.x, place.global_position.z) + place.label_offset])
+	return result
 
 
 ## Places you find by going near them (world/discoveries.gd); the map names each
 ## one only after that. center and label_at are (x, z); radius is in meters.
 func _discoverable_places() -> Array[Dictionary]:
-	var compound_center := (PoliceStation.COMPOUND_MIN + PoliceStation.COMPOUND_MAX) / 2.0
-	var grocery := Grocery.map_position(builder)
-	var places: Array[Dictionary] = [
-		{"name": "Police Station", "center": compound_center, "radius": 30.0,
-				"label_at": Vector2(PoliceStation.STATION_X, PoliceStation.COMPOUND_MAX.y + 4.0)},
-		{"name": "Safe House", "center": Vector2(safe_house_point.x, safe_house_point.z), "radius": 25.0,
-				"label_at": Vector2(SafeHouse.SAFE_HOUSE_X, SafeHouse.SAFE_HOUSE_FRONT_Z + 16.0)},
-		{"name": "Gas Station", "center": Vector2(GasStation.CENTER_X, GasStation.CANOPY_Z), "radius": 25.0,
-				"label_at": GasStation.map_position()},
-	]
-	if grocery != Vector2.INF:
-		places.append({"name": "Grocery Store", "center": grocery, "radius": 18.0, "label_at": grocery})
-	return places
-
-
-## Plywood and scrap metal to find: in some containers (scrap mostly in cars),
-## and a few pieces lying in the streets. Rolled with their own generator, after
-## everything else, so the rest of the town comes out the same.
-func _scatter_materials() -> void:
-	materials_rng.seed = town_seed + 7
-	for spot: LootSpot in loot_spots:
-		if materials_rng.randf() < CONTAINER_PLYWOOD_CHANCE:
-			spot.inventory.add("plywood", materials_rng.randi_range(1, 2))
-		var scrap := CAR_SCRAP_CHANCE if spot.label == "Car" else CONTAINER_SCRAP_CHANCE
-		if materials_rng.randf() < scrap:
-			spot.inventory.add("scrap_metal", materials_rng.randi_range(1, 2))
-	for id in ["plywood", "scrap_metal"]:
-		for i in GROUND_MATERIALS:
-			# Along Main Street, or out along 7th Street toward the safe house.
-			var pos := Vector3(materials_rng.randf_range(-4.0, 4.0), 0.05, materials_rng.randf_range(-70.0, 35.0))
-			if materials_rng.randf() < 0.5:
-				pos = Vector3(materials_rng.randf_range(-130.0, -8.0), 0.05, materials_rng.randf_range(-3.0, 3.0))
-			builder.add_ground_item(id, 1, pos, materials_rng.randf_range(0.0, TAU))
+	var result: Array[Dictionary] = []
+	for place in places:
+		if place.kind == "discoverable":
+			var center := Vector2(place.global_position.x, place.global_position.z)
+			result.append({"name": place.place_name, "center": center, "radius": place.radius,
+					"label_at": center + place.label_offset})
+	return result
 
 
 ## Pressing interact on an NPC: open whatever that kind of NPC offers.
@@ -410,7 +464,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_load_or_restart()
 
 
-## After death: back to the last save if there is one, otherwise start over.
+## After death: back to the newest save (yours or the autosave) if there is one,
+## otherwise start over.
 func _load_or_restart() -> void:
 	if not SaveGame.request_load(get_tree()):
 		get_tree().reload_current_scene()
@@ -495,7 +550,7 @@ func _check_autosave() -> void:
 	if _player_threatened():
 		return
 	quest.autosaved_stages.append(quest.stage)
-	if _save_game():
+	if _save_game(SaveGame.AUTOSAVE):
 		hud.show_toast("Autosaved")
 
 
@@ -510,32 +565,30 @@ func _player_threatened() -> bool:
 	return false
 
 
-## The logbook's Save button. Collects everything that can change during play.
-func _save_game() -> bool:
-	var containers := []
-	for spot: LootSpot in loot_spots:
-		containers.append({"opened": spot.opened, "inventory": spot.inventory.to_dict()})
+## Saves the game to `path` (the logbook's new save or the one you picked, or
+## the autosave). Collects everything that can change during play. Things in the
+## town go by their town_id.
+func _save_game(path: String) -> bool:
+	var containers := {}
+	for spot in loot_spots:
+		containers[spot.get_meta("town_id")] = {"opened": spot.opened, "inventory": spot.inventory.to_dict()}
 	var ground := []
 	for item in get_tree().get_nodes_in_group("ground_items"):
 		if not item.is_queued_for_deletion(): # (picked up this frame)
 			ground.append({"id": item.item_id, "amount": item.amount,
 					"position": SaveGame.vec_to_array(item.global_position), "yaw": item.rotation.y})
-	# Every zombie placed at the start (dead or alive, one entry each), then the
-	# ones that turned up during play and are still up.
-	var zombie_data := []
-	for i in zombies.size():
-		var zombie := zombies[i]
-		if i >= zombie_population_node.first_dynamic() and zombie.is_dead:
-			continue
-		zombie_data.append({"position": SaveGame.vec_to_array(zombie.global_position),
-				"yaw": zombie.rotation.y, "health": zombie.health, "dead": zombie.is_dead})
-	var door_data := []
+	var zombie_data := [] # the ones still up
+	for zombie in zombies:
+		if is_instance_valid(zombie) and not zombie.is_dead:
+			zombie_data.append({"position": SaveGame.vec_to_array(zombie.global_position),
+					"yaw": zombie.rotation.y, "health": zombie.health, "kind": zombie.kind})
+	var door_data := {}
 	for door in doors:
-		door_data.append(door.save_state())
-	var bandit_data := []
+		door_data[door.get_meta("town_id")] = door.save_state()
+	var bandit_data := {} # by the SpawnPoint each started at
 	for bandit in bandits:
-		bandit_data.append({"position": SaveGame.vec_to_array(bandit.global_position),
-				"yaw": bandit.rotation.y, "health": bandit.health, "dead": bandit.is_dead})
+		bandit_data[bandit.get_meta("spawn_id")] = {"position": SaveGame.vec_to_array(bandit.global_position),
+				"yaw": bandit.rotation.y, "health": bandit.health, "dead": bandit.is_dead}
 	return SaveGame.write({
 		"clock": day_night.clock_text(),
 		"objective": quest.objective_text(),
@@ -545,7 +598,6 @@ func _save_game() -> bool:
 		"containers": containers,
 		"ground_items": ground,
 		"zombies": zombie_data,
-		"initial_zombies": zombie_population_node.first_dynamic(),
 		"bandits": bandit_data,
 		"doors": door_data,
 		"fortifications": fortifications.save_state(),
@@ -558,10 +610,10 @@ func _save_game() -> bool:
 		"survivors": survivors.save_state(),
 		"base": base_camp.save_state(),
 		"salvaged": salvage.save_state(),
-	})
+	}, path)
 
 
-## Put a save on top of the freshly built town. Order matters a little: the
+## Put a save on top of the freshly loaded town. Order matters a little: the
 ## world first, then the people in it, then you.
 func _apply_save(data: Dictionary) -> void:
 	var time: Dictionary = data.get("time", {})
@@ -569,68 +621,47 @@ func _apply_save(data: Dictionary) -> void:
 	day_night.day = int(time.get("day", day_night.day))
 	quest.load_state(data.get("quest", {}))
 
-	var containers: Array = data.get("containers", [])
-	for i in mini(containers.size(), loot_spots.size()):
-		var spot: LootSpot = loot_spots[i]
-		spot.inventory.from_dict(containers[i].get("inventory", {}))
-		if containers[i].get("opened", false):
+	var containers: Dictionary = data.get("containers", {})
+	for spot in loot_spots:
+		var saved: Dictionary = containers.get(spot.get_meta("town_id"), {})
+		if saved.is_empty():
+			continue # new to the town since the save: keeps its fresh contents
+		spot.inventory.from_dict(saved.get("inventory", {}))
+		if saved.get("opened", false):
 			spot.open() # darkens it like when you searched it
 
-	# Older saves have no doors: those keep their freshly built state.
-	var door_data: Array = data.get("doors", [])
-	for i in mini(door_data.size(), doors.size()):
-		doors[i].load_state(door_data[i])
+	var door_data: Dictionary = data.get("doors", {})
+	for door in doors:
+		if door_data.has(door.get_meta("town_id")):
+			door.load_state(door_data[door.get_meta("town_id")])
 	fortifications.load_state(data.get("fortifications", {}))
 	structures.load_state(data.get("structures", []))
-	if data.has("discovered"):
-		discoveries.load_state(data["discovered"])
-	else: # older saves: you've met the Chief, and maybe been to the safe house
-		discoveries.mark("Police Station")
-		if quest.stage >= MainQuest.Stage.REPORT_BACK:
-			discoveries.mark("Safe House")
+	discoveries.load_state(data.get("discovered", []))
 
-	# Ground items, zombies: throw away the freshly spawned ones and recreate
-	# exactly what the save recorded.
+	# Ground items and zombies: throw away the fresh ones and recreate exactly
+	# what the save recorded. (Nothing is aiming at a zombie yet: the game
+	# hasn't run a frame.)
 	for item in get_tree().get_nodes_in_group("ground_items"):
 		item.remove_from_group("ground_items")
 		item.queue_free()
 	for entry: Dictionary in data.get("ground_items", []):
 		if GameData.ITEMS.has(entry.get("id", "")):
-			builder.add_ground_item(entry["id"], int(entry.get("amount", 1)),
+			add_ground_item(entry["id"], int(entry.get("amount", 1)),
 					SaveGame.array_to_vec(entry["position"]), float(entry.get("yaw", 0.0)))
-
-	# Zombies, like bandits: the town spawns the same ones in the same order every
-	# time, so each saved entry goes back onto the zombie it came from. Nothing is
-	# freed, so nobody is ever left aiming at a deleted node. Older saves listed
-	# only the living (no "dead" flags): those fill the first zombies and the rest
-	# are laid down dead.
-	# Entries past "initial_zombies" are ones that turned up during play: those
-	# are recreated. (Older saves have no such entries, and none of the extra
-	# zombies placed at the start: those extras are laid down dead.)
-	var zombie_data: Array = data.get("zombies", [])
-	var saved_initial := mini(int(data.get("initial_zombies", zombie_data.size())), zombie_data.size())
-	for j in range(saved_initial, zombie_data.size()):
-		var later: Dictionary = zombie_data[j]
-		var arrival := _add_zombie(SaveGame.array_to_vec(later["position"]))
-		arrival.rotation.y = float(later.get("yaw", 0.0))
-		arrival.health = float(later.get("health", arrival.max_health))
-	for i in zombie_population_node.first_dynamic():
-		var zombie := zombies[i]
-		if i >= saved_initial:
-			zombie.die(false)
-			continue
-		var entry: Dictionary = zombie_data[i]
-		zombie.global_position = SaveGame.array_to_vec(entry["position"])
+	for zombie in zombies:
+		zombie.get_parent().remove_child(zombie) # out of the "zombies" group right away
+		zombie.queue_free()
+	zombies.clear()
+	for entry: Dictionary in data.get("zombies", []):
+		var zombie := _add_zombie(SaveGame.array_to_vec(entry["position"]), null, str(entry.get("kind", "walker")))
 		zombie.rotation.y = float(entry.get("yaw", 0.0))
-		if entry.get("dead", false):
-			zombie.die(false)
-		else:
-			zombie.health = float(entry.get("health", zombie.max_health))
+		zombie.health = float(entry.get("health", zombie.max_health))
 
-	var bandit_data: Array = data.get("bandits", [])
-	for i in mini(bandit_data.size(), bandits.size()):
-		var bandit := bandits[i]
-		var entry: Dictionary = bandit_data[i]
+	var bandit_data: Dictionary = data.get("bandits", {})
+	for bandit in bandits:
+		var entry: Dictionary = bandit_data.get(bandit.get_meta("spawn_id"), {})
+		if entry.is_empty():
+			continue
 		bandit.global_position = SaveGame.array_to_vec(entry["position"])
 		bandit.rotation.y = float(entry.get("yaw", 0.0))
 		if entry.get("dead", false):
@@ -651,6 +682,15 @@ func _apply_save(data: Dictionary) -> void:
 	player.load_state(data.get("player", {}))
 
 
+## An item lying on the ground, outside nav_region (items don't change zombie paths).
+func add_ground_item(id: String, amount: int, pos: Vector3, yaw: float) -> void:
+	var item := GroundItem.new()
+	item.position = pos
+	item.rotation.y = yaw
+	item.setup(id, amount)
+	add_child(item)
+
+
 # --- Characters --------------------------------------------------------------
 
 func _spawn_player() -> void:
@@ -662,33 +702,87 @@ func _spawn_player() -> void:
 	player.notify.connect(hud.show_toast)
 
 
+## The town's NPCs, at their SpawnPoints: the Quartermaster and the Chief in the
+## station, the guards on their towers, the bandits at their camp, and the
+## people who didn't make it at the safe house. After the navigation bake, so
+## they can find their way around.
+func _spawn_npcs() -> void:
+	for spot in spawn_points:
+		var xform := Transform3D(Basis(Vector3.UP, spot.global_rotation.y), spot.global_position)
+		match spot.role:
+			"trader":
+				trader = ShopkeeperScene.instantiate() as Shopkeeper
+				trader.transform = xform
+				trader.day_night = day_night # restocks each morning
+				add_child(trader)
+			"chief":
+				chief = PoliceChiefScene.instantiate() as PoliceChief
+				chief.transform = xform
+				add_child(chief)
+			"guard":
+				var guard := GuardScene.instantiate() as Guard
+				# Its own tower (what the marker sits under) doesn't block its aim.
+				var tower := spot.get_parent()
+				for part: CollisionObject3D in tower.find_children("*", "CollisionObject3D", true, false):
+					guard.exclude.append(part.get_rid())
+				if tower is CollisionObject3D:
+					guard.exclude.append((tower as CollisionObject3D).get_rid())
+				guard.guard_from = spot.watch_from
+				guard.guard_to = spot.watch_to
+				guard.transform = xform
+				add_child(guard)
+			"bandit":
+				var bandit := BanditScene.instantiate() as Bandit
+				bandit.home = (spot.get_parent() as Node3D).global_position # their camp
+				bandit.transform = xform
+				bandit.set_meta("spawn_id", spot.get_meta("town_id"))
+				add_child(bandit)
+				bandits.append(bandit)
+			"corpse":
+				var body := HumanNPCScene.instantiate() as HumanNPC
+				body.zombies_target = false
+				body.outfit_color = spot.outfit_color
+				body.transform = xform
+				add_child(body)
+				body.die()
+
+
+## Zombies at the town's ZombieSpawn markers: each one turns up with its marker's chance.
 func _spawn_zombies() -> void:
-	var rng := builder.rng
-	for i in outdoor_zombies:
-		var pos: Vector3
-		if rng.randf() < 0.65:
-			pos = builder.street_spot(-75.0, 35.0) + Vector3(0, 0.08, 0)
-		else:
-			# On the cross street west of Main (it runs out to the safe house), not
-			# where you start (x = 24) or in front of the police station.
-			pos = Vector3(rng.randf_range(-140.0, 6.0), 0.1, rng.randf_range(-4.0, 4.0))
-		_add_zombie(pos)
-	# A few more already shut inside the shops.
-	for point in builder.interior_points:
-		if rng.randf() < indoor_zombie_chance:
-			_add_zombie(point + Vector3(0, 0.1, 0))
-	# The safe house horde.
-	for point in safe_house_zombie_points:
-		_add_zombie(point)
+	for spawn in zombie_spawns:
+		for i in spawn.count:
+			if rng.randf() >= spawn.chance:
+				continue
+			var pos := spawn.global_position
+			if spawn.spread != Vector2.ZERO:
+				for attempt in 20: # not inside a car
+					pos = spawn.global_transform * Vector3(rng.randf_range(-spawn.spread.x, spawn.spread.x), 0.0,
+							rng.randf_range(-spawn.spread.y, spawn.spread.y))
+					if not _near_container(pos, ZOMBIE_CONTAINER_CLEARANCE):
+						break
+			_add_zombie(pos)
 
 
-## rng: whose dice pick its facing; the town's unless said otherwise.
-func _add_zombie(pos: Vector3, rng: RandomNumberGenerator = null) -> Zombie:
-	if rng == null:
-		rng = builder.rng
+func _near_container(pos: Vector3, min_dist: float) -> bool:
+	for spot in loot_spots:
+		if Vector2(pos.x - spot.global_position.x, pos.z - spot.global_position.z).length() < min_dist:
+			return true
+	return false
+
+
+## dice: whose dice pick its facing and kind; the game's (rng) unless said
+## otherwise. kind: "walker", "runner" or "crawler"; "" rolls it (crawler_chance,
+## runner_chance).
+func _add_zombie(pos: Vector3, dice: RandomNumberGenerator = null, kind := "") -> Zombie:
+	if dice == null:
+		dice = rng
+	if kind == "":
+		var roll := dice.randf()
+		kind = "crawler" if roll < crawler_chance else "runner" if roll < crawler_chance + runner_chance else "walker"
 	var zombie := ZombieScene.instantiate() as Zombie
+	zombie.kind = kind
 	zombie.position = pos
-	zombie.rotation.y = rng.randf_range(0.0, TAU)
+	zombie.rotation.y = dice.randf_range(0.0, TAU)
 	add_child(zombie)
 	zombies.append(zombie)
 	return zombie

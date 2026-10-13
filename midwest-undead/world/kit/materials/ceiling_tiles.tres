@@ -1,0 +1,17 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://world/kit/kit_pattern.gdshader" id="1_opecv"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_opecv")
+shader_parameter/pattern = 3
+shader_parameter/color = Color(0.55, 0.55, 0.52, 1)
+shader_parameter/joint_color = Color(0.4, 0.4, 0.38, 1)
+shader_parameter/cell = Vector2(0.6, 0.6)
+shader_parameter/joint = 0.015
+shader_parameter/variation = 0.04
+shader_parameter/grime = 0.2
+shader_parameter/roughness_value = 0.95
+shader_parameter/metallic_value = 0.0
+shader_parameter/tint = Color(1, 1, 1, 1)

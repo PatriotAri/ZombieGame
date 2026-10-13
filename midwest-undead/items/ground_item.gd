@@ -6,17 +6,28 @@ extends Area3D
 
 const GameData := preload("res://core/game_data.gd")
 
-var item_id := ""
-var amount := 1
+@export var item_id := ""
+@export var amount := 1
 
 
+## For items made in code: call before adding it to the tree.
 func setup(id: String, count := 1) -> void:
 	item_id = id
 	amount = count
+
+
+## Items in the town scene come with their meshes and pickup zone already (made
+## when the town was frozen); one placed with just an item_id gets them here.
+func _ready() -> void:
 	add_to_group("ground_items")
 	collision_layer = GameData.LAYER_ITEMS
 	collision_mask = 0
+	if get_child_count() == 0 and GameData.ITEMS.has(item_id):
+		_build()
 
+
+func _build() -> void:
+	var id := item_id
 	var def: Dictionary = GameData.ITEMS[id]
 	var size: Vector3 = def["size"]
 	_add_box(size, Vector3(0, size.y / 2.0, 0), def["color"])
@@ -30,6 +41,7 @@ func setup(id: String, count := 1) -> void:
 	var shape := BoxShape3D.new()
 	shape.size = zone
 	var col := CollisionShape3D.new()
+	col.name = "PickupZone"
 	col.shape = shape
 	col.position.y = zone.y / 2.0
 	add_child(col)

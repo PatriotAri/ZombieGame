@@ -3,13 +3,15 @@ extends CanvasLayer
 ## Pausing works by setting get_tree().paused = true, which freezes every node whose
 ## process_mode is the default (Inherit -> Pausable): the player, zombies, physics, tweens.
 ## This menu sets its own process_mode to ALWAYS so it keeps running while paused.
-## "Settings" and "Controls" swap the button list for that page (ui/settings_page.gd,
-## ui/controls_page.gd, shared with the main menu); Back, Esc or B comes back.
+## "Load game", "Settings" and "Controls" swap the button list for that page
+## (ui/save_list.gd, ui/settings_page.gd, ui/controls_page.gd, shared with the
+## main menu); Back, Esc or B comes back.
 
 const SaveGame := preload("res://core/save_game.gd")
 const MenuStyle := preload("res://ui/menu_style.gd")
 const SettingsPage := preload("res://ui/settings_page.gd")
 const ControlsPage := preload("res://ui/controls_page.gd")
+const SaveList := preload("res://ui/save_list.gd")
 const MAIN_MENU := "res://ui/main_menu.tscn"
 
 var resume_button: Button
@@ -17,6 +19,7 @@ var _load_button: Button
 var _main_page: VBoxContainer
 var _settings_page: SettingsPage
 var _controls_page: ControlsPage
+var _load_page: SaveList
 var _page_buttons := {} # page -> the button that opened it, to put focus back on
 
 
@@ -65,10 +68,6 @@ func resume() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
-func _load() -> void:
-	SaveGame.request_load(get_tree())
-
-
 ## Starts over from the beginning. Your save file is kept, so you can still load it.
 func _restart() -> void:
 	get_tree().paused = false # pause state survives a scene change, so clear it first
@@ -87,7 +86,7 @@ func _quit() -> void:
 
 ## The settings or controls page if one is showing, else null.
 func _open_page() -> Control:
-	for page: Control in [_settings_page, _controls_page]:
+	for page: Control in [_settings_page, _controls_page, _load_page]:
 		if page.visible:
 			return page
 	return null
@@ -96,6 +95,8 @@ func _open_page() -> Control:
 func _show_page(page: Control) -> void:
 	_main_page.visible = false
 	page.visible = true
+	if page.has_method("refresh"):
+		page.call("refresh")
 	page.call("focus_first")
 
 
@@ -121,7 +122,7 @@ func _build_ui() -> void:
 	center.add_child(_main_page)
 	MenuStyle.add_title(_main_page, "PAUSED")
 	resume_button = MenuStyle.add_button(_main_page, "Resume", resume)
-	_load_button = MenuStyle.add_button(_main_page, "Load last save", _load)
+	_load_button = MenuStyle.add_button(_main_page, "Load game", func() -> void: _show_page(_load_page))
 	var settings_button := MenuStyle.add_button(_main_page, "Settings", func() -> void: _show_page(_settings_page))
 	var controls_button := MenuStyle.add_button(_main_page, "Controls", func() -> void: _show_page(_controls_page))
 	MenuStyle.add_button(_main_page, "New game", _restart)
@@ -130,8 +131,9 @@ func _build_ui() -> void:
 
 	_settings_page = SettingsPage.new()
 	_controls_page = ControlsPage.new()
-	_page_buttons = {_settings_page: settings_button, _controls_page: controls_button}
-	for page: Control in [_settings_page, _controls_page]:
+	_load_page = SaveList.new()
+	_page_buttons = {_settings_page: settings_button, _controls_page: controls_button, _load_page: _load_button}
+	for page: Control in [_settings_page, _controls_page, _load_page]:
 		page.visible = false
 		center.add_child(page)
 		page.connect("back", _show_buttons.bind(page))

@@ -1,6 +1,7 @@
 extends CharacterBody3D
-## First-person survivor: movement, stamina, hunger, crouching, melee, the pistol,
-## a battery-powered flashlight, an inventory, picking things up, trading, and the
+## First-person survivor: movement, stamina, hunger, crouching, melee, guns
+## (pistol, shotgun, scoped rifle; hold aim to look down the sights or through
+## the scope), a battery-powered flashlight, an inventory, picking things up, trading, and the
 ## noise all of that makes.
 ## The node tree (camera, flashlight, weapon models) lives in player.tscn.
 ## TUNING: open player.tscn, select the Player node, and use the Inspector.
@@ -94,18 +95,46 @@ const Fortifications := preload("res://world/fortifications.gd")
 @export var starting_planks := 2
 @export var starting_barricades := 1
 
+@export_group("Guns")
+## Hits above about 1.4 m on a zombie or a person do this much more damage.
+@export var headshot_multiplier := 2.5
+## Moving while aiming is this much of your walking speed (and you can't sprint).
+@export_range(0.1, 1.0) var aim_move_factor := 0.65
 @export_group("Pistol")
 @export var pistol_damage := 55.0
-@export var headshot_multiplier := 2.5
 @export var pistol_range := 60.0
 @export var pistol_cooldown := 0.3
 @export var pistol_reload_time := 1.6
+@export_group("Shotgun")
+## Each pellet. A blast fires shotgun_pellets of them in a cone.
+@export var shotgun_pellet_damage := 20.0
+@export var shotgun_pellets := 9
+@export var shotgun_range := 28.0
+## Half-angle of the pellets' cone, in degrees: from the hip, and aiming.
+@export var shotgun_spread := 5.0
+@export var shotgun_aimed_spread := 3.5
+@export var shotgun_cooldown := 0.95
+@export var shotgun_reload_time := 2.6
+@export_group("Rifle")
+@export var rifle_damage := 140.0
+@export var rifle_range := 160.0
+## Degrees off where you point, from the hip. Through the scope it's dead on.
+@export var rifle_hip_spread := 3.0
+@export var rifle_cooldown := 1.3
+@export var rifle_reload_time := 2.8
+## Field of view through the scope (degrees; the normal view is 75).
+@export_range(5.0, 60.0) var rifle_scope_fov := 20.0
 
 const EYE_HEIGHT := 1.6
 const CROUCH_EYE_HEIGHT := 1.0
 const STAMINA_REGEN_DELAY := 0.8 # seconds after exertion before stamina refills
 const INTERACT_RANGE := 2.5
 const PISTOL_MAG := 7
+const SHOTGUN_MAG := 5
+const RIFLE_MAG := 5
+const AIM_SPEED := 10.0 # how fast the view zooms in and out
+## Zoomed in further than this (degrees), the rifle's view is the scope's.
+const SCOPE_FOV_THRESHOLD := 40.0
 
 const FISTS := {"name": "Fists", "damage": 20.0, "range": 1.7, "cooldown": 0.45, "stamina": 8.0, "knockback": 2.0}
 const CROWBAR := {"name": "Crowbar", "damage": 45.0, "range": 2.3, "cooldown": 0.7, "stamina": 15.0, "knockback": 4.0}
@@ -114,7 +143,9 @@ var health := 100.0 # set to max_health in _ready
 var stamina := 100.0
 var money := 0 # US dollars
 var inventory := Inventory.new()
-var pistol_mag := PISTOL_MAG # rounds loaded in the gun (not in the inventory)
+## Rounds loaded in each gun (not in the inventory). The pistol starts loaded.
+var mags := {"pistol": PISTOL_MAG, "shotgun": 0, "rifle": 0}
+var aiming := false # holding aim with a gun in your hands
 ## What's in your hands: "hands" (empty, you punch) or an item id with a "use"
 ## in game_data.gd. The use button does whatever that item does.
 var held := "pistol"
@@ -136,6 +167,9 @@ var prompt_text := "" # read by the HUD
 @onready var crowbar_mesh: MeshInstance3D = $Camera3D/WeaponPivot/Crowbar
 @onready var pistol_pivot: Node3D = $Camera3D/PistolPivot
 @onready var muzzle_flash: OmniLight3D = $Camera3D/PistolPivot/MuzzleFlash
+var gun_pivots := {} # gun id -> its model in your hands (the shotgun's and rifle's are made in _ready)
+var _gun_rest := Vector3.ZERO # where the gun models sit when you're not aiming
+var _base_fov := 75.0
 @onready var item_pivot: Node3D = $Camera3D/ItemPivot # health packs, food: anything you use up
 @onready var held_item_mesh: MeshInstance3D = $Camera3D/ItemPivot/HeldItem
 
@@ -187,6 +221,9 @@ func _ready() -> void:
 	inventory.add("barricade", starting_barricades)
 	_flashlight_energy = flashlight.light_energy
 	_item_pivot_rest = item_pivot.position
+	_base_fov = camera.fov
+	_gun_rest = pistol_pivot.position
+	gun_pivots = {"pistol": pistol_pivot, "shotgun": _make_long_gun(false), "rifle": _make_long_gun(true)}
 	_refresh_weapon_visuals()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -201,7 +238,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var motion := event as InputEventMouseMotion
 	if motion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		_look(motion.relative * mouse_sensitivity * Settings.mouse_sensitivity)
+		_look(motion.relative * mouse_sensitivity * Settings.mouse_sensitivity * _zoom_factor())
 		return
 	# A real click (not the scroll wheel) re-grabs the mouse after it was freed.
 	if event is InputEventMouseButton and event.is_pressed() \
@@ -267,6 +304,7 @@ func _physics_process(delta: float) -> void:
 	elif not is_on_floor():
 		velocity.y -= gravity * delta
 
+	_update_aim(delta)
 	if menu_open:
 		# Hands are busy: stand still, but the world keeps going.
 		velocity.x = move_toward(velocity.x, 0.0, walk_speed)
@@ -290,7 +328,7 @@ func _physics_process(delta: float) -> void:
 	# Right stick look. get_vector applies the stick deadzone for us.
 	var stick := Input.get_vector("look_left", "look_right", "look_up", "look_down")
 	if stick != Vector2.ZERO:
-		_look(stick * stick_look_speed * Settings.stick_sensitivity * delta)
+		_look(stick * stick_look_speed * Settings.stick_sensitivity * delta * _zoom_factor())
 
 	# The use button is polled (not event-driven) so the analog trigger fires once per pull.
 	if Input.is_action_just_pressed("use_held") and not just_resumed:
@@ -323,12 +361,14 @@ func _physics_process(delta: float) -> void:
 	# Not normalized, so a half-tilted stick walks at half speed.
 	var direction := transform.basis * Vector3(input_dir.x, 0, input_dir.y)
 	var sprinting := (Input.is_action_pressed("sprint") or sprint_latched) and not is_crouching \
-			and stamina > 0.0 and direction != Vector3.ZERO
+			and stamina > 0.0 and direction != Vector3.ZERO and not aiming
 	var speed := walk_speed
 	if is_crouching:
 		speed = crouch_speed
 	elif sprinting:
 		speed = sprint_speed
+	if aiming:
+		speed *= aim_move_factor
 	if direction != Vector3.ZERO:
 		velocity.x = direction.x * speed
 		velocity.z = direction.z * speed
@@ -376,8 +416,11 @@ func _die(cause: String) -> void:
 	_ladders.clear()
 	flashlight.visible = false
 	weapon_pivot.visible = false
-	pistol_pivot.visible = false
+	for pivot: Node3D in gun_pivots.values():
+		pivot.visible = false
 	item_pivot.visible = false
+	aiming = false
+	camera.fov = _base_fov
 	camera.position.y = 0.3 # collapse to the ground
 	died.emit()
 
@@ -403,12 +446,12 @@ func flashlight_text() -> String:
 
 ## Text for the HUD describing what's in your hands, e.g. "Pistol 5/7  (+12)".
 func held_label() -> String:
-	match held:
-		"pistol":
-			var text := "Pistol %d/%d  (+%d)" % [pistol_mag, PISTOL_MAG, inventory.count("pistol_ammo")]
-			return text + "  reloading..." if reload_timer > 0.0 else text
-		"hands":
-			return "Fists"
+	if is_gun(held):
+		var gun := _gun(held)
+		var text := "%s %d/%d  (+%d)" % [GameData.item_name(held), mags[held], gun["mag"], inventory.count(gun["ammo"])]
+		return text + "  reloading..." if reload_timer > 0.0 else text
+	if held == "hands":
+		return "Fists"
 	var label := GameData.item_name(held)
 	if inventory.count(held) > 1:
 		label += " x%d" % inventory.count(held)
@@ -457,7 +500,7 @@ func save_state() -> Dictionary:
 		"stamina": stamina,
 		"money": money,
 		"inventory": inventory.to_dict(),
-		"pistol_mag": pistol_mag,
+		"mags": mags.duplicate(),
 		"held": held,
 		"flashlight": flashlight.visible,
 		"flashlight_charge": flashlight_charge,
@@ -474,7 +517,9 @@ func load_state(data: Dictionary) -> void:
 	stamina = float(data.get("stamina", max_stamina))
 	money = int(data.get("money", money))
 	inventory.from_dict(data.get("inventory", {}))
-	pistol_mag = int(data.get("pistol_mag", PISTOL_MAG))
+	var saved_mags: Dictionary = data.get("mags", {"pistol": data.get("pistol_mag", PISTOL_MAG)})
+	for id: String in mags:
+		mags[id] = clampi(int(saved_mags.get(id, 0)), 0, _gun(id)["mag"])
 	flashlight_charge = clampf(float(data.get("flashlight_charge", 1.0)), 0.0, 1.0)
 	flashlight.visible = bool(data.get("flashlight", false)) and flashlight_charge > 0.0
 	hunger = clampf(float(data.get("hunger", starting_hunger)), 0.0, 100.0)
@@ -494,10 +539,10 @@ func give_item(id: String, amount := 1) -> void:
 ## Removes up to amount; returns how many actually left your inventory.
 func take_item(id: String, amount := 1) -> int:
 	var taken := inventory.remove(id, amount)
-	if id == "pistol" and taken > 0 and not inventory.has("pistol"):
+	if is_gun(id) and taken > 0 and not inventory.has(id):
 		# Unload the gun as it leaves your hands, so the loaded rounds stay with you.
-		inventory.add("pistol_ammo", pistol_mag)
-		pistol_mag = 0
+		inventory.add(_gun(id)["ammo"], mags[id])
+		mags[id] = 0
 	_drop_held_if_gone()
 	return taken
 
@@ -608,9 +653,9 @@ func _looked_at() -> Node3D:
 	if hit.is_empty():
 		return null
 	var thing := hit["collider"] as Node3D
-	# Part of something bigger (a car's roof): that's what you're looking at.
-	if thing and thing.has_meta("part_of"):
-		return thing.get_meta("part_of") as Node3D
+	# Part of something bigger (a car's roof, under the car): that's what you're looking at.
+	if thing and thing.get_meta("part_of_parent", false):
+		return thing.get_parent() as Node3D
 	return thing
 
 
@@ -925,67 +970,186 @@ func _apply_melee_hit(weapon: Dictionary) -> void:
 		Sound.play_ui(self, "melee_hit", -2.0, 0.15)
 
 
-## Hitscan: an instant ray from the center of the screen (where the crosshair is).
+## The stats of a gun: its ammo, how many it holds, and how it shoots.
+func _gun(id: String) -> Dictionary:
+	match id:
+		"shotgun":
+			return {"ammo": "shotgun_shells", "mag": SHOTGUN_MAG, "damage": shotgun_pellet_damage,
+					"pellets": shotgun_pellets, "range": shotgun_range, "spread": shotgun_spread,
+					"aimed_spread": shotgun_aimed_spread, "cooldown": shotgun_cooldown, "reload": shotgun_reload_time,
+					"aim_fov": 62.0, "noise": noise_gunshot * 1.3, "knockback": 2.5, "kick": 24.0,
+					"sound": "shotgun_shot", "pitch": 1.0, "volume": 0.0}
+		"rifle":
+			return {"ammo": "rifle_rounds", "mag": RIFLE_MAG, "damage": rifle_damage, "pellets": 1,
+					"range": rifle_range, "spread": rifle_hip_spread, "aimed_spread": 0.0,
+					"cooldown": rifle_cooldown, "reload": rifle_reload_time, "aim_fov": rifle_scope_fov,
+					"noise": noise_gunshot * 1.6, "knockback": 3.0, "kick": 18.0,
+					"sound": "rifle_shot", "pitch": 1.0, "volume": 0.0}
+	return {"ammo": "pistol_ammo", "mag": PISTOL_MAG, "damage": pistol_damage, "pellets": 1,
+			"range": pistol_range, "spread": 0.0, "aimed_spread": 0.0, "cooldown": pistol_cooldown,
+			"reload": pistol_reload_time, "aim_fov": 60.0, "noise": noise_gunshot, "knockback": 1.5,
+			"kick": 14.0, "sound": "gunshot", "pitch": 1.0, "volume": 0.0}
+
+
+static func is_gun(id: String) -> bool:
+	return id in ["pistol", "shotgun", "rifle"]
+
+
+## For the inventory and trade screens, e.g. "Shotgun  (3/5 loaded)".
+func gun_text(id: String) -> String:
+	return "%s  (%d/%d loaded)" % [GameData.item_name(id), mags[id], _gun(id)["mag"]]
+
+
+## Looking through the rifle's scope (the HUD draws the scope over the screen).
+func is_scoped() -> bool:
+	return aiming and held == "rifle" and camera.fov < SCOPE_FOV_THRESHOLD
+
+
+## Hold aim (right mouse / LT) with a gun: the view zooms in, the gun comes up to
+## the middle of the screen, and you turn slower to match. Not while reloading.
+func _update_aim(delta: float) -> void:
+	aiming = is_gun(held) and Input.is_action_pressed("aim") and not menu_open and reload_timer <= 0.0
+	var goal_fov: float = _gun(held)["aim_fov"] if aiming else _base_fov
+	camera.fov = lerpf(camera.fov, goal_fov, minf(AIM_SPEED * delta, 1.0))
+	if is_gun(held):
+		var pivot: Node3D = gun_pivots[held]
+		var goal := Vector3(0.0, -0.16, -0.4) if aiming else _gun_rest
+		pivot.position = pivot.position.lerp(goal, minf(AIM_SPEED * delta, 1.0))
+		pivot.visible = not is_scoped() # through the scope, the scope is all you see
+
+
+## Zoomed in, the same mouse movement turns you less (so aiming stays steady).
+func _zoom_factor() -> float:
+	return camera.fov / _base_fov
+
+
+## Hitscan: instant rays from the center of the screen (where the crosshair is),
+## one per pellet, spread in a cone that's tighter when aiming.
 func _try_shoot() -> void:
 	if attack_cooldown > 0.0 or reload_timer > 0.0:
 		return
-	if pistol_mag <= 0:
+	var gun := _gun(held)
+	if mags[held] <= 0:
 		attack_cooldown = 0.3
 		Sound.play_ui(self, "dry_fire", -4.0)
-		notify.emit("Empty. Press %s to reload." % Controls.hint("reload") if inventory.has("pistol_ammo") else "Out of ammo.")
+		notify.emit("Empty. Press %s to reload." % Controls.hint("reload") if inventory.has(gun["ammo"]) else "Out of ammo.")
 		return
-	pistol_mag -= 1
-	attack_cooldown = pistol_cooldown
-	_pistol_kick()
-	make_noise(noise_gunshot)
-	Sound.play_ui(self, "gunshot")
+	mags[held] -= 1
+	attack_cooldown = gun["cooldown"]
+	_gun_kick(gun["kick"])
+	make_noise(gun["noise"])
+	Sound.play_ui(self, gun["sound"], gun["volume"], 0.05, gun["pitch"])
 
+	var spread := deg_to_rad(gun["aimed_spread"] if aiming else gun["spread"])
 	var origin := camera.global_position
-	var end := origin - camera.global_basis.z * pistol_range
-	var query := PhysicsRayQueryParameters3D.create(origin, end,
-			GameData.LAYER_WORLD | GameData.LAYER_ZOMBIES | GameData.LAYER_NPC)
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if hit.is_empty():
-		return
-	var target := hit["collider"] as Node3D
-	if target and target.has_method("take_hit"):
-		var hit_pos: Vector3 = hit["position"]
-		var headshot := hit_pos.y - target.global_position.y > 1.4 # heads sit at ~1.4-1.8 m
-		var damage := pistol_damage * (headshot_multiplier if headshot else 1.0)
-		target.call("take_hit", damage, global_position, 1.5, self)
+	var space := get_world_3d().direct_space_state
+	var damage_to := {} # target -> total damage from this shot (pellets add up)
+	for i in int(gun["pellets"]):
+		# A random direction inside the cone: tilt off center, then spin round it.
+		var dir := -camera.global_basis.z
+		if spread > 0.0:
+			var off := camera.global_basis.x.rotated(dir, randf() * TAU)
+			dir = dir.rotated(off, sqrt(randf()) * spread)
+		var query := PhysicsRayQueryParameters3D.create(origin, origin + dir * float(gun["range"]),
+				GameData.LAYER_WORLD | GameData.LAYER_ZOMBIES | GameData.LAYER_NPC)
+		var hit := space.intersect_ray(query)
+		if hit.is_empty():
+			continue
+		var target := hit["collider"] as Node3D
+		if target and target.has_method("take_hit"):
+			var hit_pos: Vector3 = hit["position"]
+			var headshot: bool = target.call("is_headshot", hit_pos) if target.has_method("is_headshot") \
+					else hit_pos.y - target.global_position.y > 1.4 # people's heads sit at ~1.4-1.8 m
+			damage_to[target] = float(damage_to.get(target, 0.0)) + float(gun["damage"]) * (headshot_multiplier if headshot else 1.0)
+	for target: Node3D in damage_to:
+		if is_instance_valid(target):
+			target.call("take_hit", damage_to[target], global_position, gun["knockback"], self)
 
 
 func _start_reload() -> void:
-	if held != "pistol" or reload_timer > 0.0 or pistol_mag >= PISTOL_MAG:
+	if not is_gun(held) or reload_timer > 0.0:
 		return
-	if not inventory.has("pistol_ammo"):
-		notify.emit("No pistol ammo.")
+	var gun := _gun(held)
+	if mags[held] >= gun["mag"]:
 		return
-	reload_timer = pistol_reload_time
+	if not inventory.has(gun["ammo"]):
+		notify.emit("No %s." % GameData.item_name(gun["ammo"]).to_lower())
+		return
+	var pivot: Node3D = gun_pivots[held]
+	var time: float = gun["reload"]
+	reload_timer = time
 	Sound.play_ui(self, "reload", -4.0, 0.0)
 	reload_tween = create_tween()
-	reload_tween.tween_property(pistol_pivot, "rotation_degrees", Vector3(-40, 0, 20), 0.25)
-	reload_tween.tween_interval(maxf(pistol_reload_time - 0.5, 0.0))
-	reload_tween.tween_property(pistol_pivot, "rotation_degrees", Vector3.ZERO, 0.25)
+	reload_tween.tween_property(pivot, "rotation_degrees", Vector3(-40, 0, 20), 0.25)
+	reload_tween.tween_interval(maxf(time - 0.5, 0.0))
+	reload_tween.tween_property(pivot, "rotation_degrees", Vector3.ZERO, 0.25)
 
 
 func _finish_reload() -> void:
-	pistol_mag += inventory.remove("pistol_ammo", PISTOL_MAG - pistol_mag)
+	if not is_gun(held):
+		return
+	var gun := _gun(held)
+	mags[held] += inventory.remove(gun["ammo"], int(gun["mag"]) - int(mags[held]))
 
 
 func _cancel_reload() -> void:
 	reload_timer = 0.0
 	if reload_tween:
 		reload_tween.kill()
-	pistol_pivot.rotation_degrees = Vector3.ZERO
+	for pivot: Node3D in gun_pivots.values():
+		pivot.rotation_degrees = Vector3.ZERO
 
 
-func _pistol_kick() -> void:
-	pistol_pivot.rotation_degrees = Vector3(14, 0, 0)
+func _gun_kick(degrees: float) -> void:
+	var pivot: Node3D = gun_pivots[held]
+	pivot.rotation_degrees = Vector3(degrees, 0, 0)
 	var tween := create_tween()
-	tween.tween_property(pistol_pivot, "rotation_degrees", Vector3.ZERO, 0.15)
-	muzzle_flash.visible = true
-	get_tree().create_timer(0.05).timeout.connect(func() -> void: muzzle_flash.visible = false)
+	tween.tween_property(pivot, "rotation_degrees", Vector3.ZERO, 0.15 + degrees / 100.0)
+	var flash: OmniLight3D = pivot.get_node("MuzzleFlash")
+	flash.visible = true
+	get_tree().create_timer(0.05).timeout.connect(func() -> void: flash.visible = false)
+
+
+## The shotgun's or the rifle's model in your hands (the pistol's is in player.tscn).
+func _make_long_gun(scoped: bool) -> Node3D:
+	var pivot := Node3D.new()
+	pivot.name = "RiflePivot" if scoped else "ShotgunPivot"
+	pivot.position = pistol_pivot.position
+	pivot.visible = false
+	camera.add_child(pivot)
+	var wood := Color(0.36, 0.24, 0.14) if not scoped else Color(0.26, 0.2, 0.13)
+	var steel := Color(0.16, 0.16, 0.18)
+	var parts := [
+		[Vector3(0.05, 0.05, 0.62), Vector3(0, 0.02, -0.28), steel], # barrel
+		[Vector3(0.07, 0.09, 0.32), Vector3(0, -0.01, 0.05), steel], # receiver
+		[Vector3(0.06, 0.1, 0.3), Vector3(0, -0.04, 0.32), wood], # stock
+	]
+	if scoped:
+		parts.append([Vector3(0.05, 0.05, 0.24), Vector3(0, 0.1, -0.02), steel]) # scope
+		parts.append([Vector3(0.02, 0.05, 0.02), Vector3(0, 0.06, -0.08), steel]) # its mounts
+		parts.append([Vector3(0.02, 0.05, 0.02), Vector3(0, 0.06, 0.06), steel])
+	else:
+		parts.append([Vector3(0.07, 0.06, 0.2), Vector3(0, -0.04, -0.25), wood]) # pump
+	for part: Array in parts:
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = part[2]
+		var box := BoxMesh.new()
+		box.size = part[0]
+		box.material = mat
+		var inst := MeshInstance3D.new()
+		inst.mesh = box
+		inst.position = part[1]
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		pivot.add_child(inst)
+	var flash := OmniLight3D.new()
+	flash.name = "MuzzleFlash"
+	flash.position = Vector3(0, 0.02, -0.62)
+	flash.light_color = muzzle_flash.light_color
+	flash.light_energy = muzzle_flash.light_energy * 1.4
+	flash.omni_range = muzzle_flash.omni_range
+	flash.visible = false
+	pivot.add_child(flash)
+	return pivot
 
 
 ## Show the model for whatever's in your hands.
@@ -993,7 +1157,10 @@ func _refresh_weapon_visuals() -> void:
 	if is_dead or not is_node_ready():
 		return
 	var use := GameData.item_use(held)
-	pistol_pivot.visible = held == "pistol"
+	for id: String in gun_pivots:
+		var pivot: Node3D = gun_pivots[id]
+		pivot.visible = id == held
+		pivot.position = _gun_rest
 	weapon_pivot.visible = held == "hands" or held == "crowbar"
 	fist_mesh.visible = held == "hands"
 	crowbar_mesh.visible = held == "crowbar"

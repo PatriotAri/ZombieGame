@@ -1,0 +1,88 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_4yhdi"]
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_rstap"]
+[ext_resource type="Material" path="res://world/kit/materials/canvas.tres" id="2_13i46"]
+[ext_resource type="Script" path="res://world/markers/spawn_point.gd" id="2_nnpp4"]
+[ext_resource type="Material" path="res://world/kit/materials/rust.tres" id="3_t7sd0"]
+[ext_resource type="Material" path="res://world/kit/materials/char.tres" id="4_y4x6y"]
+[ext_resource type="Material" path="res://world/kit/materials/crate_wood.tres" id="6_w8po0"]
+
+[node name="BanditCamp" type="Node3D" unique_id=313177424]
+
+[node name="BanditCamp" type="Node3D" parent="." unique_id=1593701292]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0, -35)
+
+[node name="Block" type="StaticBody3D" parent="BanditCamp" unique_id=1106415518]
+transform = Transform3D(0.9800666, 0, 0.19866933, 0, 1, 0, -0.19866933, 0, 0.9800666, -5, 0.9, 3.5)
+script = ExtResource("1_rstap")
+size = Vector3(3, 1.8, 2.4)
+material = ExtResource("2_13i46")
+
+[node name="Block2" type="StaticBody3D" parent="BanditCamp" unique_id=869246534]
+transform = Transform3D(0.9553365, 0, -0.29552022, 0, 1, 0, 0.29552022, 0, 0.9553365, 4.5, 0.9, 4)
+script = ExtResource("1_rstap")
+size = Vector3(3, 1.8, 2.4)
+material = ExtResource("2_13i46")
+
+[node name="Block3" type="StaticBody3D" parent="BanditCamp" unique_id=1482754021]
+transform = Transform3D(0.16996716, 0, 0.98544973, 0, 1, 0, -0.98544973, 0, 0.16996716, 0, 0.45, 7.5)
+script = ExtResource("1_rstap")
+size = Vector3(1.9, 0.9, 4.4)
+material = ExtResource("3_t7sd0")
+
+[node name="Block4" type="StaticBody3D" parent="BanditCamp" unique_id=331865675]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.125, 0)
+script = ExtResource("1_rstap")
+size = Vector3(0.9, 0.25, 0.9)
+material = ExtResource("4_y4x6y")
+
+[node name="BanditStash" type="StaticBody3D" parent="BanditCamp" unique_id=186189113]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0.4, 5)
+script = ExtResource("1_4yhdi")
+label = "Bandit stash"
+fixed_items = Dictionary[String, int]({
+"batteries": 2,
+"canned_food": 2,
+"health_pack": 1,
+"pistol_ammo": 16
+})
+loot_table = "none"
+size = Vector3(1.2, 0.8, 0.9)
+material = ExtResource("6_w8po0")
+
+[node name="Light" type="OmniLight3D" parent="BanditCamp" unique_id=1762285131]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+light_color = Color(1, 0.55, 0.2, 1)
+light_energy = 2.0
+omni_range = 10.0
+
+[node name="BanditSpot" type="Marker3D" parent="BanditCamp" unique_id=846668957]
+transform = Transform3D(-0.9298565, 0, 0.36792243, 0, 1, 0, -0.36792243, 0, -0.9298565, -3, 0.14727779, -2)
+script = ExtResource("2_nnpp4")
+role = "bandit"
+
+[node name="BanditSpot2" type="Marker3D" parent="BanditCamp" unique_id=1340676834]
+transform = Transform3D(0.019140938, 0, -0.9998168, 0, 1, 0, 0.9998168, 0, 0.019140938, 3, 0.14727779, -2)
+script = ExtResource("2_nnpp4")
+role = "bandit"
+
+[node name="BanditSpot3" type="Marker3D" parent="BanditCamp" unique_id=515450304]
+transform = Transform3D(0.59057647, 0, 0.8069817, 0, 1, 0, -0.8069817, 0, 0.59057647, -2, 0.14727779, 2)
+script = ExtResource("2_nnpp4")
+role = "bandit"
+
+[node name="BanditSpot4" type="Marker3D" parent="BanditCamp" unique_id=480449949]
+transform = Transform3D(0.75749004, 0, -0.6528467, 0, 1, 0, 0.6528467, 0, 0.75749004, 2.5, 0.14727779, 1.5)
+script = ExtResource("2_nnpp4")
+role = "bandit"
+
+[node name="BanditSpot5" type="Marker3D" parent="BanditCamp" unique_id=2065319718]
+transform = Transform3D(0.14604428, 0, 0.9892781, 0, 1, 0, -0.9892781, 0, 0.14604428, 0, 0.14727779, -4)
+script = ExtResource("2_nnpp4")
+role = "bandit"
+
+[node name="WoodworkerCaptive" type="Marker3D" parent="BanditCamp" unique_id=343758062]
+transform = Transform3D(-1, 0, -1.509958e-07, 0, 1, 0, 1.509958e-07, 0, -1, 2.5, 0.1, -7)
+script = ExtResource("2_nnpp4")
+role = "woodworker_captive"

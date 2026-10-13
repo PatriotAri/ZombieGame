@@ -22,8 +22,9 @@ const CACHE_META := &"sound_cache"
 
 ## A sound out in the world, at a fixed spot. Fades out by max_distance meters.
 ## context is any node in the scene tree (needed to reach the tree).
+## pitch: 1 as recorded, lower is deeper.
 static func play_at(context: Node, id: String, pos: Vector3, volume_db := 0.0,
-		max_distance := 30.0, pitch_jitter := 0.08) -> void:
+		max_distance := 30.0, pitch_jitter := 0.08, pitch := 1.0) -> void:
 	if not context.is_inside_tree():
 		return
 	# Out of earshot: don't bother (dozens of zombies moan all over town).
@@ -39,7 +40,7 @@ static func play_at(context: Node, id: String, pos: Vector3, volume_db := 0.0,
 	player.volume_db = volume_db
 	player.max_distance = max_distance
 	player.unit_size = max_distance / 6.0 # stays clearly audible for the first sixth
-	player.pitch_scale = randf_range(1.0 - pitch_jitter, 1.0 + pitch_jitter)
+	player.pitch_scale = pitch * randf_range(1.0 - pitch_jitter, 1.0 + pitch_jitter)
 	player.finished.connect(player.queue_free)
 	context.get_tree().root.add_child(player)
 	player.global_position = pos
@@ -47,7 +48,8 @@ static func play_at(context: Node, id: String, pos: Vector3, volume_db := 0.0,
 
 
 ## A sound with no position: the player's own body, hands, and menus.
-static func play_ui(context: Node, id: String, volume_db := 0.0, pitch_jitter := 0.05) -> void:
+## pitch: 1 as recorded, lower is deeper.
+static func play_ui(context: Node, id: String, volume_db := 0.0, pitch_jitter := 0.05, pitch := 1.0) -> void:
 	if not context.is_inside_tree():
 		return
 	var stream := _pick(context, id)
@@ -57,7 +59,7 @@ static func play_ui(context: Node, id: String, volume_db := 0.0, pitch_jitter :=
 	player.bus = Settings.SFX_BUS
 	player.stream = stream
 	player.volume_db = volume_db
-	player.pitch_scale = randf_range(1.0 - pitch_jitter, 1.0 + pitch_jitter)
+	player.pitch_scale = pitch * randf_range(1.0 - pitch_jitter, 1.0 + pitch_jitter)
 	player.finished.connect(player.queue_free)
 	context.get_tree().root.add_child(player)
 	player.play()

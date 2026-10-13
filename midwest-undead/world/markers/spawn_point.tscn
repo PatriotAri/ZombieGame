@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/markers/spawn_point.gd" id="1_w3ckd"]
+
+[node name="SpawnPoint" type="Marker3D" unique_id=1652192193]
+script = ExtResource("1_w3ckd")

@@ -1,11 +1,13 @@
+@tool
 extends AnimatableBody3D
 ## A door you can open and close by looking at it and pressing interact.
 ## Zombies that walk into a closed one on their way somewhere bash it; enough
 ## blows and it bursts open for good. Unbreakable ones (the police compound
 ## gate) just hold.
 ##
-## Doors live outside main.gd's nav_region, so the navigation bake ignores
-## them: zombie paths run straight through doorways, and a closed door is
+## In the town scene a building's door sits under the building, but main.gd
+## moves every door out of nav_region when the game starts, so the navigation
+## bake ignores them: zombie paths run straight through doorways, and a closed door is
 ## something they run into and break down. The compound gate is the exception:
 ## main.gd bakes a stand-in wall where it is, and the gate switches on
 ## NavigationLinks across the gap only while it's open.
@@ -21,30 +23,41 @@ const BASH_WOBBLE := 0.04 # meters the leaf jumps per blow
 const BASH_INTERVAL := 0.6 # seconds between visible blows, however many zombies are at it
 const BODY_CLEARANCE := 0.45 # zombie / player radius plus a little, for clear_path_when_closing
 
-var label := "door"
-var max_health := 150.0
-var health := 150.0
-var breakable := true
-var is_open := false
-var is_broken := false
+@export var label := "door"
+@export var breakable := true
+## Can be boarded up with planks (fortifications.gd). Off for the compound gate.
+@export var boardable := true
+## Planked shut when a new game starts (like the survivors' houses).
+@export var boarded_at_start := false
+## Standing open when a new game starts. Save the scene with the door shut: the
+## node's transform is the closed position.
+@export var start_open := false
+## The panel's size, and where its middle is from the node (the hinge).
+@export var leaf_size := Vector3(0.08, 2.4, 1.5)
+@export var leaf_offset := Vector3(0.0, 1.2, 0.8)
+@export var color := Color(0.36, 0.24, 0.14)
+## Opening turns it this much (radians) about the hinge and slides it this far,
+## both in its closed frame: a swinging door turns, a sliding gate leaf slides.
+@export var open_yaw := PI / 2.0
+@export var open_shift := Vector3.ZERO
 ## Other leaves of the same gate: they open and close together.
-var linked: Array = []
+@export var linked: Array[Node] = []
 ## Zombie paths through the opening, enabled only while it's open.
-var nav_links: Array[NavigationLink3D] = []
+@export var nav_links: Array[NavigationLink3D] = []
 ## The compound gate: while it closes, zombies (and you) standing where a leaf is
 ## about to be are moved out of its way, to whichever side of the gate line they're
 ## on (the outside if dead center). Without this the leaves slide through bodies
 ## and the physics engine pops them out on a random side, sometimes inside.
-var clear_path_when_closing := false
+@export var clear_path_when_closing := false
+var max_health := 150.0
+var health := 150.0
+var is_open := false
+var is_broken := false
 ## Planks nailed over it (fortifications.gd): it can't be opened or bashed.
 var boarded := false
 
 var _closed := Transform3D.IDENTITY
-var _open_yaw := 0.0
-var _open_shift := Vector3.ZERO
 var _amount := 0.0 # 0 = shut, 1 = open; tweened in between
-var _leaf_offset := Vector3.ZERO
-var _leaf_size := Vector3.ZERO
 var _closing := false
 var _mesh: MeshInstance3D
 var _material: StandardMaterial3D
@@ -54,24 +67,47 @@ var _bash_tween: Tween
 var _next_bash_ms := 0
 
 
-## leaf_size and leaf_offset place the panel relative to the pivot; closed is the
-## pivot's transform when shut, in the parent's space.
-func setup(leaf_size: Vector3, leaf_offset: Vector3, color: Color, closed: Transform3D,
-		open_yaw: float, open_shift := Vector3.ZERO) -> void:
-	_closed = closed
-	_open_yaw = open_yaw
-	_open_shift = open_shift
-	_leaf_offset = leaf_offset
-	_leaf_size = leaf_size
+## For doors made in code: leaf_size and leaf_offset place the panel relative to
+## the pivot; closed is the pivot's transform when shut, in the parent's space.
+func setup(leaf: Vector3, offset: Vector3, leaf_color: Color, closed: Transform3D,
+		yaw: float, shift := Vector3.ZERO) -> void:
+	leaf_size = leaf
+	leaf_offset = offset
+	color = leaf_color
+	open_yaw = yaw
+	open_shift = shift
 	transform = closed
-	_base_color = color
+	_build()
+
+
+## Doors in the town scene come with their panel and collision already (made by
+## _build when the town was frozen); ones made in code get them from setup().
+func _ready() -> void:
+	_closed = transform
+	if _mesh == null:
+		for child in get_children():
+			if child is MeshInstance3D:
+				_mesh = child
+				break
+		if _mesh == null:
+			_build()
+		else:
+			# Its own copy: each door darkens on its own as it takes a beating.
+			_material = (_mesh.mesh.surface_get_material(0) as StandardMaterial3D).duplicate()
+			_mesh.material_override = _material
+	_base_color = _material.albedo_color
+	if start_open and not Engine.is_editor_hint(): # the editor shows it shut
+		set_open(true, false)
+
+
+func _build() -> void:
 	_material = StandardMaterial3D.new()
 	_material.albedo_color = color
-
 	var box := BoxMesh.new()
 	box.size = leaf_size
 	box.material = _material
 	_mesh = MeshInstance3D.new()
+	_mesh.name = "Panel"
 	_mesh.mesh = box
 	_mesh.position = leaf_offset
 	add_child(_mesh)
@@ -79,9 +115,16 @@ func setup(leaf_size: Vector3, leaf_offset: Vector3, color: Color, closed: Trans
 	var shape := BoxShape3D.new()
 	shape.size = leaf_size
 	var col := CollisionShape3D.new()
+	col.name = "Collision"
 	col.shape = shape
 	col.position = leaf_offset
 	add_child(col)
+
+
+## Where it is when shut, in the world (fortifications.gd boards it there).
+func closed_transform() -> Transform3D:
+	var parent := get_parent() as Node3D
+	return parent.global_transform * _closed if parent else _closed
 
 
 func interact_prompt() -> String:
@@ -127,9 +170,9 @@ func bash(damage: float) -> void:
 	Sound.play_at(self, "door_bash", global_position + Vector3.UP, 0.0, 30.0, 0.12)
 	if _bash_tween:
 		_bash_tween.kill()
-	_mesh.position = _leaf_offset + Vector3(BASH_WOBBLE, 0.0, 0.0)
+	_mesh.position = leaf_offset + Vector3(BASH_WOBBLE, 0.0, 0.0)
 	_bash_tween = create_tween()
-	_bash_tween.tween_property(_mesh, "position", _leaf_offset, 0.15)
+	_bash_tween.tween_property(_mesh, "position", leaf_offset, 0.15)
 
 
 func save_state() -> Dictionary:
@@ -151,7 +194,7 @@ func _burst() -> void:
 	health = 0.0
 	is_broken = true
 	_material.albedo_color = _base_color.darkened(0.6)
-	_mesh.position = _leaf_offset
+	_mesh.position = leaf_offset
 	_set_open_one(true, true, 0.15)
 	Sound.play_at(self, "door_break", global_position + Vector3.UP, 2.0, 35.0, 0.08)
 
@@ -178,7 +221,7 @@ func _set_open_one(value: bool, animate: bool, duration := OPEN_TIME) -> void:
 
 func _apply_amount(amount: float) -> void:
 	_amount = amount
-	transform = _closed * Transform3D(Basis(Vector3.UP, _open_yaw * amount), _open_shift * amount)
+	transform = _closed * Transform3D(Basis(Vector3.UP, open_yaw * amount), open_shift * amount)
 	if clear_path_when_closing and _closing and is_inside_tree():
 		_clear_path()
 
@@ -187,17 +230,18 @@ func _apply_amount(amount: float) -> void:
 ## where the leaf runs along x and its thickness is z. Only the stretch the leaf
 ## currently covers is cleared, so bodies are nudged as the leaf edge reaches them.
 func _clear_path() -> void:
-	var shift := _open_shift * _amount
-	var half := _leaf_size / 2.0
-	var x_min := _leaf_offset.x + shift.x - half.x - BODY_CLEARANCE
-	var x_max := _leaf_offset.x + shift.x + half.x + BODY_CLEARANCE
+	var shift := open_shift * _amount
+	var half := leaf_size / 2.0
+	var x_min := leaf_offset.x + shift.x - half.x - BODY_CLEARANCE
+	var x_max := leaf_offset.x + shift.x + half.x + BODY_CLEARANCE
 	var depth := half.z + BODY_CLEARANCE
-	var to_local := _closed.affine_inverse()
+	var closed := closed_transform()
+	var to_local := closed.affine_inverse()
 	for body: Node3D in get_tree().get_nodes_in_group("zombies") + get_tree().get_nodes_in_group("player"):
 		var local := to_local * body.global_position
-		var off := local.z - _leaf_offset.z
+		var off := local.z - leaf_offset.z
 		if local.x < x_min or local.x > x_max or absf(off) >= depth:
 			continue
 		# -z is the outside for the compound gate; a tie goes there too.
-		local.z = _leaf_offset.z + (1.0 if off > 0.0 else -1.0) * depth
-		body.global_position = _closed * local
+		local.z = leaf_offset.z + (1.0 if off > 0.0 else -1.0) * depth
+		body.global_position = closed * local

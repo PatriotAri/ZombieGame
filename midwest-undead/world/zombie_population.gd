@@ -2,17 +2,16 @@ extends Node
 ## How many zombies there are, and where new ones come from.
 ##
 ## At the start: extra zombies scattered around town (outside the zones, away
-## from where you begin), on top of the ones main.gd places in the streets,
-## shops and houses. Placed with their own generator from the navigation mesh,
-## so they're the same every run and saves line up.
+## from where you begin), on top of the ones main.gd places at the town scene's
+## ZombieSpawn markers. Placed at random spots on the navigation mesh.
 ##
 ## While you play: whenever fewer than `population` are still up, another one
 ## turns up now and then on the outskirts of town, far from you and away from
 ## the zones, more often at night. Nothing sends them anywhere: they roam like
 ## the rest (zombie.gd), so over time some drift back into places you cleared.
 ##
-## Zombies that turned up during play are saved while alive; their bodies are
-## cleared away once you're well away from them.
+## Bodies are cleared away a while after they fall, once you're well away. The
+## living are saved (main.gd).
 ## main.gd creates it and owns the tuning (the Inspector's "Zombies" group).
 
 const Zones := preload("res://world/zones.gd")
@@ -38,11 +37,10 @@ var _zones: Zones
 var _bounds := Rect2() # the walkable area, (x, z) (the navigation bake's box)
 var _triangles: Array[PackedVector3Array] = [] # the navigation mesh, for picking random spots
 var _cumulative_area: PackedFloat32Array = []
-var _first_dynamic := 0 # index in main.zombies where the ones that turned up during play start
 var _check_timer := 0.0
 var _spawn_timer := 0.0
-var _died_at := {} # dynamic zombie -> seconds since it died
-var _rng := RandomNumberGenerator.new() # during play: its own dice, not the town's
+var _died_at := {} # zombie -> seconds since it died
+var _rng := RandomNumberGenerator.new() # during play: its own dice
 
 
 func setup(main: Node, nav_region: NavigationRegion3D, player: Node3D, day_night: Node, zones: Zones) -> void:
@@ -66,7 +64,6 @@ func populate(count: int, rng: RandomNumberGenerator, start: Vector3) -> void:
 			continue
 		_main.call("_add_zombie", pos + Vector3(0, 0.1, 0), rng)
 		placed += 1
-	_first_dynamic = (_main.get("zombies") as Array).size()
 	_spawn_timer = respawn_seconds_day # nobody new in the first moments
 
 
@@ -84,12 +81,6 @@ func _process(delta: float) -> void:
 	var pos := _outskirts_point()
 	if pos != Vector3.INF:
 		_main.call("_add_zombie", pos + Vector3(0, 0.1, 0), _rng)
-
-
-## Saving: the zombies that turned up during play and are still up. (The ones
-## placed at the start are saved by main.gd, one entry each, like before.)
-func first_dynamic() -> int:
-	return _first_dynamic
 
 
 func _alive() -> int:
@@ -120,11 +111,10 @@ func _near_zone(pos: Vector3) -> bool:
 	return false
 
 
-## Bodies of zombies that turned up during play: gone once you're well away.
-## (The ones placed at the start stay, like they always have: saves count on them.)
+## Bodies: gone once they've been down a while and you're well away.
 func _clear_bodies(elapsed: float) -> void:
 	var zombies: Array = _main.get("zombies")
-	for i in range(zombies.size() - 1, _first_dynamic - 1, -1):
+	for i in range(zombies.size() - 1, -1, -1):
 		var zombie: Zombie = zombies[i]
 		if not zombie.is_dead:
 			continue

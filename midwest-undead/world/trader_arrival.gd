@@ -9,6 +9,9 @@ extends Node
 ## Coming back near it the first time is the "a trader is here" moment.
 ## main.gd creates it and listens to the signals; the quest follows along.
 ##
+## Where the wagon and the trader stand are SpawnPoints in the town scene (roles
+## "wagon" and "wagon_trader").
+##
 ## Saved: whether the zone has been cleared, whether the trader has come and
 ## been seen, and the trader's stock.
 
@@ -24,9 +27,6 @@ const ZONE := "Zone 1"
 const ARRIVE_DISTANCE := 100.0 # how far from the station you have to be for them to arrive
 const SEEN_DISTANCE := 35.0
 const CHECK_INTERVAL := 0.5
-# In the yard's east strip, between the station and the fence, behind the guard tower.
-const WAGON_SPOT := Vector3(65.2, 0.0, 17.0)
-const TRADER_SPOT := Vector3(65.2, 0.1, 13.6) # in front of the wagon, facing the front yard
 const WOOD := Color(0.45, 0.32, 0.2)
 const WOOD_DARK := Color(0.3, 0.21, 0.13)
 const CANVAS := Color(0.78, 0.74, 0.62)
@@ -35,6 +35,8 @@ var cleared := false
 var has_arrived := false
 var was_seen := false
 var trader: Shopkeeper # null until they arrive
+var wagon_spot := Transform3D.IDENTITY
+var trader_spot := Transform3D.IDENTITY
 var _player: Node3D
 var _zones: Zones
 var _day_night: Node
@@ -42,11 +44,14 @@ var _station_center := Vector3.ZERO
 var _timer := 0.0
 
 
-func setup(player: Node3D, zones: Zones, day_night: Node, station_center: Vector3) -> void:
+func setup(player: Node3D, zones: Zones, day_night: Node, station_center: Vector3,
+		wagon: Transform3D, trader_at: Transform3D) -> void:
 	_player = player
 	_zones = zones
 	_day_night = day_night
 	_station_center = station_center
+	wagon_spot = wagon
+	trader_spot = trader_at
 
 
 func _process(delta: float) -> void:
@@ -62,7 +67,7 @@ func _process(delta: float) -> void:
 	if cleared and not has_arrived and dist >= ARRIVE_DISTANCE:
 		_arrive()
 		arrived.emit()
-	if has_arrived and not was_seen and _player.global_position.distance_to(WAGON_SPOT) <= SEEN_DISTANCE:
+	if has_arrived and not was_seen and _player.global_position.distance_to(wagon_spot.origin) <= SEEN_DISTANCE:
 		was_seen = true
 		seen.emit()
 
@@ -89,7 +94,8 @@ func _arrive() -> void:
 	has_arrived = true
 	_build_wagon()
 	trader = TraderScene.instantiate() as Shopkeeper
-	trader.position = TRADER_SPOT
+	trader.position = trader_spot.origin
+	trader.rotation.y = trader_spot.basis.get_euler().y
 	trader.day_night = _day_night # restocks each morning, like the Quartermaster...
 	trader.can_restock = func() -> bool: return _zones.status_of(ZONE) != Zones.Status.DANGER # ...when Zone 1 is clear
 	get_parent().add_child(trader)
@@ -101,7 +107,7 @@ func _arrive() -> void:
 ## pole out the front, and a lantern for the night.
 func _build_wagon() -> void:
 	var wagon := StaticBody3D.new()
-	wagon.position = WAGON_SPOT
+	wagon.transform = Transform3D(Basis(Vector3.UP, wagon_spot.basis.get_euler().y), wagon_spot.origin)
 	get_parent().add_child(wagon)
 	_box(wagon, Vector3(1.9, 0.5, 4.0), Vector3(0, 0.95, 0), WOOD) # bed
 	_box(wagon, Vector3(1.9, 0.45, 0.08), Vector3(0, 1.42, -2.0), WOOD_DARK) # front board

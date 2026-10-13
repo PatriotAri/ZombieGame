@@ -1,0 +1,9 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_cmita"]
+[ext_resource type="Material" path="res://world/kit/materials/concrete_slab.tres" id="2_erj5u"]
+
+[node name="Box" type="StaticBody3D" unique_id=1495066552]
+script = ExtResource("1_cmita")
+material = ExtResource("2_erj5u")
+sits_on_floor = true

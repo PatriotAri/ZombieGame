@@ -1,0 +1,54 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/building.gd" id="1_byc8k"]
+[ext_resource type="Script" path="res://world/kit/kit_opening.gd" id="2_ydgkj"]
+[ext_resource type="Material" path="res://world/kit/materials/siding_white.tres" id="3_jujtg"]
+
+[sub_resource type="Resource" id="Resource_uresr"]
+script = ExtResource("2_ydgkj")
+kind = "door"
+width = 1.6
+bottom = 0.0
+top = 2.4
+
+[sub_resource type="Resource" id="Resource_o7jfs"]
+script = ExtResource("2_ydgkj")
+offset = -2.5500000000000003
+width = 2.6
+top = 2.6
+
+[sub_resource type="Resource" id="Resource_nj0kq"]
+script = ExtResource("2_ydgkj")
+offset = 2.5500000000000003
+width = 2.6
+top = 2.6
+
+[sub_resource type="Resource" id="Resource_3j247"]
+script = ExtResource("2_ydgkj")
+wall = "back"
+bottom = 1.1
+
+[sub_resource type="Resource" id="Resource_dd7vc"]
+script = ExtResource("2_ydgkj")
+level = 1
+offset = -1.5
+
+[sub_resource type="Resource" id="Resource_hado1"]
+script = ExtResource("2_ydgkj")
+level = 1
+offset = 1.5
+
+[sub_resource type="Resource" id="Resource_f4730"]
+script = ExtResource("2_ydgkj")
+wall = "back"
+level = 1
+bottom = 1.1
+
+[node name="House" type="Node3D" unique_id=18425998]
+script = ExtResource("1_byc8k")
+size_width = 9.0
+floors = 2
+floor_y = 0.02
+openings = Array[ExtResource("2_ydgkj")]([SubResource("Resource_uresr"), SubResource("Resource_o7jfs"), SubResource("Resource_nj0kq"), SubResource("Resource_3j247"), SubResource("Resource_dd7vc"), SubResource("Resource_hado1"), SubResource("Resource_f4730")])
+boarded_painted_windows = PackedInt32Array()
+exterior_material = ExtResource("3_jujtg")

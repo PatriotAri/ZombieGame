@@ -1,0 +1,17 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://world/kit/kit_pattern.gdshader" id="1_u7y51"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_u7y51")
+shader_parameter/pattern = 5
+shader_parameter/color = Color(0.4, 0.38, 0.36, 1)
+shader_parameter/joint_color = Color(0.3, 0.29, 0.28, 1)
+shader_parameter/cell = Vector2(0.6, 0.3)
+shader_parameter/joint = 0.015
+shader_parameter/variation = 0.12
+shader_parameter/grime = 0.3
+shader_parameter/roughness_value = 0.95
+shader_parameter/metallic_value = 0.0
+shader_parameter/tint = Color(1, 1, 1, 1)

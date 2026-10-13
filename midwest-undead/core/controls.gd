@@ -11,6 +11,7 @@ extends RefCounted
 ##   sprint           Shift (hold)       L3 / click left stick (toggles)
 ##   crouch           Ctrl (hold)        B (toggles)
 ##   use held item    left click         RT   (shoot, swing, heal, eat...)
+##   aim (guns)       right click (hold) LT   (zooms; the rifle's scope)
 ##   next/prev item   mouse wheel        D-pad right = next, D-pad left = previous
 ##   pick held item   1-9                -    (numbered on the inventory screen)
 ##   inventory        Tab                Y
@@ -49,6 +50,7 @@ const TABLE := [
 	["Crouch", "Ctrl (hold)", "B (toggle)"],
 	["Jump", "Space", "A"],
 	["Use held item", "Left click", "RT"],
+	["Aim (guns; the rifle's scope)", "Right click (hold)", "LT (hold)"],
 	["Switch item", "Wheel / 1-9", "D-pad left / right"],
 	["Inventory", "Tab", "Y"],
 	["Search / pick up / talk / open", "E", "X"],
@@ -75,6 +77,7 @@ static func setup() -> void:
 	_key("sprint", KEY_SHIFT); _button("sprint", JOY_BUTTON_LEFT_STICK)
 	_key("crouch", KEY_CTRL); _button("crouch", JOY_BUTTON_B)
 	_mouse("use_held", MOUSE_BUTTON_LEFT); _axis("use_held", JOY_AXIS_TRIGGER_RIGHT, 1.0, 0.5)
+	_mouse("aim", MOUSE_BUTTON_RIGHT); _axis("aim", JOY_AXIS_TRIGGER_LEFT, 1.0, 0.5)
 	_key("interact", KEY_E); _button("interact", JOY_BUTTON_X)
 	_key("reload", KEY_R); _button("reload", JOY_BUTTON_RIGHT_SHOULDER)
 	_key("use_health_pack", KEY_Q); _button("use_health_pack", JOY_BUTTON_LEFT_SHOULDER)

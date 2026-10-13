@@ -4,12 +4,13 @@ extends Node
 ##   - Everyone you've brought in counts: recruited survivors (the machinist
 ##     too) and the woodworker.
 ##   - It holds BASE_CAPACITY people, plus PER_STATION for every garden plot
-##     or ammo bench someone is working. Nobody needs feeding; this is just how
-##     many the place can support.
+##     or ammo bench (pistol, shell or rifle) someone is working. Nobody needs
+##     feeding; this is just how many the place can support.
 ##   - Talk to a survivor at the base to put them on a free plot or bench
 ##     (survivors.gd); they stand at it. Take it down and they go back to the yard.
-##   - Every morning each worked plot puts food, and each worked bench ammo, in
-##     the supply crate in the station yard.
+##   - Every morning each worked plot puts food, and each worked bench its ammo,
+##     in the supply crate in the station yard: fewer of the bigger rounds.
+## The crate is the container in the town scene in the "base_supply_crate" group.
 ## main.gd creates it. Saved: who works what, and when the crate was last filled.
 
 const Survivor := preload("res://characters/npcs/survivor.gd")
@@ -20,8 +21,12 @@ const BASE_CAPACITY := 10
 const PER_STATION := 2
 const SUPPLY_HOUR := 7
 const FOOD_PER_PLOT := 2 # cans each morning
-const AMMO_PER_BENCH := 10 # pistol rounds each morning
-const CRATE_SPOT := Vector3(52.0, 0.45, 28.7) # the station's back yard
+## Each morning, from each worked bench of that kind: [ammo, how many].
+const BENCH_OUTPUT := {
+	"ammo_bench": ["pistol_ammo", 10],
+	"shell_bench": ["shotgun_shells", 4],
+	"rifle_bench": ["rifle_rounds", 2],
+}
 const CHECK_INTERVAL := 1.0
 
 var crate: Node3D # a LootSpot: main.gd saves it with the other containers
@@ -38,13 +43,13 @@ func _ready() -> void:
 	add_to_group("base_camp")
 
 
-func setup(builder: RefCounted, survivors: Node, woodworker: Node, structures: Node, day_night: Node, player: Node3D) -> void:
+func setup(supply_crate: Node3D, survivors: Node, woodworker: Node, structures: Node, day_night: Node, player: Node3D) -> void:
 	_survivors = survivors
 	_woodworker = woodworker
 	_structures = structures
 	_day_night = day_night
 	_player = player
-	crate = builder.call("add_loot", Vector3(1.2, 0.9, 0.9), CRATE_SPOT, Color(0.42, 0.34, 0.22), "Supply crate")
+	crate = supply_crate
 	supplied_day = int(day_night.get("day"))
 
 
@@ -58,7 +63,10 @@ func population() -> int:
 
 
 func capacity() -> int:
-	return BASE_CAPACITY + PER_STATION * (worked("garden_plot") + worked("ammo_bench"))
+	var stations := worked("garden_plot")
+	for kind: String in BENCH_OUTPUT:
+		stations += worked(kind)
+	return BASE_CAPACITY + PER_STATION * stations
 
 
 func is_full() -> bool:
@@ -128,11 +136,14 @@ func _resupply() -> void:
 		return
 	supplied_day = day
 	var food := FOOD_PER_PLOT * worked("garden_plot")
-	var ammo := AMMO_PER_BENCH * worked("ammo_bench")
+	var total := food
 	var inventory: RefCounted = crate.get("inventory")
 	inventory.call("add", "canned_food", food)
-	inventory.call("add", "pistol_ammo", ammo)
-	if food + ammo > 0:
+	for kind: String in BENCH_OUTPUT:
+		var amount: int = BENCH_OUTPUT[kind][1] * worked(kind)
+		inventory.call("add", BENCH_OUTPUT[kind][0], amount)
+		total += amount
+	if total > 0:
 		_player.emit_signal("notify", "Fresh supplies in the station's supply crate.")
 
 

@@ -1,0 +1,21 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_wpepy"]
+[ext_resource type="Material" path="res://world/kit/materials/car_red.tres" id="2_j33gb"]
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="3_7ovme"]
+[ext_resource type="Material" path="res://world/kit/materials/car_cabin.tres" id="4_aoqe0"]
+
+[node name="Car" type="StaticBody3D" unique_id=1502029740]
+script = ExtResource("1_wpepy")
+label = "Car"
+loot_table = "car"
+size = Vector3(1.9, 0.8, 4.4)
+material = ExtResource("2_j33gb")
+sits_on_floor = true
+
+[node name="Roof" type="StaticBody3D" parent="." unique_id=1939779343]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+script = ExtResource("3_7ovme")
+size = Vector3(1.7, 0.6, 2.2)
+material = ExtResource("4_aoqe0")
+metadata/part_of_parent = true

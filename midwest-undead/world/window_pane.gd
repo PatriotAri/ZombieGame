@@ -1,3 +1,4 @@
+@tool
 extends StaticBody3D
 ## A ground-floor pane of glass that zombies can smash. Glass blocks movement but
 ## not sight or bullets (it's on LAYER_GLASS, which the sight and shooting rays
@@ -10,6 +11,10 @@ const Sound := preload("res://core/sound.gd")
 
 const BASH_INTERVAL := 0.6 # seconds between audible blows, however many zombies are at it
 
+## Can be boarded up with planks (fortifications.gd). Off for upstairs windows.
+@export var boardable := true
+## Planked shut when a new game starts (like the survivors' houses).
+@export var boarded_at_start := false
 var max_health := 60.0 # glass gives faster than a door (150)
 var health := 60.0
 var is_broken := false
@@ -19,6 +24,33 @@ var _mesh: MeshInstance3D
 var _material: StandardMaterial3D
 var _base_alpha := 0.22
 var _next_bash_ms := 0
+
+
+## Which way is outside: the pane's -X. fortifications.gd boards it from that side.
+func outward() -> Vector3:
+	return -global_basis.x
+
+
+## Panes in the town scene come with their glass and collision already (made by
+## setup when the town was frozen); this picks them up.
+func _ready() -> void:
+	if _mesh != null:
+		return
+	for child in get_children():
+		if child is MeshInstance3D:
+			_mesh = child
+			_material = (_mesh.mesh.surface_get_material(0) as StandardMaterial3D).duplicate()
+			_mesh.material_override = _material
+			_base_alpha = _material.albedo_color.a
+			return
+
+
+## The pane's size (its collision box).
+func pane_size() -> Vector3:
+	for child in get_children():
+		if child is CollisionShape3D and (child as CollisionShape3D).shape is BoxShape3D:
+			return ((child as CollisionShape3D).shape as BoxShape3D).size
+	return Vector3.ZERO
 
 
 func setup(size: Vector3, color: Color) -> void:
@@ -32,12 +64,14 @@ func setup(size: Vector3, color: Color) -> void:
 	box.size = size
 	box.material = _material
 	_mesh = MeshInstance3D.new()
+	_mesh.name = "Glass"
 	_mesh.mesh = box
 	_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF # let sunlight in
 	add_child(_mesh)
 	var shape := BoxShape3D.new()
 	shape.size = size
 	var col := CollisionShape3D.new()
+	col.name = "Collision"
 	col.shape = shape
 	add_child(col)
 

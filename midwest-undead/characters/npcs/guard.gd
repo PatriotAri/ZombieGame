@@ -79,7 +79,7 @@ func _find_target() -> Node3D:
 		var zombie := node as Node3D
 		if not _near_guarded(zombie.global_position):
 			continue
-		var aim := zombie.global_position + Vector3(0, 1.2, 0)
+		var aim: Vector3 = zombie.call("aim_point") if zombie.has_method("aim_point") else zombie.global_position + Vector3(0, 1.2, 0)
 		var dist := eye.distance_to(aim)
 		if dist >= best_dist:
 			continue
@@ -104,7 +104,7 @@ func _near_guarded(pos: Vector3) -> bool:
 
 
 func _fire_at(target: Node3D) -> void:
-	var aim := target.global_position + Vector3(0, 1.2, 0)
+	var aim: Vector3 = target.call("aim_point") if target.has_method("aim_point") else target.global_position + Vector3(0, 1.2, 0)
 	# Turn toward it. Skip when it's almost straight below, where look_at has no
 	# sensible direction and would throw an error.
 	var flat := Vector3(aim.x - global_position.x, 0.0, aim.z - global_position.z)
