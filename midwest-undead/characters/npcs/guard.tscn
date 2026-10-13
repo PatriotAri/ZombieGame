@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://characters/npcs/human_npc.tscn" id="1_base"]
+[ext_resource type="Script" path="res://characters/npcs/guard.gd" id="2_guard"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_metal"]
+albedo_color = Color(0.1, 0.1, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_rifle"]
+material = SubResource("StandardMaterial3D_metal")
+size = Vector3(0.06, 0.08, 1)
+
+[node name="Guard" instance=ExtResource("1_base")]
+script = ExtResource("2_guard")
+display_name = "Guard"
+outfit_color = Color(0.15, 0.2, 0.32, 1)
+
+[node name="Rifle" type="Node3D" parent="." index="3"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.2, 1.35, -0.2)
+
+[node name="RifleMesh" type="MeshInstance3D" parent="Rifle"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.4)
+mesh = SubResource("BoxMesh_rifle")
+
+[node name="MuzzleFlash" type="OmniLight3D" parent="Rifle"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.95)
+visible = false
+light_color = Color(1, 0.8, 0.5, 1)
+light_energy = 5.0
+omni_range = 8.0
