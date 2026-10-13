@@ -23,7 +23,9 @@ const StructurePiece := preload("res://world/structure_piece.gd")
 const GateLeaf := preload("res://world/gate_leaf.gd")
 const Zones := preload("res://world/zones.gd")
 
-const KINDS := ["scaffold", "guard_post", "fence", "fence_gate", "garden_plot", "ammo_bench"]
+const KINDS := ["scaffold", "guard_post", "fence", "fence_gate", "garden_plot", "ammo_bench", "shell_bench", "rifle_bench"]
+## The ammo benches, and the round each one's brass is colored like (pistol, shells, rifle).
+const BENCHES := {"ammo_bench": Color(0.75, 0.6, 0.2), "shell_bench": Color(0.7, 0.12, 0.1), "rifle_bench": Color(0.6, 0.5, 0.25)}
 const GARDEN := Vector3(3.0, 0.35, 2.0)
 const BENCH := Vector3(1.8, 1.0, 0.8)
 const SOIL := Color(0.25, 0.18, 0.12)
@@ -212,7 +214,7 @@ func _size(kind: String) -> Vector3:
 			return Vector3(SCAFFOLD.x, POST_HEIGHT + 0.1, SCAFFOLD.z)
 		"garden_plot":
 			return Vector3(GARDEN.x, 0.6, GARDEN.z)
-		"ammo_bench":
+		"ammo_bench", "shell_bench", "rifle_bench":
 			return Vector3(BENCH.x, 1.2, BENCH.z)
 	return FENCE
 
@@ -389,7 +391,7 @@ func _model(kind: String, parent: Node3D, mat: StandardMaterial3D) -> void:
 				for k in 6:
 					var at := Vector3(-g.x + 0.3 + k * (GARDEN.x - 0.6) / 5.0, GARDEN.y + 0.08, -g.z + 0.45 + row * 0.55)
 					_box(parent, Vector3(0.22, 0.18, 0.22), at, k * 0.7, 0.0, LEAVES, mat)
-		"ammo_bench": # a heavy workbench with a press and a vise
+		"ammo_bench", "shell_bench", "rifle_bench": # a heavy workbench with a press and a vise
 			var b := BENCH / 2.0
 			for x: float in [-b.x + 0.08, b.x - 0.08]:
 				for z: float in [-b.z + 0.08, b.z - 0.08]:
@@ -399,7 +401,7 @@ func _model(kind: String, parent: Node3D, mat: StandardMaterial3D) -> void:
 			_box(parent, Vector3(0.2, 0.55, 0.2), Vector3(-0.55, BENCH.y + 0.27, -0.15), 0.0, 0.0, STEEL, mat) # reloading press
 			_box(parent, Vector3(0.08, 0.3, 0.45), Vector3(-0.55, BENCH.y + 0.5, 0.05), 0.0, 0.0, STEEL, mat) # its lever
 			_box(parent, Vector3(0.25, 0.15, 0.18), Vector3(0.6, BENCH.y + 0.08, 0.1), 0.0, 0.0, STEEL, mat) # vise
-			_box(parent, Vector3(0.3, 0.1, 0.2), Vector3(0.1, BENCH.y + 0.05, -0.1), 0.3, 0.0, Color(0.75, 0.6, 0.2), mat) # brass
+			_box(parent, Vector3(0.3, 0.1, 0.2), Vector3(0.1, BENCH.y + 0.05, -0.1), 0.3, 0.0, BENCHES[kind], mat) # rounds
 
 
 ## The guard post's railing: three full sides and two short pieces either side of
@@ -436,7 +438,7 @@ func _collision(kind: String, piece: StructurePiece) -> void:
 				_shape(piece, Vector3(0.16, FENCE.y + 0.2, 0.16), Vector3(x, (FENCE.y + 0.2) / 2.0, 0))
 		"garden_plot":
 			_shape(piece, GARDEN, Vector3(0, GARDEN.y / 2.0, 0))
-		"ammo_bench":
+		"ammo_bench", "shell_bench", "rifle_bench":
 			_shape(piece, BENCH, Vector3(0, BENCH.y / 2.0, 0))
 
 

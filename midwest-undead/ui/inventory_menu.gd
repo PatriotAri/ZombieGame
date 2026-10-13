@@ -81,8 +81,8 @@ func _fill(list: VBoxContainer, inv: Inventory, from_player: bool) -> void:
 		return
 	for id in ids:
 		var text := "%s  x%d" % [GameData.item_name(id), inv.count(id)]
-		if id == "pistol" and from_player:
-			text = "Pistol  (%d loaded)" % player.pistol_mag
+		if player.is_gun(id) and from_player:
+			text = player.gun_text(id)
 		var button := Button.new()
 		button.text = text
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT

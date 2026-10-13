@@ -31,7 +31,9 @@ const FULL_LINES: Array[String] = [
 	"Seems like there's not enough to go around right now. I'd be better off on my own.",
 	"Come find me again later if things change.",
 ]
-const MACHINIST_NEEDS_WOODWORKER := "I can make you an ammo bench, but not the frame for it. Get a woodworker set up at the station and I'll get to work."
+const STATION_NAMES := {"garden_plot": "garden", "ammo_bench": "ammo bench", "shell_bench": "shell bench",
+		"rifle_bench": "rifle bench"}
+const MACHINIST_NEEDS_WOODWORKER := "I can make you ammo benches, but not the frames for them. Get a woodworker set up at the station and I'll get to work."
 ## Who they are. "job": what they do at the base besides working a station.
 const PEOPLE := [
 	{"name": "Marisol Vega",
@@ -165,9 +167,10 @@ func _offer_jobs(survivor: Survivor, person: Dictionary) -> void:
 	var line: String = person["home_lines"][0]
 	var piece := survivor.work_piece if survivor.working and is_instance_valid(survivor.work_piece) else null
 	if piece != null:
-		line = "I'm on the %s. %s" % ["garden" if piece.get("kind") == "garden_plot" else "ammo bench", line]
+		line = "I'm on the %s. %s" % [STATION_NAMES[piece.get("kind")], line]
 	var options := []
-	for station: Array in [["garden_plot", "Work a garden plot"], ["ammo_bench", "Work an ammo bench"]]:
+	for station: Array in [["garden_plot", "Work a garden plot"], ["ammo_bench", "Work an ammo bench"],
+			["shell_bench", "Work a shell bench"], ["rifle_bench", "Work a rifle bench"]]:
 		var free: bool = _base.call("free_station", station[0]) != null
 		var label: String = station[1] if free else station[1] + "  (none free)"
 		options.append([label, func() -> void: _base.call("assign", survivor, station[0]), free])

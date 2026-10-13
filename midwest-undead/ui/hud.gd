@@ -20,6 +20,8 @@ var _has_save_on_death := false
 var status_label: Label
 var clock_label: Label
 var held_label: Label # what you're holding, and its ammo
+var _crosshair: Label
+var _scope: Control # drawn while looking through the rifle's scope
 var prompt_label: Label
 var toast_label: Label
 var message_label: Label
@@ -54,6 +56,11 @@ func _process(_delta: float) -> void:
 		_player.inventory.count("health_pack"), _player.money,
 	]
 	held_label.text = _player.held_label()
+	var scoped := _player.is_scoped() and not in_screen
+	if _scope.visible != scoped:
+		_scope.visible = scoped
+		_scope.queue_redraw()
+	_crosshair.visible = not in_screen and not scoped
 	prompt_label.text = _player.prompt_text
 	clock_label.text = _day_night.clock_text()
 	if _player.is_dead:
@@ -104,7 +111,16 @@ func show_toast(text: String) -> void:
 
 
 func _build() -> void:
-	# Red flash when hurt. Added first so it sits behind the text.
+	# The rifle's scope: black all round a circle, with a reticle. First, so all
+	# the text (health, ammo...) draws on top of it.
+	_scope = Control.new()
+	_scope.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_scope.visible = false
+	add_child(_scope)
+	_scope.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_scope.draw.connect(_draw_scope)
+
+	# Red flash when hurt. Behind the text.
 	hurt_overlay = ColorRect.new()
 	hurt_overlay.color = Color(0.6, 0.0, 0.0, 0.0)
 	hurt_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -129,6 +145,8 @@ func _build() -> void:
 	crosshair.text = "+"
 	add_child(crosshair)
 	crosshair.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_crosshair = crosshair
+
 
 	# Full-screen labels with centered text; offset_top pushes the center down.
 	prompt_label = _make_centered_label(18)
@@ -177,12 +195,26 @@ func _build() -> void:
 	story_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	story_label.offset_bottom = -220.0 # sits in the upper part of the screen
 
-	_play_items = [status_label, clock_label, held_label, crosshair, prompt_label, objective_label]
+	_play_items = [status_label, clock_label, held_label, prompt_label, objective_label] # (the crosshair: _process)
 
 	message_label = _make_centered_label(36)
 	message_label.visible = false
 	add_child(message_label)
 	message_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+
+func _draw_scope() -> void:
+	var size := _scope.size
+	var center := size / 2.0
+	var radius := minf(size.x, size.y) * 0.45
+	# Black outside the lens: a ring wide enough to reach the corners.
+	var reach := center.length() + 4.0
+	_scope.draw_arc(center, (radius + reach) / 2.0, 0.0, TAU, 96, Color.BLACK, reach - radius, true)
+	var line := Color(0, 0, 0, 0.85)
+	_scope.draw_line(center - Vector2(radius, 0), center + Vector2(radius, 0), line, 2.0)
+	_scope.draw_line(center - Vector2(0, radius), center + Vector2(0, radius), line, 2.0)
+	_scope.draw_line(center - Vector2(0, radius * 0.08), center + Vector2(0, radius), line, 5.0) # thick post below
+	_scope.draw_arc(center, radius, 0.0, TAU, 96, Color(0, 0, 0, 0.9), 3.0, true)
 
 
 func _make_centered_label(font_size: int) -> Label:

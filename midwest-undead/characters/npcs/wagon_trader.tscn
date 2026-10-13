@@ -14,8 +14,15 @@ starting_stock = Dictionary[String, int]({
 "health_pack": 2,
 "planks": 16,
 "plywood": 6,
-"scrap_metal": 6
+"rifle_rounds": 8,
+"scrap_metal": 6,
+"shotgun_shells": 15
 })
+rare_stock = Dictionary[String, int]({
+"rifle": 1,
+"shotgun": 1
+})
+rare_chance = 0.25
 buy_prices = Dictionary[String, int]({
 "barricade": 28,
 "batteries": 10,
@@ -24,7 +31,11 @@ buy_prices = Dictionary[String, int]({
 "health_pack": 50,
 "planks": 8,
 "plywood": 10,
-"scrap_metal": 9
+"rifle": 360,
+"rifle_rounds": 10,
+"scrap_metal": 9,
+"shotgun": 220,
+"shotgun_shells": 6
 })
 sell_prices = Dictionary[String, int]({
 "barricade": 16,
@@ -36,5 +47,9 @@ sell_prices = Dictionary[String, int]({
 "pistol_ammo": 2,
 "planks": 5,
 "plywood": 5,
-"scrap_metal": 4
+"rifle": 130,
+"rifle_rounds": 5,
+"scrap_metal": 4,
+"shotgun": 80,
+"shotgun_shells": 3
 })

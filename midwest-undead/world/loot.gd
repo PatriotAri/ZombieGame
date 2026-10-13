@@ -19,6 +19,8 @@ const STANDARD := [
 	{"chance": 0.15, "items": [["planks", 1, 2]]},
 	{"chance": 0.12, "items": [["plywood", 1, 2]]},
 	{"chance": 0.1, "items": [["scrap_metal", 1, 2]]},
+	{"chance": 0.08, "items": [["shotgun_shells", 2, 5]]},
+	{"chance": 0.04, "items": [["rifle_rounds", 1, 3]]},
 ]
 const TABLES := {
 	"none": [],
@@ -31,6 +33,8 @@ const TABLES := {
 		{"chance": 0.15, "items": [["planks", 1, 2]]},
 		{"chance": 0.12, "items": [["plywood", 1, 2]]},
 		{"chance": 0.35, "items": [["scrap_metal", 1, 2]]},
+		{"chance": 0.12, "items": [["shotgun_shells", 2, 5]]},
+		{"chance": 0.08, "items": [["rifle_rounds", 1, 3]]},
 	],
 	## The grocery's shelves: food on top of the usual.
 	"grocery": [
@@ -41,6 +45,8 @@ const TABLES := {
 		{"chance": 0.15, "items": [["planks", 1, 2]]},
 		{"chance": 0.12, "items": [["plywood", 1, 2]]},
 		{"chance": 0.1, "items": [["scrap_metal", 1, 2]]},
+		{"chance": 0.08, "items": [["shotgun_shells", 2, 5]]},
+		{"chance": 0.04, "items": [["rifle_rounds", 1, 3]]},
 	],
 	## The gas station's snack shelf: maybe some food on top of the usual.
 	"snack": [
@@ -51,6 +57,8 @@ const TABLES := {
 		{"chance": 0.15, "items": [["planks", 1, 2]]},
 		{"chance": 0.12, "items": [["plywood", 1, 2]]},
 		{"chance": 0.1, "items": [["scrap_metal", 1, 2]]},
+		{"chance": 0.08, "items": [["shotgun_shells", 2, 5]]},
+		{"chance": 0.04, "items": [["rifle_rounds", 1, 3]]},
 	],
 }
 

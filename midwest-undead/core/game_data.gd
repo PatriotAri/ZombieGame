@@ -20,8 +20,12 @@ const LAYER_NAV_ONLY := 128
 # (ammo, batteries) can't be held; they just sit in your inventory.
 const ITEMS := {
 	"pistol": {"name": "Pistol", "color": Color(0.12, 0.12, 0.14), "size": Vector3(0.18, 0.1, 0.28), "use": "shoot"},
+	"shotgun": {"name": "Shotgun", "color": Color(0.3, 0.2, 0.13), "size": Vector3(0.1, 0.1, 0.9), "use": "shoot"},
+	"rifle": {"name": "Scoped rifle", "color": Color(0.22, 0.18, 0.12), "size": Vector3(0.1, 0.12, 1.05), "use": "shoot"},
 	"crowbar": {"name": "Crowbar", "color": Color(0.45, 0.12, 0.1), "size": Vector3(0.05, 0.05, 0.75), "use": "melee"},
 	"pistol_ammo": {"name": "Pistol ammo", "color": Color(0.75, 0.6, 0.2), "size": Vector3(0.16, 0.1, 0.1)},
+	"shotgun_shells": {"name": "Shotgun shells", "color": Color(0.7, 0.12, 0.1), "size": Vector3(0.16, 0.1, 0.12)},
+	"rifle_rounds": {"name": "Rifle rounds", "color": Color(0.6, 0.5, 0.25), "size": Vector3(0.18, 0.08, 0.1)},
 	"health_pack": {"name": "Health pack", "color": Color(0.9, 0.9, 0.88), "size": Vector3(0.32, 0.12, 0.24), "use": "heal"},
 	# Food is eaten from your hands and staves off hunger. Batteries can't be held:
 	# the flashlight swaps a set in by itself when its charge runs out.
@@ -41,14 +45,17 @@ const ITEMS := {
 	"fence_gate": {"name": "Fence gate", "color": Color(0.58, 0.45, 0.28), "size": Vector3(0.3, 0.22, 0.05), "use": "build"},
 	"garden_plot": {"name": "Garden plot", "color": Color(0.35, 0.5, 0.25), "size": Vector3(0.3, 0.1, 0.22), "use": "build"},
 	"ammo_bench": {"name": "Ammo bench", "color": Color(0.38, 0.36, 0.34), "size": Vector3(0.3, 0.16, 0.18), "use": "build"},
+	"shell_bench": {"name": "Shell bench", "color": Color(0.45, 0.3, 0.28), "size": Vector3(0.3, 0.16, 0.18), "use": "build"},
+	"rifle_bench": {"name": "Rifle bench", "color": Color(0.32, 0.36, 0.3), "size": Vector3(0.3, 0.16, 0.18), "use": "build"},
 	# Materials the woodworker and machinist build with (core/recipes.gd). Found in
 	# containers and lying around, sold by traders, or salvaged with the crowbar.
 	"plywood": {"name": "Plywood", "color": Color(0.72, 0.6, 0.42), "size": Vector3(0.55, 0.03, 0.4)},
 	"scrap_metal": {"name": "Scrap metal", "color": Color(0.5, 0.5, 0.52), "size": Vector3(0.3, 0.08, 0.2)},
 }
 # Order items appear in inventory lists.
-const ITEM_ORDER := ["pistol", "crowbar", "pistol_ammo", "health_pack", "canned_food", "batteries", "planks", "used_planks", "barricade",
-		"plywood", "scrap_metal", "scaffold", "guard_post", "fence", "fence_gate", "garden_plot", "ammo_bench"]
+const ITEM_ORDER := ["pistol", "shotgun", "rifle", "crowbar", "pistol_ammo", "shotgun_shells", "rifle_rounds", "health_pack",
+		"canned_food", "batteries", "planks", "used_planks", "barricade", "plywood", "scrap_metal", "scaffold", "guard_post",
+		"fence", "fence_gate", "garden_plot", "ammo_bench", "shell_bench", "rifle_bench"]
 
 
 static func item_name(id: String) -> String:

@@ -84,8 +84,8 @@ func _refresh() -> void:
 	for id in mine:
 		var price := shop.sell_price(id)
 		var text := "%s  x%d" % [GameData.item_name(id), player.inventory.count(id)]
-		if id == "pistol":
-			text = "Pistol  (%d loaded)" % player.pistol_mag
+		if player.is_gun(id):
+			text = player.gun_text(id)
 		var button := _add_button(player_list, text, "sell $%d" % price if price > 0 else "won't buy")
 		button.disabled = price <= 0
 		button.pressed.connect(_sell.bind(id))

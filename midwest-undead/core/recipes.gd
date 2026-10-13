@@ -13,6 +13,8 @@ const WOODWORKER := [
 ## The machinist needs the woodworker at the station to make these (for the frames).
 const MACHINIST := [
 	{"id": "ammo_bench", "needs": {"planks": 2, "plywood": 2, "scrap_metal": 4}},
+	{"id": "shell_bench", "needs": {"planks": 2, "plywood": 2, "scrap_metal": 6}},
+	{"id": "rifle_bench", "needs": {"planks": 2, "plywood": 3, "scrap_metal": 8}},
 ]
 
 
