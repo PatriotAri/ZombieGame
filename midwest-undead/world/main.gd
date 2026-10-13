@@ -460,7 +460,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_load_or_restart()
 
 
-## After death: back to the last save if there is one, otherwise start over.
+## After death: back to the newest save (yours or the autosave) if there is one,
+## otherwise start over.
 func _load_or_restart() -> void:
 	if not SaveGame.request_load(get_tree()):
 		get_tree().reload_current_scene()
@@ -545,7 +546,7 @@ func _check_autosave() -> void:
 	if _player_threatened():
 		return
 	quest.autosaved_stages.append(quest.stage)
-	if _save_game():
+	if _save_game(SaveGame.AUTOSAVE):
 		hud.show_toast("Autosaved")
 
 
@@ -560,9 +561,10 @@ func _player_threatened() -> bool:
 	return false
 
 
-## The logbook's Save button. Collects everything that can change during play.
-## Things in the town go by their town_id.
-func _save_game() -> bool:
+## Saves the game to `path` (the logbook's new save or the one you picked, or
+## the autosave). Collects everything that can change during play. Things in the
+## town go by their town_id.
+func _save_game(path: String) -> bool:
 	var containers := {}
 	for spot in loot_spots:
 		containers[spot.get_meta("town_id")] = {"opened": spot.opened, "inventory": spot.inventory.to_dict()}
@@ -604,7 +606,7 @@ func _save_game() -> bool:
 		"survivors": survivors.save_state(),
 		"base": base_camp.save_state(),
 		"salvaged": salvage.save_state(),
-	})
+	}, path)
 
 
 ## Put a save on top of the freshly loaded town. Order matters a little: the

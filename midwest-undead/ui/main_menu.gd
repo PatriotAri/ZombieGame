@@ -1,7 +1,8 @@
 extends Control
 ## The title screen, the first thing you see (the project's main scene):
-## Continue (your last save, if there is one), New game, Settings, Controls, Quit.
-## Settings and Controls are the same pages as in the pause menu.
+## Continue (your newest save, if there is one), Load game (pick any save), New
+## game, Settings, Controls, Quit. Load game, Settings and Controls are the same
+## pages as in the pause menu.
 ## Behind it: a dusk sky over the town's silhouette, drawn in code.
 
 const Controls := preload("res://core/controls.gd")
@@ -10,6 +11,7 @@ const SaveGame := preload("res://core/save_game.gd")
 const MenuStyle := preload("res://ui/menu_style.gd")
 const SettingsPage := preload("res://ui/settings_page.gd")
 const ControlsPage := preload("res://ui/controls_page.gd")
+const SaveList := preload("res://ui/save_list.gd")
 
 const SKY_TOP := Color(0.07, 0.08, 0.12)
 const SKY_HORIZON := Color(0.42, 0.24, 0.16)
@@ -18,6 +20,7 @@ const SKYLINE := Color(0.04, 0.04, 0.05)
 var _buttons: VBoxContainer
 var _settings_page: SettingsPage
 var _controls_page: ControlsPage
+var _load_page: SaveList
 var _page_buttons := {} # page -> the button that opened it
 var _skyline: Control
 
@@ -31,7 +34,7 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	for page: Control in [_settings_page, _controls_page]:
+	for page: Control in [_settings_page, _controls_page, _load_page]:
 		if page.visible and event.is_action_pressed("ui_cancel"):
 			page.call("leave")
 			get_viewport().set_input_as_handled()
@@ -48,7 +51,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _continue() -> void:
-	SaveGame.request_load(get_tree())
+	if not SaveGame.request_load(get_tree()):
+		get_tree().reload_current_scene() # no saves left (deleted on the Load page): no Continue
 
 
 func _new_game() -> void:
@@ -63,10 +67,15 @@ func _quit() -> void:
 func _show_page(page: Control) -> void:
 	_buttons.visible = false
 	page.visible = true
+	if page.has_method("refresh"):
+		page.call("refresh")
 	page.call("focus_first")
 
 
 func _show_buttons(from_page: Control) -> void:
+	if from_page == _load_page and not SaveGame.exists():
+		get_tree().reload_current_scene() # you deleted every save: no Continue or Load game now
+		return
 	from_page.visible = false
 	_buttons.visible = true
 	(_page_buttons[from_page] as Button).grab_focus()
@@ -117,17 +126,19 @@ func _build_ui() -> void:
 	_buttons.add_child(spacer)
 
 	var first: Button
-	var save := SaveGame.read()
-	if not save.is_empty():
+	var saves := SaveGame.list()
+	var load_button: Button
+	if not saves.is_empty():
 		first = MenuStyle.add_button(_buttons, "Continue", _continue)
 		var info := Label.new()
-		info.text = "%s  ·  %s" % [save.get("clock", ""), save.get("objective", "")]
+		info.text = "%s  ·  %s" % [saves[0]["title"], saves[0]["detail"].split("\n")[0]]
 		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		info.custom_minimum_size.x = 240
 		info.add_theme_font_size_override("font_size", 14)
 		info.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
 		_buttons.add_child(info)
+		load_button = MenuStyle.add_button(_buttons, "Load game", func() -> void: _show_page(_load_page))
 	var new_game := MenuStyle.add_button(_buttons, "New game", _new_game)
 	if first == null:
 		first = new_game
@@ -141,8 +152,9 @@ func _build_ui() -> void:
 
 	_settings_page = SettingsPage.new()
 	_controls_page = ControlsPage.new()
-	_page_buttons = {_settings_page: settings_button, _controls_page: controls_button}
-	for page: Control in [_settings_page, _controls_page]:
+	_load_page = SaveList.new()
+	_page_buttons = {_settings_page: settings_button, _controls_page: controls_button, _load_page: load_button}
+	for page: Control in [_settings_page, _controls_page, _load_page]:
 		page.visible = false
 		column.add_child(page)
 		page.connect("back", _show_buttons.bind(page))
