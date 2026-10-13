@@ -1,0 +1,110 @@
+[gd_resource type="Resource" script_class="QuestData" format=3]
+
+[ext_resource type="Script" path="res://quests/quest_dialogue_node.gd" id="1_vgxc2"]
+[ext_resource type="Script" path="res://quests/quest_reply.gd" id="2_8dewc"]
+[ext_resource type="Script" path="res://quests/quest_dialogue.gd" id="3_ws0c6"]
+[ext_resource type="Script" path="res://quests/quest_data.gd" id="4_x0ona"]
+[ext_resource type="Script" path="res://quests/quest_step.gd" id="5_wpci8"]
+[ext_resource type="Script" path="res://quests/quest_variant.gd" id="6_v4fgb"]
+
+[sub_resource type="Resource" id="Resource_do25d"]
+script = ExtResource("1_vgxc2")
+lines = Array[String](["Bandages are holding out, thanks to you."])
+
+[sub_resource type="Resource" id="Resource_oxnhd"]
+script = ExtResource("3_ws0c6")
+nodes = Array[ExtResource("1_vgxc2")]([SubResource("Resource_do25d")])
+
+[sub_resource type="Resource" id="Resource_j0bl5"]
+script = ExtResource("2_8dewc")
+text = "What's in it for me?"
+next = "pay"
+
+[sub_resource type="Resource" id="Resource_j47io"]
+script = ExtResource("2_8dewc")
+text = "I'll get it."
+next = "thanks"
+action = "accept"
+
+[sub_resource type="Resource" id="Resource_jkgfn"]
+script = ExtResource("2_8dewc")
+text = "Not now."
+action = "decline"
+
+[sub_resource type="Resource" id="Resource_qpjms"]
+script = ExtResource("1_vgxc2")
+lines = Array[String](["You look like you can handle yourself.", "We're out of bandages. The gas station out west kept a first-aid kit behind the register."])
+replies = Array[ExtResource("2_8dewc")]([SubResource("Resource_j0bl5"), SubResource("Resource_j47io"), SubResource("Resource_jkgfn")])
+
+[sub_resource type="Resource" id="Resource_57pns"]
+script = ExtResource("2_8dewc")
+text = "Deal."
+next = "thanks"
+action = "accept"
+
+[sub_resource type="Resource" id="Resource_8hsxn"]
+script = ExtResource("2_8dewc")
+text = "Not for that."
+action = "decline"
+
+[sub_resource type="Resource" id="Resource_4a3lu"]
+script = ExtResource("1_vgxc2")
+id = "pay"
+lines = Array[String](["Sixty dollars and a health pack of your own. Fair?"])
+replies = Array[ExtResource("2_8dewc")]([SubResource("Resource_57pns"), SubResource("Resource_8hsxn")])
+
+[sub_resource type="Resource" id="Resource_crc5v"]
+script = ExtResource("1_vgxc2")
+id = "thanks"
+lines = Array[String](["Good. Two days, tops: people here are hurting."])
+
+[sub_resource type="Resource" id="Resource_ltkov"]
+script = ExtResource("3_ws0c6")
+nodes = Array[ExtResource("1_vgxc2")]([SubResource("Resource_qpjms"), SubResource("Resource_4a3lu"), SubResource("Resource_crc5v")])
+
+[sub_resource type="Resource" id="Resource_omaji"]
+script = ExtResource("1_vgxc2")
+lines = Array[String](["The gas station, out west. Behind the register."])
+
+[sub_resource type="Resource" id="Resource_q3fst"]
+script = ExtResource("3_ws0c6")
+nodes = Array[ExtResource("1_vgxc2")]([SubResource("Resource_omaji")])
+
+[sub_resource type="Resource" id="Resource_hb8ug"]
+script = ExtResource("5_wpci8")
+id = "find_kit"
+objective = "Find the first-aid kit at the gas station (west end of 7th Street)"
+kind = "go_to_place"
+target = "Gas Station"
+reminder = SubResource("Resource_q3fst")
+
+[sub_resource type="Resource" id="Resource_07ilw"]
+script = ExtResource("1_vgxc2")
+lines = Array[String](["You found it. That's a few people who'll sleep easier tonight.", "Here, as promised."])
+
+[sub_resource type="Resource" id="Resource_t0wu0"]
+script = ExtResource("3_ws0c6")
+nodes = Array[ExtResource("1_vgxc2")]([SubResource("Resource_07ilw")])
+
+[sub_resource type="Resource" id="Resource_cdryl"]
+script = ExtResource("5_wpci8")
+id = "bring_back"
+objective = "Bring the first-aid kit to the Quartermaster"
+kind = "talk_to"
+target = "Quartermaster"
+dialogue = SubResource("Resource_t0wu0")
+
+[resource]
+script = ExtResource("4_x0ona")
+id = "medicine_run"
+title = "Medicine Run"
+description = "The Quartermaster is out of bandages. There may be a first-aid kit at the gas station on the west end of 7th."
+giver = "Quartermaster"
+offer = SubResource("Resource_ltkov")
+time_limit_hours = 48.0
+steps = Array[ExtResource("5_wpci8")]([SubResource("Resource_hb8ug"), SubResource("Resource_cdryl")])
+reward_money = 60
+reward_items = Dictionary[String, int]({
+"health_pack": 1
+})
+afterword = SubResource("Resource_oxnhd")

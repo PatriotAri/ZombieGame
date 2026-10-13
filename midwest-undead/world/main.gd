@@ -7,6 +7,7 @@ extends Node3D
 ##   world/kit/           the building kit the town is made of (see HOW_TO_BUILD.md)
 ##   world/markers/       markers in the town: where people and zombies start, places
 ##   world/loot.gd        the containers' loot tables
+##   quests/              the main story and side quests (see QUESTS.md)
 ##   ui/hud.gd            everything on screen during play
 ##
 ## What's fixed and what's random: the town, its containers and the items lying
@@ -42,7 +43,8 @@ const Guard := preload("res://characters/npcs/guard.gd")
 const GuardScene := preload("res://characters/npcs/guard.tscn")
 const HumanNPCScene := preload("res://characters/npcs/human_npc.tscn")
 const DialogueBox := preload("res://ui/dialogue_box.gd")
-const MainQuest := preload("res://quests/main_quest.gd")
+const QuestManager := preload("res://quests/quest_manager.gd")
+const JournalMenu := preload("res://ui/journal_menu.gd")
 const SaveGame := preload("res://core/save_game.gd")
 const SavePoint := preload("res://world/save_point.gd")
 const SaveMenu := preload("res://ui/save_menu.gd")
@@ -138,7 +140,8 @@ var salvage: Salvage # stripping cars and furniture for materials
 var craft_menu: CraftMenu
 var choice_menu: ChoiceMenu
 var dialogue: DialogueBox
-var quest: MainQuest
+var quests: QuestManager # the main story and side quests (quests/)
+var journal_menu: JournalMenu
 var chief: PoliceChief
 var trader: Shopkeeper
 var safe_house_point := Vector3.ZERO # the "Safe House" place (quest marker target)
@@ -248,32 +251,37 @@ func _ready() -> void:
 			backpack_menu.close, craft_menu.close, choice_menu.close]:
 		player.died.connect(menu)
 
-	quest = MainQuest.new()
-	add_child(quest)
-	quest.objective_changed.connect(hud.set_objective)
-	quest.story_beat.connect(hud.show_story)
+	quests = QuestManager.new()
+	add_child(quests)
+	quests.objective_changed.connect(hud.set_objective)
+	quests.story_beat.connect(hud.show_story)
+	quests.setup(self, player, dialogue, choice_menu, zones, day_night)
+	journal_menu = JournalMenu.new()
+	add_child(journal_menu)
+	journal_menu.setup(player, quests)
+	player.died.connect(journal_menu.close)
 	safe_house_point = _place_position("Safe House")
-	quest.setup(player, chief, safe_house_point, dialogue)
 	for trigger in get_tree().get_nodes_in_group("safe_house_trigger"):
 		# Walking into the safe house's yard (or the house) is what "reaching" it means.
 		(trigger as Area3D).body_entered.connect(func(body: Node3D) -> void:
-			if body.is_in_group("player"):
-				quest.reached_safe_house())
+			if body.is_in_group("player") and not quests.happened("safe_house_reached"):
+				# You stumbled in on them: everything inside comes to see what made that noise.
+				get_tree().call_group("noise_listeners", "hear_noise", safe_house_point, 30.0)
+				quests.event("safe_house_reached"))
 
 	trader_arrival = TraderArrival.new()
 	add_child(trader_arrival)
 	trader_arrival.setup(player, zones, day_night, _place_position("Police Station"),
 			_spawn_transform("wagon"), _spawn_transform("wagon_trader"))
-	trader_arrival.zone_cleared.connect(quest.zone_cleared)
-	trader_arrival.seen.connect(quest.trader_found)
+	trader_arrival.zone_cleared.connect(quests.event.bind("zone_cleared:" + TraderArrival.ZONE))
+	trader_arrival.seen.connect(quests.event.bind("trader_found"))
 
 	woodworker_rescue = WoodworkerRescue.new()
 	add_child(woodworker_rescue)
 	woodworker_rescue.setup(player, dialogue, _spawn_transform("woodworker_captive"),
 			_spawn_transform("woodworker_home"))
-	woodworker_rescue.freed.connect(quest.woodworker_untied)
-	woodworker_rescue.seen.connect(func() -> void: quest.woodworker_found(WoodworkerRescue.HOME_STORY))
-	quest.woodworker = woodworker_rescue.woodworker
+	woodworker_rescue.freed.connect(quests.event.bind("woodworker_untied"))
+	woodworker_rescue.seen.connect(quests.event.bind("woodworker_found"))
 	salvage = Salvage.new()
 	add_child(salvage)
 	salvage.setup(loot_spots, salvage_others)
@@ -282,7 +290,6 @@ func _ready() -> void:
 	base_camp.setup(get_tree().get_first_node_in_group("base_supply_crate") as Node3D, survivors,
 			woodworker_rescue, structures, day_night, player)
 	survivors.attach(player, dialogue, choice_menu, craft_menu, base_camp, woodworker_rescue)
-	quest.woodworker_home = woodworker_rescue.home_spot.origin
 
 	# Coming from "Load": the town is freshly loaded; now put the saved state on top.
 	if not SaveGame.pending_load.is_empty():
@@ -430,18 +437,40 @@ func _discoverable_places() -> Array[Dictionary]:
 	return result
 
 
-## Pressing interact on an NPC: open whatever that kind of NPC offers.
+## Pressing interact on an NPC. Anything a quest has for them (an offer, a step
+## to talk to them, a reminder) comes first; next to their own business
+## (trading, building...) it's a choice. With nothing about quests, they do
+## their own thing.
 func _on_npc_interacted(npc: HumanNPC) -> void:
 	if npc is Woodworker and (npc as Woodworker).state == Woodworker.State.CAPTIVE:
-		woodworker_rescue.untie()
-	elif npc is Woodworker and (npc as Woodworker).state == Woodworker.State.HOME:
-		craft_menu.open(player, npc.display_name, Recipes.WOODWORKER)
-	elif npc is Survivor:
-		survivors.talk(npc as Survivor)
-	elif npc is Shopkeeper:
-		shop_menu.open(player, npc as Shopkeeper)
-	elif npc is PoliceChief:
-		quest.talk_to_chief()
+		woodworker_rescue.untie() # (the rescue itself is the woodworker's own scene)
+		return
+	var options := quests.talk_options(npc)
+	var own := _own_business(npc)
+	if options.is_empty():
+		if own.is_empty():
+			quests.afterword(npc) # what they say once their quests are done
+		else:
+			own[1].call()
+		return
+	if own.is_empty() and options.size() == 1:
+		options[0][1].call()
+		return
+	if not own.is_empty():
+		options.append(own)
+	options.append(["Never mind", Callable()])
+	choice_menu.open(player, npc.display_name, "", options)
+
+
+## What an NPC does when it's not about quests: [label, callable], or [] if nothing.
+func _own_business(npc: HumanNPC) -> Array:
+	if npc is Woodworker and (npc as Woodworker).state == Woodworker.State.HOME:
+		return ["Build something", func() -> void: craft_menu.open(player, npc.display_name, Recipes.WOODWORKER)]
+	if npc is Survivor:
+		return ["Talk", func() -> void: survivors.talk(npc as Survivor)]
+	if npc is Shopkeeper:
+		return ["Trade", func() -> void: shop_menu.open(player, npc as Shopkeeper)]
+	return []
 
 
 func _process(_delta: float) -> void:
@@ -535,21 +564,20 @@ func _setup_navigation() -> void:
 
 # --- Saving and loading --------------------------------------------------------
 
-## Autosave the first time you get within AUTOSAVE_DISTANCE of the safe house
-## while it's your objective (not the Chief: he's safe in the station anyway).
+## Autosave the first time you get within AUTOSAVE_DISTANCE of the tracked
+## quest's waypoint, on steps that ask for it (the safe house, in the story).
 ## Not while something is hunting you: a save made mid-fight could lock you
 ## into a fight you can't win. It keeps checking, and saves as soon as you're
 ## clear (if you're still close).
 func _check_autosave() -> void:
-	if player.is_dead or quest.stage != MainQuest.Stage.REACH_SAFE_HOUSE \
-			or quest.stage in quest.autosaved_stages:
+	if player.is_dead:
 		return
-	var target := quest.objective_position()
+	var target := quests.autosave_target()
 	if target == Vector3.INF or player.global_position.distance_to(target) > AUTOSAVE_DISTANCE:
 		return
 	if _player_threatened():
 		return
-	quest.autosaved_stages.append(quest.stage)
+	quests.mark_autosaved()
 	if _save_game(SaveGame.AUTOSAVE):
 		hud.show_toast("Autosaved")
 
@@ -591,9 +619,9 @@ func _save_game(path: String) -> bool:
 				"yaw": bandit.rotation.y, "health": bandit.health, "dead": bandit.is_dead}
 	return SaveGame.write({
 		"clock": day_night.clock_text(),
-		"objective": quest.objective_text(),
+		"objective": quests.objective_text(),
 		"time": {"hour": day_night.hour, "day": day_night.day},
-		"quest": quest.save_state(),
+		"quest": quests.save_state(),
 		"player": player.save_state(),
 		"containers": containers,
 		"ground_items": ground,
@@ -619,7 +647,8 @@ func _apply_save(data: Dictionary) -> void:
 	var time: Dictionary = data.get("time", {})
 	day_night.hour = float(time.get("hour", day_night.hour))
 	day_night.day = int(time.get("day", day_night.day))
-	quest.load_state(data.get("quest", {}))
+	quests.begin_load() # no story moments while the save goes back on
+	quests.load_state(data.get("quest", {}))
 
 	var containers: Dictionary = data.get("containers", {})
 	for spot in loot_spots:
@@ -677,8 +706,16 @@ func _apply_save(data: Dictionary) -> void:
 	survivors.load_state(data.get("survivors", []))
 	base_camp.load_state(data.get("base", {}))
 	salvage.load_state(data.get("salvaged", []))
-	quest.sync_progress(trader_arrival.cleared, trader_arrival.was_seen,
-			woodworker_rescue.state() != Woodworker.State.CAPTIVE, woodworker_rescue.was_seen)
+	# What the world says has happened (for saves from before quests kept their own record).
+	if trader_arrival.cleared:
+		quests.event("zone_cleared:" + TraderArrival.ZONE)
+	if trader_arrival.was_seen:
+		quests.event("trader_found")
+	if woodworker_rescue.state() != Woodworker.State.CAPTIVE:
+		quests.event("woodworker_untied")
+	if woodworker_rescue.was_seen:
+		quests.event("woodworker_found")
+	quests.end_load()
 	player.load_state(data.get("player", {}))
 
 

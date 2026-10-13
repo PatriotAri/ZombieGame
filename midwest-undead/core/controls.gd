@@ -15,6 +15,7 @@ extends RefCounted
 ##   next/prev item   mouse wheel        D-pad right = next, D-pad left = previous
 ##   pick held item   1-9                -    (numbered on the inventory screen)
 ##   inventory        Tab                Y
+##   journal (quests) J                  D-pad down
 ##   interact         E                  X
 ##   reload           R                  RB
 ##   quick heal       Q                  LB   (switches to a health pack and uses it)
@@ -38,6 +39,7 @@ const HINTS := {
 	"continue": ["E / Space / Click", "A / X"],
 	"map": ["M", "Back"],
 	"inventory": ["Tab", "Y"],
+	"journal": ["J", "D-pad down"],
 	"leave": ["Esc", "B"],
 }
 
@@ -53,6 +55,7 @@ const TABLE := [
 	["Aim (guns; the rifle's scope)", "Right click (hold)", "LT (hold)"],
 	["Switch item", "Wheel / 1-9", "D-pad left / right"],
 	["Inventory", "Tab", "Y"],
+	["Journal (quests)", "J", "D-pad down"],
 	["Search / pick up / talk / open", "E", "X"],
 	["Salvage (holding the crowbar)", "Hold E", "Hold X"],
 	["Reload", "R", "RB"],
@@ -88,6 +91,7 @@ static func setup() -> void:
 	_key("flashlight", KEY_F); _button("flashlight", JOY_BUTTON_DPAD_UP)
 	_key("map", KEY_M); _button("map", JOY_BUTTON_BACK)
 	_key("inventory", KEY_TAB); _button("inventory", JOY_BUTTON_Y)
+	_key("journal", KEY_J); _button("journal", JOY_BUTTON_DPAD_DOWN)
 	_key("pause", KEY_ESCAPE); _button("pause", JOY_BUTTON_START)
 	_key("menu_stack", KEY_SHIFT); _button("menu_stack", JOY_BUTTON_RIGHT_SHOULDER)
 	_key("restart", KEY_R); _button("restart", JOY_BUTTON_A)
