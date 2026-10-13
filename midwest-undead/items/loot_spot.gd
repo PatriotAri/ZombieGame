@@ -3,7 +3,7 @@ class_name KitContainer
 extends StaticBody3D
 ## A container you can open: a dumpster, a car, a pile of boxes, a dresser.
 ## What's in it when a new game starts: fixed_items, always, plus a roll on its
-## loot table (world/loot.gd lists the tables). The inventory screen moves items
+## loot table (a file in items/loot/; see world/loot.gd). The inventory screen moves items
 ## in and out.
 ## It's a box of `size` in `material`, made fresh from those settings (in the
 ## editor too). Ready-made ones are in world/kit/furniture/.
@@ -14,10 +14,11 @@ const DEFAULT_MATERIAL := preload("res://world/kit/materials/wood_planks.tres")
 
 ## What the prompt calls it ("search the Dresser"). Salvage (world/salvage.gd) goes by it too.
 @export var label := "Boxes"
-## Always in it at the start: item id -> how many (ids are in core/game_data.gd).
+## Always in it at the start: item id -> how many (the files in items/data/).
 @export var fixed_items: Dictionary[String, int] = {}
-## Random extras rolled at the start of every new game (world/loot.gd). "none": just the fixed items.
-@export_enum("none", "standard", "car", "grocery", "snack") var loot_table := "standard"
+## Random extras rolled at the start of every new game: a table in items/loot/
+## (the list shows them all). "none": just the fixed items.
+@export var loot_table := "standard"
 @export_group("Look")
 ## In meters; the box is centered on the node (see Sits On Floor).
 @export var size := Vector3(1.0, 1.0, 1.0):
@@ -41,6 +42,16 @@ var salvaged := false # stripped for materials with the crowbar (world/salvage.g
 var _generated: Array[Node] = []
 var _dirty := true
 var _queued := false
+
+
+## The Loot Table setting is a list of the tables in items/loot/, so a new
+## table file shows up in it. (loaded, not preloaded: world/loot.gd preloads this.)
+func _validate_property(property: Dictionary) -> void:
+	if property["name"] == "loot_table":
+		var names: PackedStringArray = load("res://world/loot.gd").table_names()
+		names.insert(0, "none")
+		property["hint"] = PROPERTY_HINT_ENUM
+		property["hint_string"] = ",".join(names)
 
 
 func _ready() -> void:

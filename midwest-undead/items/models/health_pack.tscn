@@ -1,0 +1,36 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_u7fn7"]
+albedo_color = Color(0.9, 0.9, 0.88, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_rjc31"]
+material = SubResource("StandardMaterial3D_u7fn7")
+size = Vector3(0.32, 0.12, 0.24)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sn5h2"]
+albedo_color = Color(0.8, 0.1, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_5e0ie"]
+material = SubResource("StandardMaterial3D_sn5h2")
+size = Vector3(0.192, 0.01, 0.06)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tp8an"]
+albedo_color = Color(0.8, 0.1, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_7moqw"]
+material = SubResource("StandardMaterial3D_tp8an")
+size = Vector3(0.06, 0.01, 0.144)
+
+[node name="HealthPack" type="Node3D" unique_id=1793308438]
+
+[node name="Case" type="MeshInstance3D" parent="." unique_id=232150464]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, 0)
+mesh = SubResource("BoxMesh_rjc31")
+
+[node name="CrossA" type="MeshInstance3D" parent="." unique_id=685336684]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.125, 0)
+mesh = SubResource("BoxMesh_5e0ie")
+
+[node name="CrossB" type="MeshInstance3D" parent="." unique_id=529908195]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.125, 0)
+mesh = SubResource("BoxMesh_7moqw")

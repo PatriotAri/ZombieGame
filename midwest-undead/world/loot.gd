@@ -3,78 +3,49 @@ extends RefCounted
 ## calls fill() once the town scene is loaded.
 ##
 ## Each container (items/loot_spot.gd) has fixed items, always in it, and a loot
-## table, rolled fresh every new game. A table is a list of rolls; each roll
-## happens with its chance and adds one of its items (picked evenly), a random
-## amount between the two numbers. To change what a kind of container tends to
-## hold, edit its table here; to add a table, add it here and to loot_spot.gd's
-## loot_table list.
+## table, rolled fresh every new game. The tables are the files in items/loot/
+## (LootTable; see HOW_TO_ADD.md): a list of rolls, each happening with its
+## chance and adding one of its items (picked evenly), a random amount from its
+## min to its max.
 
 const LootSpot := preload("res://items/loot_spot.gd")
+const DIR := "res://items/loot/"
 
-## Shelves, counters, cabinets, dressers, dumpsters, boxes.
-const STANDARD := [
-	{"chance": 0.4, "items": [["health_pack", 1, 1]]},
-	{"chance": 0.35, "items": [["pistol_ammo", 3, 7]]},
-	{"chance": 0.35, "items": [["canned_food", 1, 2], ["batteries", 1, 3]]},
-	{"chance": 0.15, "items": [["planks", 1, 2]]},
-	{"chance": 0.12, "items": [["plywood", 1, 2]]},
-	{"chance": 0.1, "items": [["scrap_metal", 1, 2]]},
-	{"chance": 0.08, "items": [["shotgun_shells", 2, 5]]},
-	{"chance": 0.04, "items": [["rifle_rounds", 1, 3]]},
-]
-const TABLES := {
-	"none": [],
-	"standard": STANDARD,
-	## Wrecked cars: more scrap metal.
-	"car": [
-		{"chance": 0.4, "items": [["health_pack", 1, 1]]},
-		{"chance": 0.35, "items": [["pistol_ammo", 3, 7]]},
-		{"chance": 0.35, "items": [["canned_food", 1, 2], ["batteries", 1, 3]]},
-		{"chance": 0.15, "items": [["planks", 1, 2]]},
-		{"chance": 0.12, "items": [["plywood", 1, 2]]},
-		{"chance": 0.35, "items": [["scrap_metal", 1, 2]]},
-		{"chance": 0.12, "items": [["shotgun_shells", 2, 5]]},
-		{"chance": 0.08, "items": [["rifle_rounds", 1, 3]]},
-	],
-	## The grocery's shelves: food on top of the usual.
-	"grocery": [
-		{"chance": 1.0, "items": [["canned_food", 1, 2]]},
-		{"chance": 0.4, "items": [["health_pack", 1, 1]]},
-		{"chance": 0.35, "items": [["pistol_ammo", 3, 7]]},
-		{"chance": 0.35, "items": [["canned_food", 1, 2], ["batteries", 1, 3]]},
-		{"chance": 0.15, "items": [["planks", 1, 2]]},
-		{"chance": 0.12, "items": [["plywood", 1, 2]]},
-		{"chance": 0.1, "items": [["scrap_metal", 1, 2]]},
-		{"chance": 0.08, "items": [["shotgun_shells", 2, 5]]},
-		{"chance": 0.04, "items": [["rifle_rounds", 1, 3]]},
-	],
-	## The gas station's snack shelf: maybe some food on top of the usual.
-	"snack": [
-		{"chance": 0.6, "items": [["canned_food", 1, 2]]},
-		{"chance": 0.4, "items": [["health_pack", 1, 1]]},
-		{"chance": 0.35, "items": [["pistol_ammo", 3, 7]]},
-		{"chance": 0.35, "items": [["canned_food", 1, 2], ["batteries", 1, 3]]},
-		{"chance": 0.15, "items": [["planks", 1, 2]]},
-		{"chance": 0.12, "items": [["plywood", 1, 2]]},
-		{"chance": 0.1, "items": [["scrap_metal", 1, 2]]},
-		{"chance": 0.08, "items": [["shotgun_shells", 2, 5]]},
-		{"chance": 0.04, "items": [["rifle_rounds", 1, 3]]},
-	],
-}
+
+## The table called table_name (its file's name), or null if there's none.
+static func table(table_name: String) -> LootTable:
+	var path := DIR + table_name + ".tres"
+	return load(path) as LootTable if ResourceLoader.exists(path) else null
+
+
+## Every table's name, for the container's Loot Table list.
+static func table_names() -> PackedStringArray:
+	var names := PackedStringArray()
+	for file in DirAccess.get_files_at(DIR):
+		file = file.trim_suffix(".remap") # exported games list "x.tres.remap"
+		if file.ends_with(".tres"):
+			names.append(file.get_basename())
+	return names
 
 
 ## Every container's fixed items plus a roll on its table.
 static func fill(spots: Array, rng: RandomNumberGenerator) -> void:
+	var tables := {} # name -> LootTable, loaded once
 	for spot: LootSpot in spots:
 		for id: String in spot.fixed_items:
 			if spot.fixed_items[id] > 0:
 				spot.inventory.add(id, spot.fixed_items[id])
-		if not TABLES.has(spot.loot_table):
-			push_warning("%s: no loot table called \"%s\" (world/loot.gd)" % [spot.name, spot.loot_table])
+		if spot.loot_table == "none" or spot.loot_table == "":
 			continue
-		for roll: Dictionary in TABLES[spot.loot_table]:
-			if rng.randf() >= float(roll["chance"]):
+		if not tables.has(spot.loot_table):
+			tables[spot.loot_table] = table(spot.loot_table)
+			if tables[spot.loot_table] == null:
+				push_warning("%s: no loot table called \"%s\" (items/loot/)" % [spot.name, spot.loot_table])
+		var loot: LootTable = tables[spot.loot_table]
+		if loot == null:
+			continue
+		for roll: LootRoll in loot.rolls:
+			if roll.items.is_empty() or rng.randf() >= roll.chance:
 				continue
-			var options: Array = roll["items"]
-			var pick: Array = options[rng.randi_range(0, options.size() - 1)]
-			spot.inventory.add(pick[0], rng.randi_range(pick[1], pick[2]))
+			var pick: LootPick = roll.items[rng.randi_range(0, roll.items.size() - 1)]
+			spot.inventory.add(pick.item, rng.randi_range(pick.min_amount, maxi(pick.max_amount, pick.min_amount)))

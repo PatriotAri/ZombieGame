@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="SurvivorData" format=3]
+
+[ext_resource type="Script" path="res://quests/quest_dialogue_node.gd" id="1_xowoh"]
+[ext_resource type="Script" path="res://quests/quest_reply.gd" id="2_xnnws"]
+[ext_resource type="Script" path="res://quests/quest_dialogue.gd" id="3_mj7t2"]
+[ext_resource type="Script" path="res://characters/npcs/survivor_data.gd" id="4_k4ir7"]
+
+[sub_resource type="Resource" id="Resource_v2tp6"]
+script = ExtResource("1_xowoh")
+lines = Array[String](["Is it... is it over out there? No. Of course it isn't.", "Priya. I was home from college for the summer. My parents went out for supplies the first day.", "If there are people at the police station, I want to be with people. I'll go."])
+
+[sub_resource type="Resource" id="Resource_56v2m"]
+script = ExtResource("3_mj7t2")
+nodes = Array[ExtResource("1_xowoh")]([SubResource("Resource_v2tp6")])
+
+[resource]
+script = ExtResource("4_k4ir7")
+display_name = "Priya Raman"
+outfit_color = Color(0.5, 0.28, 0.35, 1)
+skin_color = Color(0.55, 0.4, 0.3, 1)
+join_talk = SubResource("Resource_56v2m")
+base_line = "I'm keeping a list of everyone who makes it through the gate. Someone should remember."

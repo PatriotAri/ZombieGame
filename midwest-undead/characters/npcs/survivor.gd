@@ -3,7 +3,8 @@ extends HumanNPC
 ## you (if the base has room): they make their own way to the police station
 ## and live in the back yard. There you can give them a job working a garden
 ## plot or ammo bench (world/base_camp.gd); the machinist makes ammo benches.
-## world/survivors.gd places them, holds what they say, and moves them home.
+## world/survivors.gd places them, plays what they say (their file in
+## characters/npcs/survivors/), and moves them home.
 
 enum State { WAITING, TRAVELLING, HOME }
 

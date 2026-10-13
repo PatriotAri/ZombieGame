@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://items/item_data.gd" id="1_nvkri"]
+
+[resource]
+script = ExtResource("1_nvkri")
+id = "batteries"
+display_name = "Batteries"
+color = Color(0.2, 0.45, 0.25, 1)
+size = Vector3(0.12, 0.06, 0.08)

@@ -22,13 +22,9 @@ extends CharacterBody3D
 ## somewhere it can't get across from (indoors).
 ## Its paths can also run through windows (world/fortifications.gd): it smashes the
 ## glass, then climbs over the sill. Boarded windows and doors stop it for good.
-## Three kinds (set `kind` before adding it to the tree; main.gd rolls it):
-##   walker  - the usual shambler.
-##   runner  - thin and red-skinned; sprints at you (runner_speed) once it's
-##             hunting, leaning into it. Same health as a walker.
-##   crawler - drags itself along the ground: slow, low (aim down to hit it; its
-##             head is at the front, near the ground), and weaker (crawler_health).
-## Each has its own groan pitch.
+## Its kind (walker, runner, crawler...) is a file in characters/zombie/kinds/
+## (ZombieKind): health, speeds, shape, skin, voice. Set `kind` to its id before
+## adding it to the tree; main.gd rolls it.
 ## The node tree lives in zombie.tscn.
 ## TUNING: open zombie.tscn, select the Zombie node, and use the Inspector.
 
@@ -39,9 +35,9 @@ const Sound := preload("res://core/sound.gd")
 
 enum State { IDLE, INVESTIGATE, HUNT }
 
-@export_enum("walker", "runner", "crawler") var kind := "walker"
+## A ZombieKind's id (characters/zombie/kinds/).
+@export var kind := "walker"
 
-@export var max_health := 100.0
 @export_range(1.0, 100.0) var sight_range := 20.0 ## In daylight.
 ## Sight range multiplier at full night (0.45 = 9 m out of 20).
 @export_range(0.0, 1.0) var night_sight_factor := 0.45
@@ -49,9 +45,6 @@ enum State { IDLE, INVESTIGATE, HUNT }
 ## Damage to a door it's pushing against. Doors have 150 health, so one zombie
 ## gets through in about 8 seconds; a crowd much faster.
 @export var door_damage_per_second := 18.0
-## Each zombie picks a random walking speed in this range.
-@export var min_speed := 1.2
-@export var max_speed := 2.2
 ## Seconds it keeps searching a spot before losing interest.
 @export var linger_time := 4.0
 ## Each time it's idle and decides what to do next, the chance it sets off
@@ -59,20 +52,13 @@ enum State { IDLE, INVESTIGATE, HUNT }
 ## town, and back into places you've cleared, faster.
 @export_range(0.0, 1.0) var roam_chance_day := 0.05
 @export_range(0.0, 1.0) var roam_chance_night := 0.5
-@export_group("Runner")
-## While hunting. You walk at 4 and sprint at 7.
-@export var runner_speed := 7.0
-@export var runner_skin := Color(0.62, 0.36, 0.3)
-@export_group("Crawler")
-@export var crawler_health := 60.0
-@export var crawler_speed := 0.8
 
 const VIEW_DOT := 0.5 # cos(60 degrees): it sees a 120 degree cone in front of it
 const PROXIMITY_RANGE := 2.0 # this close, it notices you no matter what
 const EYE_HEIGHT := 1.6
 const CRAWLER_EYE_HEIGHT := 0.4
-const CRAWLER_HEAD := Vector3(0, 0.25, -0.8) # where a crawler's head is (its own space)
-const RUNNER_LEAN := 0.4 # radians forward while running flat out
+const CRAWLER_HEAD := Vector3(0, 0.25, -0.8) # where a crawling one's head is (its own space)
+const RUNNER_LEAN := 0.4 # radians forward while running flat out (kinds that lean)
 const ATTACK_RANGE := 1.3
 const ATTACK_HEIGHT := 1.5 # can't bite something more than this far above or below it
 const SENSE_INTERVAL := 0.2 # sight checks are raycasts; 5 per second is plenty
@@ -95,7 +81,9 @@ const FAR_DISTANCE := 80.0
 const FAR_TICK := 3
 
 var state := State.IDLE
-var health := 100.0 # set to max_health (crawler_health) in _ready
+var max_health := 100.0 # its kind's
+var health := 100.0 # set to max_health in _ready
+var kind_data: ZombieKind # the file for `kind`
 var eye_height := EYE_HEIGHT
 var is_dead := false
 var speed := 1.6
@@ -139,7 +127,10 @@ var _step_scale := 1.0 # how many frames' worth this physics step moves it
 func _ready() -> void:
 	add_to_group("zombies")
 	add_to_group("noise_listeners")
-	speed = randf_range(min_speed, maxf(max_speed, min_speed)) # some shuffle, some lurch
+	kind_data = ZombieKind.find(kind)
+	kind = kind_data.id
+	speed = randf_range(kind_data.min_speed, maxf(kind_data.max_speed, kind_data.min_speed)) # some shuffle, some lurch
+	max_health = kind_data.health
 	health = max_health
 	_apply_kind()
 	# Stagger timers so dozens of zombies don't all raycast and repath on the same frame.
@@ -156,43 +147,48 @@ func _ready() -> void:
 	_unique_materials()
 
 
-## Shape, speed and health for its kind.
+## Its kind's shape.
 func _apply_kind() -> void:
-	match kind:
-		"runner":
-			visual.scale = Vector3(0.75, 1.0, 0.75) # thin
-		"crawler":
-			speed = crawler_speed
-			health = crawler_health
-			eye_height = CRAWLER_EYE_HEIGHT
-			# Lying face down, head forward (-z), dragging itself along.
-			visual.rotation.x = -PI / 2.0
-			visual.position = Vector3(0, 0.3, 0.8)
-			for arm: Node3D in [$Visual/ArmLeft, $Visual/ArmRight]:
-				arm.rotation.x = PI / 2.0 # flat on the ground, reaching ahead
-				arm.position.z -= 0.25
-			var shape := CapsuleShape3D.new()
-			shape.radius = 0.3
-			shape.height = 1.6
-			collision.shape = shape
-			collision.transform = Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(0, 0.3, 0.05))
+	visual.scale = kind_data.body_scale
+	if _crawls():
+		eye_height = CRAWLER_EYE_HEIGHT
+		# Lying face down, head forward (-z), dragging itself along.
+		visual.rotation.x = -PI / 2.0
+		visual.position = Vector3(0, 0.3, 0.8)
+		for arm: Node3D in [$Visual/ArmLeft, $Visual/ArmRight]:
+			arm.rotation.x = PI / 2.0 # flat on the ground, reaching ahead
+			arm.position.z -= 0.25
+		var shape := CapsuleShape3D.new()
+		shape.radius = 0.3
+		shape.height = 1.6
+		collision.shape = shape
+		collision.transform = Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(0, 0.3, 0.05))
 
 
 ## Where shots should aim: the middle of its body (guards use this).
 func aim_point() -> Vector3:
-	return global_position + (Vector3(0, 0.3, 0) if kind == "crawler" else Vector3(0, 1.2, 0))
+	return global_position + (Vector3(0, 0.3, 0) if _crawls() else Vector3(0, 1.2, 0))
 
 
 ## A hit here counts as a headshot.
 func is_headshot(hit_pos: Vector3) -> bool:
-	if kind == "crawler":
+	if _crawls():
 		return hit_pos.distance_to(global_transform * CRAWLER_HEAD) < 0.3
 	return hit_pos.y - global_position.y > 1.4 # heads sit at ~1.4-1.8 m
 
 
-## Its groans: higher for a runner, deeper for a crawler.
+## Its groans: its kind's pitch.
 func _voice_pitch() -> float:
-	return {"runner": 1.25, "crawler": 0.75}.get(kind, 1.0)
+	return kind_data.voice_pitch
+
+
+func _crawls() -> bool:
+	return kind_data.posture == "crawling"
+
+
+## How fast it goes after someone.
+func _hunt_speed() -> float:
+	return kind_data.hunt_speed if kind_data.hunt_speed > 0.0 else speed
 
 
 ## Materials in a scene are shared by every instance, so flashing one zombie would
@@ -205,8 +201,8 @@ func _unique_materials() -> void:
 		var mat := (mesh_inst.mesh.surface_get_material(0) as StandardMaterial3D).duplicate() as StandardMaterial3D
 		if mesh_inst == clothes:
 			mat.albedo_color = Color.from_hsv(randf(), 0.3, 0.35)
-		elif kind == "runner":
-			mat.albedo_color = runner_skin
+		elif kind_data.skin_color.a > 0.0:
+			mat.albedo_color = kind_data.skin_color
 		mesh_inst.material_override = mat
 		materials.append(mat)
 		base_colors.append(mat.albedo_color)
@@ -244,8 +240,8 @@ func _physics_process(delta: float) -> void:
 	_update_groan(delta)
 
 	var moving := false
-	if kind == "runner": # leans into it when running flat out, upright otherwise
-		var lean := RUNNER_LEAN if _flat(velocity).length() > runner_speed * 0.6 else 0.0
+	if kind_data.leans_when_running: # leans into it when running flat out, upright otherwise
+		var lean := RUNNER_LEAN if _flat(velocity).length() > _hunt_speed() * 0.6 else 0.0
 		visual.rotation.x = move_toward(visual.rotation.x, -lean, 3.0 * delta)
 	match state:
 		State.HUNT:
@@ -254,7 +250,7 @@ func _physics_process(delta: float) -> void:
 			else:
 				var to_target := _flat(target.global_position - global_position)
 				if to_target.length() > ATTACK_RANGE * 0.8:
-					moving = _walk_to(target.global_position, runner_speed if kind == "runner" else speed, delta)
+					moving = _walk_to(target.global_position, _hunt_speed(), delta)
 				else:
 					_face(to_target)
 				var height_gap := absf(target.global_position.y - global_position.y)
@@ -602,7 +598,7 @@ func die(animate := true) -> void:
 	remove_from_group("zombies") # stops hearing, being hit, and being targeted
 	collision.set_deferred("disabled", true) # deferred: physics may be mid-step
 	set_physics_process(false)
-	if kind == "crawler": # already down: it just goes still
+	if _crawls(): # already down: it just goes still
 		if animate:
 			Sound.play_at(self, "zombie_death", global_position + Vector3.UP, -2.0, 25.0, 0.12, _voice_pitch())
 		return

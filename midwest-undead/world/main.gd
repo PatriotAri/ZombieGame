@@ -6,7 +6,7 @@ extends Node3D
 ##   world/town/          the town itself: buildings, containers, doors, items, props
 ##   world/kit/           the building kit the town is made of (see HOW_TO_BUILD.md)
 ##   world/markers/       markers in the town: where people and zombies start, places
-##   world/loot.gd        the containers' loot tables
+##   world/loot.gd        rolls the containers' loot tables (items/loot/)
 ##   quests/              the main story and side quests (see QUESTS.md)
 ##   ui/hud.gd            everything on screen during play
 ##
@@ -91,10 +91,6 @@ const Place := preload("res://world/markers/place.gd")
 ## How many zombies are up at once. When there are fewer, new ones turn up on the
 ## outskirts of town now and then (see world/zombie_population.gd).
 @export_range(0, 400) var zombie_population := 100
-## Every zombie (at the start and arriving later) has these chances of being a
-## crawler or a runner instead of an ordinary walker (characters/zombie/zombie.gd).
-@export_range(0.0, 1.0) var crawler_chance := 0.08
-@export_range(0.0, 1.0) var runner_chance := 0.03
 ## Seconds between new arrivals while there are fewer than zombie_population.
 @export var zombie_respawn_seconds_day := 30.0
 @export var zombie_respawn_seconds_night := 10.0
@@ -684,7 +680,7 @@ func _apply_save(data: Dictionary) -> void:
 		item.remove_from_group("ground_items")
 		item.queue_free()
 	for entry: Dictionary in data.get("ground_items", []):
-		if GameData.ITEMS.has(entry.get("id", "")):
+		if GameData.has_item(str(entry.get("id", ""))):
 			add_ground_item(entry["id"], int(entry.get("amount", 1)),
 					SaveGame.array_to_vec(entry["position"]), float(entry.get("yaw", 0.0)))
 	for zombie in zombies:
@@ -821,14 +817,13 @@ func _near_container(pos: Vector3, min_dist: float) -> bool:
 
 
 ## dice: whose dice pick its facing and kind; the game's (rng) unless said
-## otherwise. kind: "walker", "runner" or "crawler"; "" rolls it (crawler_chance,
-## runner_chance).
+## otherwise. kind: a ZombieKind's id (characters/zombie/kinds/); "" rolls one
+## by their spawn chances.
 func _add_zombie(pos: Vector3, dice: RandomNumberGenerator = null, kind := "") -> Zombie:
 	if dice == null:
 		dice = rng
 	if kind == "":
-		var roll := dice.randf()
-		kind = "crawler" if roll < crawler_chance else "runner" if roll < crawler_chance + runner_chance else "walker"
+		kind = ZombieKind.roll(dice).id
 	var zombie := ZombieScene.instantiate() as Zombie
 	zombie.kind = kind
 	zombie.position = pos

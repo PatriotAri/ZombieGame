@@ -18,6 +18,8 @@ signal story_beat(text: String)
 ## The journal should redraw (a quest changed).
 signal changed
 
+const Conversation := preload("res://quests/conversation.gd")
+
 const MAIN_STORY := "res://quests/main_story.tres"
 const SIDE_DIR := "res://quests/side/"
 const CHECK_INTERVAL := 0.25
@@ -43,6 +45,7 @@ var _main: Node # main.gd: places, spawn points
 var _player: Node3D
 var _dialogue: Node # ui/dialogue_box.gd
 var _choices: Node # ui/choice_menu.gd
+var _conversation: Conversation
 var _zones: Node # world/zones.gd
 var _day_night: Node
 var _waypoint: Label3D
@@ -64,6 +67,7 @@ func setup(main: Node, player: Node3D, dialogue: Node, choices: Node, zones: Nod
 	_player = player
 	_dialogue = dialogue
 	_choices = choices
+	_conversation = Conversation.new(player, dialogue, choices)
 	_zones = zones
 	_day_night = day_night
 	zones.connect("status_changed", func(zone_name: String, status: int) -> void:
@@ -531,8 +535,7 @@ func _talk_step(q: QuestData, who: String) -> void:
 
 
 func _offer(q: QuestData, who: String) -> void:
-	var has_accept := q.offer.nodes.any(func(n: QuestDialogueNode) -> bool:
-		return n and n.replies.any(func(r: QuestReply) -> bool: return r and r.action == "accept"))
+	var has_accept := Conversation.has_action(q.offer, "accept")
 	_play(q.offer, who, func() -> void:
 		if not has_accept and _offerable(q):
 			_start_quest(q),
@@ -549,47 +552,9 @@ func _on_reply(action: String, q: QuestData) -> void:
 			_fail(q)
 
 
-## Plays a conversation from its first node. on_finished: it reached its end
-## (not declined, failed or walked away from). on_action(action): a reply's action.
+## Plays a conversation from its first node (quests/conversation.gd).
 func _play(dialogue: QuestDialogue, who: String, on_finished: Callable, on_action: Callable) -> void:
-	_show_node(dialogue, dialogue.first(), who, on_finished, on_action)
-
-
-func _show_node(dialogue: QuestDialogue, node: QuestDialogueNode, who: String, on_finished: Callable,
-		on_action: Callable) -> void:
-	if node == null:
-		if on_finished.is_valid():
-			on_finished.call()
-		return
-	var speaker := node.speaker if node.speaker != "" else who
-	var after := func() -> void:
-		if node.replies.is_empty():
-			_show_node(dialogue, dialogue.find(node.next) if node.next != "" else null, who, on_finished, on_action)
-			return
-		var options := []
-		for reply in node.replies:
-			if reply:
-				options.append([reply.text, _pick.bind(dialogue, reply, who, on_finished, on_action)])
-		var prompt: String = node.lines[node.lines.size() - 1] if not node.lines.is_empty() else ""
-		_choices.call("open", _player, speaker, prompt, options)
-	if node.lines.is_empty():
-		after.call()
-	else:
-		var lines: Array[String] = []
-		lines.assign(node.lines)
-		_dialogue.call("start", speaker, lines, _player, after)
-
-
-func _pick(dialogue: QuestDialogue, reply: QuestReply, who: String, on_finished: Callable, on_action: Callable) -> void:
-	if reply.action != "none" and on_action.is_valid():
-		on_action.call(reply.action)
-	if reply.action in ["decline", "fail"]:
-		return # the conversation ends there, without finishing
-	if reply.next == "":
-		if on_finished.is_valid():
-			on_finished.call()
-		return
-	_show_node(dialogue, dialogue.find(reply.next), who, on_finished, on_action)
+	_conversation.play(dialogue, who, on_finished, on_action)
 
 
 # --- Markers -----------------------------------------------------------------------

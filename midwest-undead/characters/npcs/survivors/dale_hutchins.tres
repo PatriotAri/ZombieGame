@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="SurvivorData" format=3]
+
+[ext_resource type="Script" path="res://quests/quest_dialogue_node.gd" id="1_rqp2s"]
+[ext_resource type="Script" path="res://quests/quest_reply.gd" id="2_ldfm1"]
+[ext_resource type="Script" path="res://quests/quest_dialogue.gd" id="3_68jyb"]
+[ext_resource type="Script" path="res://characters/npcs/survivor_data.gd" id="4_3n3ud"]
+
+[sub_resource type="Resource" id="Resource_5gryj"]
+script = ExtResource("1_rqp2s")
+lines = Array[String](["Who's there? ...You're not one of them. Thank God.", "Dale Hutchins. Had a farm out past the grain elevator. Boarded myself in here when the town went.", "Station's got walls and people? I'll take it. I can still swing a shovel."])
+
+[sub_resource type="Resource" id="Resource_wxwbb"]
+script = ExtResource("3_68jyb")
+nodes = Array[ExtResource("1_rqp2s")]([SubResource("Resource_5gryj")])
+
+[resource]
+script = ExtResource("4_3n3ud")
+display_name = "Dale Hutchins"
+outfit_color = Color(0.42, 0.38, 0.25, 1)
+skin_color = Color(0.74, 0.58, 0.47, 1)
+join_talk = SubResource("Resource_wxwbb")
+base_line = "Never thought I'd miss the smell of a feedlot."

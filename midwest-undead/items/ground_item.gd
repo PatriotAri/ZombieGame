@@ -17,24 +17,31 @@ func setup(id: String, count := 1) -> void:
 
 
 ## Items in the town scene come with their meshes and pickup zone already (made
-## when the town was frozen); one placed with just an item_id gets them here.
+## when the town was frozen); one placed with just an item_id gets them here. An
+## item with a model (items/data/) shows that instead of the saved boxes.
 func _ready() -> void:
 	add_to_group("ground_items")
 	collision_layer = GameData.LAYER_ITEMS
 	collision_mask = 0
-	if get_child_count() == 0 and GameData.ITEMS.has(item_id):
-		_build()
+	var item := GameData.item(item_id)
+	if item == null:
+		return
+	if get_child_count() == 0:
+		_build(item)
+	elif item.model:
+		for child in get_children():
+			if child is MeshInstance3D:
+				remove_child(child)
+				child.queue_free()
+		add_child(item.model.instantiate())
 
 
-func _build() -> void:
-	var id := item_id
-	var def: Dictionary = GameData.ITEMS[id]
-	var size: Vector3 = def["size"]
-	_add_box(size, Vector3(0, size.y / 2.0, 0), def["color"])
-	if id == "health_pack":
-		var red := Color(0.8, 0.1, 0.1)
-		_add_box(Vector3(size.x * 0.6, 0.01, 0.06), Vector3(0, size.y + 0.005, 0), red)
-		_add_box(Vector3(0.06, 0.01, size.z * 0.6), Vector3(0, size.y + 0.005, 0), red)
+func _build(item: ItemData) -> void:
+	var size := item.size
+	if item.model:
+		add_child(item.model.instantiate())
+	else:
+		_add_box(size, Vector3(0, size.y / 2.0, 0), item.color)
 
 	# The pickup zone is bigger than the item so small things are easy to aim at.
 	var zone := Vector3(maxf(size.x, 0.5), maxf(size.y, 0.3), maxf(size.z, 0.5))

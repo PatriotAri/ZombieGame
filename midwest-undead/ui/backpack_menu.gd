@@ -100,11 +100,10 @@ func _refresh() -> void:
 
 
 func _item_text(id: String) -> String:
-	match id:
-		"hands":
-			return "Fists"
-		"pistol", "shotgun", "rifle":
-			return player.gun_text(id)
+	if id == "hands":
+		return "Fists"
+	if player.is_gun(id):
+		return player.gun_text(id)
 	var count := player.inventory.count(id)
 	return GameData.item_name(id) + ("  x%d" % count if count > 1 else "")
 

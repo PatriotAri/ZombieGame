@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="PackedScene" path="res://items/models/rifle_held.tscn" id="1_vf1cb"]
+[ext_resource type="Script" path="res://items/weapon_data.gd" id="2_7223e"]
+
+[resource]
+script = ExtResource("2_7223e")
+held_model = ExtResource("1_vf1cb")
+damage = 140.0
+reach = 160.0
+cooldown = 1.3
+knockback = 3.0
+noise = 64.0
+ammo = "rifle_rounds"
+magazine = 5
+spread = 3.0
+reload_time = 2.8
+aim_fov = 20.0
+scope = true
+kick = 18.0
+sound = "rifle_shot"
+id = "rifle"
+display_name = "Scoped rifle"
+order = 30
+color = Color(0.22, 0.18, 0.12, 1)
+size = Vector3(0.1, 0.12, 1.05)

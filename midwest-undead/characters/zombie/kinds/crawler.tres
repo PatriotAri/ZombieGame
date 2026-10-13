@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ZombieKind" format=3]
+
+[ext_resource type="Script" path="res://characters/zombie/zombie_kind.gd" id="1_m7g58"]
+
+[resource]
+script = ExtResource("1_m7g58")
+id = "crawler"
+spawn_chance = 0.08
+health = 60.0
+min_speed = 0.8
+max_speed = 0.8
+posture = "crawling"
+voice_pitch = 0.75

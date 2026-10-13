@@ -105,6 +105,7 @@ first one. Each node has:
   - `accept` takes the quest being offered.
   - `decline` turns it down for now.
   - `fail` fails the quest.
+  - `join` is for survivors' conversations (see `HOW_TO_ADD.md`).
 - **Next:** with no replies, the node that comes next.
 
 Reaching the end of a conversation is what "finishing" it means. That's what

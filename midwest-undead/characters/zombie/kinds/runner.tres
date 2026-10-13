@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ZombieKind" format=3]
+
+[ext_resource type="Script" path="res://characters/zombie/zombie_kind.gd" id="1_qetfy"]
+
+[resource]
+script = ExtResource("1_qetfy")
+id = "runner"
+spawn_chance = 0.03
+hunt_speed = 7.0
+leans_when_running = true
+body_scale = Vector3(0.75, 1, 0.75)
+skin_color = Color(0.62, 0.36, 0.3, 1)
+voice_pitch = 1.25

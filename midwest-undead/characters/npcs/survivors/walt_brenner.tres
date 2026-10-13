@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="SurvivorData" format=3]
+
+[ext_resource type="Script" path="res://quests/quest_dialogue_node.gd" id="1_k5uit"]
+[ext_resource type="Script" path="res://quests/quest_reply.gd" id="2_6fxh3"]
+[ext_resource type="Script" path="res://quests/quest_dialogue.gd" id="3_xdi63"]
+[ext_resource type="Script" path="res://characters/npcs/survivor_data.gd" id="4_imqqv"]
+
+[sub_resource type="Resource" id="Resource_k6wgi"]
+script = ExtResource("1_k5uit")
+lines = Array[String](["Hands where I can see 'em. ...Fine. You're no bandit.", "Walt Brenner. Ran the machine shop on Route 9 for thirty years. Lathes, presses, reloading gear.", "Got people at the police station? Then I'll come. Somebody's got to keep you in bullets."])
+
+[sub_resource type="Resource" id="Resource_7psnj"]
+script = ExtResource("3_xdi63")
+nodes = Array[ExtResource("1_k5uit")]([SubResource("Resource_k6wgi")])
+
+[resource]
+script = ExtResource("4_imqqv")
+display_name = "Walt Brenner"
+job = "machinist"
+outfit_color = Color(0.3, 0.32, 0.3, 1)
+join_talk = SubResource("Resource_7psnj")

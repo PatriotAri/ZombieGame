@@ -75,12 +75,12 @@ dumpster, cardboard boxes, supply crate and car. A container has:
 - **Label:** what the prompt calls it. Salvaging with the crowbar goes by the
   label: Car, Dresser, Kitchen cabinet, Counter, Shelf and Grocery shelf can
   be stripped.
-- **Fixed Items:** always in it. Add an entry; the key is an item id from
-  `core/game_data.gd` (`canned_food`, `health_pack`, `pistol_ammo`, `planks`,
-  `crowbar`, ...), the value is how many.
+- **Fixed Items:** always in it. Add an entry; the key is an item id (the
+  files in `items/data/`: `canned_food`, `health_pack`, `pistol_ammo`,
+  `planks`, `crowbar`, ...), the value is how many.
 - **Loot Table:** random extras every new game. `none` means just the fixed
-  items. The tables are in `world/loot.gd`. Edit them there, or add a new one
-  there and to the list in `items/loot_spot.gd`.
+  items. The list shows every table in `items/loot/`; see `HOW_TO_ADD.md` to
+  change one or make a new one.
 - **Look > Size, Material:** any size, any material.
 
 A **bed** can be stripped for plywood because of its metadata `salvage_label`
@@ -153,7 +153,8 @@ KitZombieSpawn, KitPlace). In the editor each one shows a floating label.
   - bandit: put it under the camp node. Bandits stay near the camp node's
     position.
   - survivor: put it inside a house (as a child of the Building). Person must
-    be a name from `world/survivors.gd`.
+    be a survivor's name (their file in `characters/npcs/survivors/`; see
+    `HOW_TO_ADD.md`).
   - survivor_home: their spot in the station yard (same Person).
   - corpse: a body lying there, in Outfit Color.
 - **ZombieSpawn:** when a new game starts, each of **Count** zombies turns up

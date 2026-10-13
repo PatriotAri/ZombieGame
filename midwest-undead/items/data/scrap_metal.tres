@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://items/item_data.gd" id="1_7hs5q"]
+
+[resource]
+script = ExtResource("1_7hs5q")
+id = "scrap_metal"
+display_name = "Scrap metal"
+order = 150
+color = Color(0.5, 0.5, 0.52, 1)
+size = Vector3(0.3, 0.08, 0.2)
