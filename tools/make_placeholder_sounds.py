@@ -187,6 +187,14 @@ def main():
                                                   envelope(tone(0.08, random.uniform(2500, 5000)), 0.001, 3.0))
                                            for _ in range(7)]), 0.4)))
 
+    # The shotgun (added last too): a deeper, longer boom than the pistol, then
+    # the pump racking the next shell.
+    write("shotgun_shot", concat(mix(envelope(noise(0.45), 0.0005, 3.5),
+                                     gain(envelope(lowpass(noise(0.8), 180), 0.001, 1.8), 3.0),
+                                     gain(envelope(tone(0.45, 90, 30), 0.001, 2.5), 1.5)),
+                                 silence(0.12), gain(click(0.05, 1800), 0.5), silence(0.08),
+                                 gain(click(0.06, 1400), 0.6)))
+
 
 if __name__ == "__main__":
     main()

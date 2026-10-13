@@ -978,7 +978,7 @@ func _gun(id: String) -> Dictionary:
 					"pellets": shotgun_pellets, "range": shotgun_range, "spread": shotgun_spread,
 					"aimed_spread": shotgun_aimed_spread, "cooldown": shotgun_cooldown, "reload": shotgun_reload_time,
 					"aim_fov": 62.0, "noise": noise_gunshot * 1.3, "knockback": 2.5, "kick": 24.0,
-					"sound": "gunshot", "pitch": 0.7, "volume": 2.0}
+					"sound": "shotgun_shot", "pitch": 1.0, "volume": 0.0}
 		"rifle":
 			return {"ammo": "rifle_rounds", "mag": RIFLE_MAG, "damage": rifle_damage, "pellets": 1,
 					"range": rifle_range, "spread": rifle_hip_spread, "aimed_spread": 0.0,

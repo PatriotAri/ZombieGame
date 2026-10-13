@@ -47,7 +47,7 @@ static func play_at(context: Node, id: String, pos: Vector3, volume_db := 0.0,
 
 
 ## A sound with no position: the player's own body, hands, and menus.
-## pitch: 1 as recorded, lower is deeper (the shotgun reuses the pistol's shot, deeper).
+## pitch: 1 as recorded, lower is deeper.
 static func play_ui(context: Node, id: String, volume_db := 0.0, pitch_jitter := 0.05, pitch := 1.0) -> void:
 	if not context.is_inside_tree():
 		return

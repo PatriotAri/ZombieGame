@@ -13,13 +13,13 @@ const Inventory := preload("res://items/inventory.gd")
 @export_group("Shop")
 ## What the trader starts with. Keys must be item ids from game_data.gd.
 @export var starting_stock: Dictionary[String, int] = {
-	"pistol_ammo": 60, "health_pack": 3, "crowbar": 1, "canned_food": 4, "batteries": 4,
-	"planks": 8, "barricade": 3, "plywood": 4, "scrap_metal": 4,
+	"pistol_ammo": 60, "shotgun_shells": 10, "rifle_rounds": 5, "health_pack": 3, "crowbar": 1, "canned_food": 4,
+	"batteries": 4, "planks": 8, "barricade": 3, "plywood": 4, "scrap_metal": 4,
 }
 ## Dollars you pay per item.
 @export var buy_prices: Dictionary[String, int] = {
-	"pistol": 250, "crowbar": 60, "pistol_ammo": 4, "health_pack": 45, "canned_food": 15, "batteries": 12,
-	"planks": 10, "barricade": 35, "plywood": 12, "scrap_metal": 10,
+	"pistol": 250, "crowbar": 60, "pistol_ammo": 4, "shotgun_shells": 7, "rifle_rounds": 12, "health_pack": 45,
+	"canned_food": 15, "batteries": 12, "planks": 10, "barricade": 35, "plywood": 12, "scrap_metal": 10,
 }
 ## In stock at the start, and back now and then (see rare_chance), not every morning.
 @export var rare_stock: Dictionary[String, int] = {}
@@ -29,8 +29,9 @@ const Inventory := preload("res://items/inventory.gd")
 @export_range(0, 23) var restock_hour := 6
 ## Dollars you get per item. Leave an item out and the trader won't buy it.
 @export var sell_prices: Dictionary[String, int] = {
-	"pistol": 90, "crowbar": 20, "pistol_ammo": 2, "health_pack": 18, "canned_food": 8, "batteries": 6,
-	"planks": 4, "used_planks": 2, "barricade": 14, "plywood": 5, "scrap_metal": 4,
+	"pistol": 90, "shotgun": 70, "rifle": 110, "crowbar": 20, "pistol_ammo": 2, "shotgun_shells": 3, "rifle_rounds": 5,
+	"health_pack": 18, "canned_food": 8, "batteries": 6, "planks": 4, "used_planks": 2, "barricade": 14, "plywood": 5,
+	"scrap_metal": 4,
 }
 
 var stock := Inventory.new()
