@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_floor.gd" id="1_s5ja3"]
+
+[node name="Floor" type="Node3D" unique_id=1387029392]
+script = ExtResource("1_s5ja3")

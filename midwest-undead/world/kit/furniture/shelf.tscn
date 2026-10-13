@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_1j6o5"]
+[ext_resource type="Material" path="res://world/kit/materials/shelf_metal.tres" id="2_y783v"]
+
+[node name="Shelf" type="StaticBody3D" unique_id=1634505536]
+script = ExtResource("1_1j6o5")
+label = "Shelf"
+size = Vector3(4, 1.8, 0.5)
+material = ExtResource("2_y783v")
+sits_on_floor = true

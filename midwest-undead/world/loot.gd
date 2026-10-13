@@ -1,63 +1,72 @@
 extends RefCounted
-## Fills the town's containers and scatters loose items in the street.
-## Never instanced: main.gd calls fill_containers() once the town and the
-## police station are built, and scatter() after the navigation bake.
+## What's in the containers when a new game starts. Never instanced: main.gd
+## calls fill() once the town scene is loaded.
+##
+## Each container (items/loot_spot.gd) has fixed items, always in it, and a loot
+## table, rolled fresh every new game. A table is a list of rolls; each roll
+## happens with its chance and adds one of its items (picked evenly), a random
+## amount between the two numbers. To change what a kind of container tends to
+## hold, edit its table here; to add a table, add it here and to loot_spot.gd's
+## loot_table list.
 
-const WorldBuilder := preload("res://world/world_builder.gd")
 const LootSpot := preload("res://items/loot_spot.gd")
 
-const CROWBAR_MIN_DISTANCE := 40.0
+## Shelves, counters, cabinets, dressers, dumpsters, boxes.
+const STANDARD := [
+	{"chance": 0.4, "items": [["health_pack", 1, 1]]},
+	{"chance": 0.35, "items": [["pistol_ammo", 3, 7]]},
+	{"chance": 0.35, "items": [["canned_food", 1, 2], ["batteries", 1, 3]]},
+	{"chance": 0.15, "items": [["planks", 1, 2]]},
+	{"chance": 0.12, "items": [["plywood", 1, 2]]},
+	{"chance": 0.1, "items": [["scrap_metal", 1, 2]]},
+]
+const TABLES := {
+	"none": [],
+	"standard": STANDARD,
+	## Wrecked cars: more scrap metal.
+	"car": [
+		{"chance": 0.4, "items": [["health_pack", 1, 1]]},
+		{"chance": 0.35, "items": [["pistol_ammo", 3, 7]]},
+		{"chance": 0.35, "items": [["canned_food", 1, 2], ["batteries", 1, 3]]},
+		{"chance": 0.15, "items": [["planks", 1, 2]]},
+		{"chance": 0.12, "items": [["plywood", 1, 2]]},
+		{"chance": 0.35, "items": [["scrap_metal", 1, 2]]},
+	],
+	## The grocery's shelves: food on top of the usual.
+	"grocery": [
+		{"chance": 1.0, "items": [["canned_food", 1, 2]]},
+		{"chance": 0.4, "items": [["health_pack", 1, 1]]},
+		{"chance": 0.35, "items": [["pistol_ammo", 3, 7]]},
+		{"chance": 0.35, "items": [["canned_food", 1, 2], ["batteries", 1, 3]]},
+		{"chance": 0.15, "items": [["planks", 1, 2]]},
+		{"chance": 0.12, "items": [["plywood", 1, 2]]},
+		{"chance": 0.1, "items": [["scrap_metal", 1, 2]]},
+	],
+	## The gas station's snack shelf: maybe some food on top of the usual.
+	"snack": [
+		{"chance": 0.6, "items": [["canned_food", 1, 2]]},
+		{"chance": 0.4, "items": [["health_pack", 1, 1]]},
+		{"chance": 0.35, "items": [["pistol_ammo", 3, 7]]},
+		{"chance": 0.35, "items": [["canned_food", 1, 2], ["batteries", 1, 3]]},
+		{"chance": 0.15, "items": [["planks", 1, 2]]},
+		{"chance": 0.12, "items": [["plywood", 1, 2]]},
+		{"chance": 0.1, "items": [["scrap_metal", 1, 2]]},
+	],
+}
 
 
-## start: where the player starts. health_pack, ammo and trade_goods are each
-## container's chance of holding them.
-static func fill_containers(b: WorldBuilder, start: Vector3, health_pack: float, ammo: float,
-		trade_goods: float) -> void:
-	var rng := b.rng
-	var loot_spots := b.loot_spots
-	# One crowbar in the whole town, at least 40 m from where you start, so you have
-	# to venture in for it. Half the time it's in a container, half on the ground
-	# up Main Street (north, -z).
-	var crowbar_spot: LootSpot = null
-	if rng.randf() < 0.5:
-		var far_spots := loot_spots.filter(func(s: LootSpot) -> bool:
-			return s.global_position.distance_to(start) >= CROWBAR_MIN_DISTANCE)
-		if far_spots.is_empty(): # can happen with a different town seed
-			far_spots = loot_spots
-		crowbar_spot = far_spots[rng.randi_range(0, far_spots.size() - 1)]
-	else:
-		b.add_ground_item("crowbar", 1, b.street_spot(-75.0, -40.0))
-	for spot: LootSpot in loot_spots:
-		if spot == crowbar_spot:
-			spot.inventory.add("crowbar")
-		roll_container(spot, rng, health_pack, ammo, trade_goods)
-
-
-## One container's random contents. Each chance is rolled separately.
-static func roll_container(spot: LootSpot, rng: RandomNumberGenerator, health_pack: float, ammo: float,
-		trade_goods: float) -> void:
-	if rng.randf() < health_pack:
-		spot.inventory.add("health_pack")
-	if rng.randf() < ammo:
-		spot.inventory.add("pistol_ammo", rng.randi_range(3, 7))
-	if rng.randf() < trade_goods:
-		if rng.randf() < 0.5:
-			spot.inventory.add("canned_food", rng.randi_range(1, 2))
-		else:
-			spot.inventory.add("batteries", rng.randi_range(1, 3))
-
-
-## Loose items lying in the street.
-static func scatter(b: WorldBuilder, count: int) -> void:
-	var rng := b.rng
-	for i in count:
-		var pos := b.street_spot(-75.0, 50.0)
-		var roll := rng.randf()
-		if roll < 0.45:
-			b.add_ground_item("pistol_ammo", rng.randi_range(3, 7), pos)
-		elif roll < 0.7:
-			b.add_ground_item("health_pack", 1, pos)
-		elif roll < 0.85:
-			b.add_ground_item("canned_food", 1, pos)
-		else:
-			b.add_ground_item("batteries", rng.randi_range(1, 2), pos)
+## Every container's fixed items plus a roll on its table.
+static func fill(spots: Array, rng: RandomNumberGenerator) -> void:
+	for spot: LootSpot in spots:
+		for id: String in spot.fixed_items:
+			if spot.fixed_items[id] > 0:
+				spot.inventory.add(id, spot.fixed_items[id])
+		if not TABLES.has(spot.loot_table):
+			push_warning("%s: no loot table called \"%s\" (world/loot.gd)" % [spot.name, spot.loot_table])
+			continue
+		for roll: Dictionary in TABLES[spot.loot_table]:
+			if rng.randf() >= float(roll["chance"]):
+				continue
+			var options: Array = roll["items"]
+			var pick: Array = options[rng.randi_range(0, options.size() - 1)]
+			spot.inventory.add(pick[0], rng.randi_range(pick[1], pick[2]))

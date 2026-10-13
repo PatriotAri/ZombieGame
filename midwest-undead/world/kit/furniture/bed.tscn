@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_s3qaw"]
+[ext_resource type="Material" path="res://world/kit/materials/fabric_bed.tres" id="2_1wwpr"]
+
+[node name="Bed" type="StaticBody3D" unique_id=244394994]
+script = ExtResource("1_s3qaw")
+size = Vector3(2, 0.5, 1.4)
+material = ExtResource("2_1wwpr")
+sits_on_floor = true
+metadata/salvage_label = "Bed"

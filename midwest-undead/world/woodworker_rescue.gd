@@ -10,6 +10,8 @@ extends Node
 ##                garden plots (core/recipes.gd).
 ## Finding him there the first time is announced. main.gd creates it, sends the
 ## interaction here, and the quest follows along through the signals.
+## Where he's tied up and where he works are SpawnPoints in the town scene
+## (roles "woodworker_captive" and "woodworker_home").
 ## Saved: where he's got to, and whether you've found him at home.
 
 signal freed
@@ -17,11 +19,8 @@ signal seen # the first time you find him in the station yard
 
 const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const WoodworkerScene := preload("res://characters/npcs/woodworker.tscn")
-const BanditCamp := preload("res://world/areas/bandit_camp.gd")
 
 const NAME := "Woodworker"
-const CAPTIVE_SPOT := BanditCamp.CAMP_CENTER + Vector3(2.5, 0.1, -7.0) # behind the tents, tied up
-const HOME_SPOT := Vector3(39.0, 0.1, 15.0) # the station yard's west strip
 const OUT_OF_SIGHT := 40.0
 const SEEN_DISTANCE := 25.0
 const CHECK_INTERVAL := 0.5
@@ -35,6 +34,8 @@ const HOME_STORY := "The woodworker has set up in the station yard.\nBring him p
 
 var woodworker: Woodworker
 var was_seen := false
+var captive_spot := Transform3D.IDENTITY # tied to a post, behind the bandits' tents
+var home_spot := Transform3D.IDENTITY # his workbench in the station yard
 var _player: Node3D
 var _dialogue: Node
 var _post: Node3D
@@ -42,9 +43,11 @@ var _bench: Node3D
 var _timer := 0.0
 
 
-func setup(player: Node3D, _day_night: Node, dialogue: Node) -> void:
+func setup(player: Node3D, dialogue: Node, captive: Transform3D, home: Transform3D) -> void:
 	_player = player
 	_dialogue = dialogue
+	captive_spot = captive
+	home_spot = home
 	woodworker = WoodworkerScene.instantiate() as Woodworker
 	get_parent().add_child(woodworker)
 	_place(Woodworker.State.CAPTIVE)
@@ -73,9 +76,9 @@ func _process(delta: float) -> void:
 	_timer = CHECK_INTERVAL
 	var at := _player.global_position
 	if woodworker.state == Woodworker.State.TRAVELLING and at.distance_to(woodworker.global_position) > OUT_OF_SIGHT \
-			and at.distance_to(HOME_SPOT) > OUT_OF_SIGHT:
+			and at.distance_to(home_spot.origin) > OUT_OF_SIGHT:
 		_place(Woodworker.State.HOME)
-	if woodworker.state == Woodworker.State.HOME and not was_seen and at.distance_to(HOME_SPOT) <= SEEN_DISTANCE:
+	if woodworker.state == Woodworker.State.HOME and not was_seen and at.distance_to(home_spot.origin) <= SEEN_DISTANCE:
 		was_seen = true
 		seen.emit()
 
@@ -86,7 +89,7 @@ func save_state() -> Dictionary:
 
 func load_state(data: Dictionary) -> void:
 	if data.is_empty():
-		return # older saves: still at the camp
+		return # nothing saved: still at the camp
 	was_seen = bool(data.get("seen", false))
 	var saved := int(data.get("state", Woodworker.State.CAPTIVE))
 	_place(saved as Woodworker.State if saved >= 0 and saved < Woodworker.State.size() else Woodworker.State.CAPTIVE)
@@ -96,24 +99,27 @@ func load_state(data: Dictionary) -> void:
 func _place(new_state: Woodworker.State) -> void:
 	woodworker.state = new_state
 	if new_state == Woodworker.State.HOME:
-		woodworker.position = HOME_SPOT
-		woodworker.rotation.y = 0.0 # facing the front yard, where you come in
+		woodworker.position = home_spot.origin
+		woodworker.rotation.y = home_spot.basis.get_euler().y
 		if _post:
 			_post.queue_free()
 			_post = null
 		if _bench == null:
-			_bench = _prop(Vector3(1.8, 0.9, 0.8), HOME_SPOT + Vector3(-1.4, 0.35, 1.8), Color(0.5, 0.36, 0.22))
+			# Behind him and to his left.
+			_bench = _prop(Vector3(1.8, 0.9, 0.8), home_spot * Vector3(-1.4, 0.35, 1.8), Color(0.5, 0.36, 0.22),
+					home_spot.basis.get_euler().y)
 	elif new_state == Woodworker.State.CAPTIVE:
-		woodworker.position = CAPTIVE_SPOT
-		woodworker.rotation.y = PI # facing into the camp
-		if _post == null:
-			_post = _prop(Vector3(0.22, 2.2, 0.22), CAPTIVE_SPOT + Vector3(0, 1.0, -0.45), Color(0.33, 0.24, 0.16))
+		woodworker.position = captive_spot.origin
+		woodworker.rotation.y = captive_spot.basis.get_euler().y
+		if _post == null: # the post he's tied to, at his back
+			_post = _prop(Vector3(0.22, 2.2, 0.22), captive_spot * Vector3(0, 1.0, 0.45), Color(0.33, 0.24, 0.16))
 	# TRAVELLING: he stays put until you're out of sight (see _process).
 
 
-func _prop(size: Vector3, pos: Vector3, color: Color) -> Node3D:
+func _prop(size: Vector3, pos: Vector3, color: Color, yaw := 0.0) -> Node3D:
 	var body := StaticBody3D.new()
 	body.position = pos
+	body.rotation.y = yaw
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	var mat := StandardMaterial3D.new()

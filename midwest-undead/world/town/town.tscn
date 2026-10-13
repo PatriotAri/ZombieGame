@@ -1,0 +1,25 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://world/town/districts/bandit_camp.tscn" id="1_iqg8m"]
+[ext_resource type="PackedScene" path="res://world/town/districts/ground_and_roads.tscn" id="2_mtj1y"]
+[ext_resource type="PackedScene" path="res://world/town/districts/main_street.tscn" id="3_71q60"]
+[ext_resource type="PackedScene" path="res://world/town/districts/police_station.tscn" id="4_aoqta"]
+[ext_resource type="PackedScene" path="res://world/town/districts/safe_house_and_gas_station.tscn" id="5_282io"]
+[ext_resource type="PackedScene" path="res://world/town/districts/station_neighborhood.tscn" id="6_c5hwo"]
+[ext_resource type="PackedScene" path="res://world/town/districts/west_7th_street.tscn" id="7_146p3"]
+
+[node name="Town" type="Node3D" unique_id=1408488128]
+
+[node name="BanditCamp" type="Node3D" parent="." unique_id=313177424 instance=ExtResource("1_iqg8m")]
+
+[node name="GroundAndRoads" type="Node3D" parent="." unique_id=385975322 instance=ExtResource("2_mtj1y")]
+
+[node name="MainStreet" type="Node3D" parent="." unique_id=968569461 instance=ExtResource("3_71q60")]
+
+[node name="PoliceStation" type="Node3D" parent="." unique_id=235636730 instance=ExtResource("4_aoqta")]
+
+[node name="SafeHouseAndGasStation" type="Node3D" parent="." unique_id=1169291744 instance=ExtResource("5_282io")]
+
+[node name="StationNeighborhood" type="Node3D" parent="." unique_id=1354343813 instance=ExtResource("6_c5hwo")]
+
+[node name="West7ThStreet" type="Node3D" parent="." unique_id=1897457374 instance=ExtResource("7_146p3")]

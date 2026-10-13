@@ -13,8 +13,13 @@ extends Node
 ## the bake (zombie paths run through them so they can bash them), but planks are,
 ## so a boarded doorway is a wall to the pathfinding.
 ##
+## Every door and window in the town scene can be boarded (a door's or window's
+## boardable setting turns that off: the compound gate, upstairs windows). Ones set "boarded at
+## start" get their planks when a new game starts, like the survivors' houses.
+##
 ## Saved state: which openings are boarded, every window's damage, and where the
-## barricades stand. Openings are numbered in build order, so saves line up.
+## barricades stand. Openings are saved by their place in the town scene (main.gd
+## gives each one a "town_id").
 
 const GameData := preload("res://core/game_data.gd")
 const Building := preload("res://world/building.gd")
@@ -32,13 +37,13 @@ const LINK_REACH := 0.9 # how far out from the wall, each side, a window's path 
 const WINDOW_LINK_LAYER := 2
 
 var nav_region: NavigationRegion3D
-## One per boardable opening: the Building's record (see Building.boardables) plus
-## "transform" (world: see _opening_transform),
-## "area" (what the planks aim at), "link" (windows only), "planks" (or null).
+## One per boardable opening: {"kind": "door"/"window", "door"/"window": the node,
+## "id": its town_id (for saving), "width", "height", "transform" (world: see
+## _add_opening), "area" (what the planks aim at), "link" (windows only),
+## "planks" (or null), "at_start": boarded when a new game starts}.
 var openings: Array[Dictionary] = []
 var barricades: Array[Fortification] = []
 var _baking := false
-var _generated_boards: Array[int] = [] # boarded when the town was built (board_building)
 var _rebake_again := false
 
 
@@ -46,13 +51,43 @@ func _ready() -> void:
 	add_to_group("fortifications")
 
 
-## buildings: every Building, in build order. Call after the first navigation bake.
-func setup(region: NavigationRegion3D, buildings: Array) -> void:
+## windows and doors: every WindowPane and Door in the town. Boards up the ones
+## set "boarded at start" (quietly: call before the first navigation bake).
+func setup(region: NavigationRegion3D, windows: Array, doors: Array) -> void:
 	nav_region = region
 	nav_region.bake_finished.connect(_on_bake_finished)
-	for building: Building in buildings:
-		for record in building.boardables:
-			_add_opening(building, record)
+	for pane: WindowPane in windows:
+		if not pane.boardable:
+			continue
+		var size := pane.pane_size()
+		# x out of the building: the pane's outside is its -X.
+		var xform := Transform3D(pane.global_basis * Basis(Vector3.UP, PI), pane.global_position)
+		_add_opening({"kind": "window", "window": pane, "width": size.z, "height": size.y,
+				"transform": xform, "at_start": pane.boarded_at_start}, _floor_y(pane))
+	for door: Door in doors:
+		if not door.boardable:
+			continue
+		var closed := door.closed_transform()
+		# A door's outside is its -X too (it swings in, toward +X).
+		var xform := Transform3D(closed.basis * Basis(Vector3.UP, PI), closed * door.leaf_offset)
+		_add_opening({"kind": "door", "door": door, "width": door.leaf_size.z + 0.1,
+				"height": door.leaf_size.y, "transform": xform, "at_start": door.boarded_at_start}, 0.0)
+	for i in openings.size():
+		if openings[i]["at_start"]:
+			board(i, true)
+
+
+## Floor height inside, under the window (its window link ends there). Kit
+## buildings and walls tell the pane how far down the floor is.
+func _floor_y(pane: Node3D) -> float:
+	if pane.has_meta("floor_drop"):
+		return pane.global_position.y - float(pane.get_meta("floor_drop"))
+	var node := pane.get_parent()
+	while node != null and not node is Building:
+		node = node.get_parent()
+	if node == null:
+		return 0.0 # not in a building: the ground
+	return (node as Building).global_position.y + (node as Building).floor_y
 
 
 # --- Queries (player.gd) ---------------------------------------------------------
@@ -60,15 +95,6 @@ func setup(region: NavigationRegion3D, buildings: Array) -> void:
 ## The opening an "openings" area belongs to, or -1.
 func opening_of(area: Object) -> int:
 	return int(area.get_meta("opening", -1)) if area else -1
-
-
-## Planks over every door and window of a building (quietly: call rebake() after).
-## Survivors hole up in buildings like this (world/survivors.gd).
-func board_building(building: Building) -> void:
-	for i in openings.size():
-		if openings[i]["building"] == building:
-			board(i, true)
-			_generated_boards.append(i)
 
 
 func is_boarded(index: int) -> bool:
@@ -168,63 +194,55 @@ func save_state() -> Dictionary:
 	var boarded := []
 	var used := [] # the boarded ones nailed up from used planks
 	var windows := {}
-	for i in openings.size():
-		if openings[i]["planks"] != null:
-			boarded.append(i)
-			if (openings[i]["planks"] as Fortification).used:
-				used.append(i)
-		if openings[i]["kind"] == "window":
-			var pane: WindowPane = openings[i]["window"]
+	for o in openings:
+		if o["planks"] != null:
+			boarded.append(o["id"])
+			if (o["planks"] as Fortification).used:
+				used.append(o["id"])
+		if o["kind"] == "window":
+			var pane: WindowPane = o["window"]
 			if pane.is_broken or pane.health < pane.max_health:
-				windows[str(i)] = pane.save_state()
+				windows[o["id"]] = pane.save_state()
 	var placed := []
 	for b in barricades:
 		placed.append([b.global_position.x, b.global_position.y, b.global_position.z, b.rotation.y])
-	# "generated": this save also records planks you took off the boarded-up
-	# buildings (by leaving them out of "boarded").
-	return {"boarded": boarded, "used": used, "windows": windows, "barricades": placed, "generated": true}
+	return {"boarded": boarded, "used": used, "windows": windows, "barricades": placed}
 
 
+## On top of a new town (its "boarded at start" planks already up).
 func load_state(data: Dictionary) -> void:
-	# Planks the town was built with that you'd taken down. (Older saves don't
-	# say: those keep the boarded-up buildings boarded.)
-	var changed := false
-	if data.get("generated", false):
-		var saved: Array = data.get("boarded", []).map(func(i: Variant) -> int: return int(i))
-		for i in _generated_boards:
-			if not i in saved and openings[i]["planks"] != null:
-				_unboard(i)
-				changed = true
+	var index := {}
+	for i in openings.size():
+		index[openings[i]["id"]] = i
+	var boarded: Array = data.get("boarded", [])
+	var used: Array = data.get("used", [])
 	var windows: Dictionary = data.get("windows", {})
-	for key in windows:
-		var i := int(key)
-		if i < openings.size() and openings[i]["kind"] == "window":
-			(openings[i]["window"] as WindowPane).load_state(windows[key])
-	var used: Array = data.get("used", []).map(func(i: Variant) -> int: return int(i))
-	for i in data.get("boarded", []):
-		if int(i) < openings.size():
-			board(int(i), true, int(i) in used)
+	for i in openings.size():
+		var o := openings[i]
+		var want: bool = o["id"] in boarded
+		var was_used: bool = o["id"] in used
+		# Planks you'd taken down, or put back up from used planks: off first.
+		if o["planks"] != null and (not want or (o["planks"] as Fortification).used != was_used):
+			_unboard(i)
+		if want:
+			board(i, true, was_used)
+	for id in windows:
+		if index.has(id) and openings[index[id]]["kind"] == "window":
+			(openings[index[id]]["window"] as WindowPane).load_state(windows[id])
 	for b in data.get("barricades", []):
 		place_barricade(Transform3D(Basis(Vector3.UP, float(b[3])), Vector3(float(b[0]), float(b[1]), float(b[2]))), true)
-	if changed or not data.get("boarded", []).is_empty() or not data.get("barricades", []).is_empty():
-		rebake()
+	rebake()
 
 
 # --- Building the pieces ---------------------------------------------------------
 
-## The opening's frame in the world: origin in the middle of the opening (in the
-## wall), x pointing out of the building, z along the wall.
-func _opening_transform(building: Building, record: Dictionary) -> Transform3D:
-	var outward: Vector3 = record["outward"]
-	# Building space has +x pointing into the building; turn it round for the front wall.
-	var turn := Basis(Vector3.UP, PI) if outward.x < 0.0 else Basis.IDENTITY
-	return Transform3D(building.global_basis * turn, building.global_transform * (record["center"] as Vector3))
-
-
-func _add_opening(building: Building, record: Dictionary) -> void:
-	var o := record.duplicate()
-	o["building"] = building
-	o["transform"] = _opening_transform(building, record)
+## record: see openings. Its "transform" is the opening's frame in the world:
+## origin in the middle of the opening (in the wall), x pointing out of the
+## building, z along the wall. floor_y: the floor inside (for a window's link).
+func _add_opening(record: Dictionary, floor_y: float) -> void:
+	var o := record
+	var node: Node = o["door"] if o["kind"] == "door" else o["window"]
+	o["id"] = str(node.get_meta("town_id", node.get_path()))
 	o["planks"] = null
 	var index := openings.size()
 
@@ -234,21 +252,20 @@ func _add_opening(building: Building, record: Dictionary) -> void:
 	area.collision_mask = 0
 	area.monitoring = false
 	area.set_meta("opening", index)
-	_box_collision(area, Vector3(0.6, record["height"], record["width"]), Vector3.ZERO)
+	_box_collision(area, Vector3(0.6, o["height"], o["width"]), Vector3.ZERO)
 	add_child(area)
 	area.global_transform = o["transform"]
 	o["area"] = area
 
-	if record["kind"] == "window":
+	if o["kind"] == "window":
 		var xform: Transform3D = o["transform"]
 		var out := xform.basis.x
-		var floor_y: float = building.global_position.y + building.FLOOR_Y
 		var link := NavigationLink3D.new()
 		link.navigation_layers = WINDOW_LINK_LAYER
 		link.start_position = Vector3(xform.origin.x, floor_y, xform.origin.z) + out * LINK_REACH
 		link.end_position = Vector3(xform.origin.x, floor_y, xform.origin.z) - out * LINK_REACH
-		link.set_meta("window", record["window"])
-		link.set_meta("sill_y", xform.origin.y - float(record["height"]) / 2.0)
+		link.set_meta("window", o["window"])
+		link.set_meta("sill_y", xform.origin.y - float(o["height"]) / 2.0)
 		add_child(link)
 		o["link"] = link
 	openings.append(o)

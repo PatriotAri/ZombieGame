@@ -13,7 +13,7 @@ const LAYER_NPC := 32 # human NPCs (guards, traders, bandits...)
 ## Doorways and windows you can board up: invisible areas only the planks aim at.
 const LAYER_OPENINGS := 64
 ## Seen only by the navigation bake, never by physics: stand-ins like the shut
-## compound gate (see world/areas/police_station.gd).
+## compound gate (CompoundFence/GateNavBlocker in world/town/districts/police_station.tscn).
 const LAYER_NAV_ONLY := 128
 
 # "use" is what the use button does while you hold the item. Items without one

@@ -1,9 +1,13 @@
 extends Node
 ## Survivors holed up in boarded-up houses around town: four, plus Walt the
 ## machinist (who makes ammo benches once the woodworker is at the station). Every door and
-## window of their house is planked shut from outside (fortifications.gd): pull
-## the planks off the door to get in. Each is in the bedroom, by the bed, with a
-## couple of cans of food and two health packs on the floor beside them.
+## window of their house is planked shut from outside (set "boarded at start" in
+## the town scene): pull the planks off the door to get in. Each is in the
+## bedroom, by the bed, with a couple of cans of food and two health packs on the
+## floor beside them (ground items in the town scene).
+## Where each one starts, and their spot in the station's back yard, are
+## SpawnPoints in the town scene (roles "survivor" and "survivor_home", with the
+## person's name).
 ## Talk to one and they join you, if the base has room (base_camp.gd; if not,
 ## they stay put and say so). They make their own way to the police station
 ## (once you're out of sight of them and of the station), and live in the back
@@ -14,6 +18,7 @@ extends Node
 ## the rest of the fortifications and ground items.)
 
 const Building := preload("res://world/building.gd")
+const SpawnPoint := preload("res://world/markers/spawn_point.gd")
 const Survivor := preload("res://characters/npcs/survivor.gd")
 const SurvivorScene := preload("res://characters/npcs/survivor.tscn")
 const Woodworker := preload("res://characters/npcs/woodworker.gd")
@@ -27,34 +32,33 @@ const FULL_LINES: Array[String] = [
 	"Come find me again later if things change.",
 ]
 const MACHINIST_NEEDS_WOODWORKER := "I can make you an ammo bench, but not the frame for it. Get a woodworker set up at the station and I'll get to work."
-## Who, and roughly where: each takes the house nearest their spot. "job":
-## what they do at the base besides working a station.
+## Who they are. "job": what they do at the base besides working a station.
 const PEOPLE := [
-	{"name": "Marisol Vega", "near": Vector3(-120, 0, 12), "home": Vector3(44.0, 0.1, 26.5),
+	{"name": "Marisol Vega",
 			"outfit": Color(0.35, 0.55, 0.6), "skin": Color(0.62, 0.46, 0.36),
 			"join": ["Don't shoot! ...Okay. Okay, you're real. That's a first in a while.",
 				"I'm Marisol. I was a nurse at County General, back when there was a County General.",
 				"The police station's still holding? Then I'm going. Somebody there will need patching up."],
 			"home_lines": ["Quiet back here, behind the station. I'd almost forgotten what quiet sounds like."]},
-	{"name": "Dale Hutchins", "near": Vector3(-110, 0, -12), "home": Vector3(48.5, 0.1, 26.5),
+	{"name": "Dale Hutchins",
 			"outfit": Color(0.42, 0.38, 0.25), "skin": Color(0.74, 0.58, 0.47),
 			"join": ["Who's there? ...You're not one of them. Thank God.",
 				"Dale Hutchins. Had a farm out past the grain elevator. Boarded myself in here when the town went.",
 				"Station's got walls and people? I'll take it. I can still swing a shovel."],
 			"home_lines": ["Never thought I'd miss the smell of a feedlot."]},
-	{"name": "Priya Raman", "near": Vector3(-80, 0, -12), "home": Vector3(55.5, 0.1, 26.5),
+	{"name": "Priya Raman",
 			"outfit": Color(0.5, 0.28, 0.35), "skin": Color(0.55, 0.4, 0.3),
 			"join": ["Is it... is it over out there? No. Of course it isn't.",
 				"Priya. I was home from college for the summer. My parents went out for supplies the first day.",
 				"If there are people at the police station, I want to be with people. I'll go."],
 			"home_lines": ["I'm keeping a list of everyone who makes it through the gate. Someone should remember."]},
-	{"name": "Gus Lindqvist", "near": Vector3(-50, 0, 12), "home": Vector3(60.0, 0.1, 26.5),
+	{"name": "Gus Lindqvist",
 			"outfit": Color(0.25, 0.3, 0.38), "skin": Color(0.78, 0.63, 0.52),
 			"join": ["Easy on those planks. Took me all afternoon to put them up.",
 				"Gus. I fix engines. Fixed, anyway. Not much driving these days.",
 				"The police station, huh? Tell the Chief I'll keep that generator running."],
 			"home_lines": ["Generator's running rough. I'll get to it."]},
-	{"name": "Walt Brenner", "job": "machinist", "near": Vector3(-135, 0, -12), "home": Vector3(40.0, 0.1, 26.5),
+	{"name": "Walt Brenner", "job": "machinist",
 			"outfit": Color(0.3, 0.32, 0.3), "skin": Color(0.7, 0.55, 0.45),
 			"join": ["Hands where I can see 'em. ...Fine. You're no bandit.",
 				"Walt Brenner. Ran the machine shop on Route 9 for thirty years. Lathes, presses, reloading gear.",
@@ -63,7 +67,9 @@ const PEOPLE := [
 ]
 
 var survivors: Array[Survivor] = []
-var houses: Array[Building] = []
+var houses: Array[Building] = [] # the house each one is holed up in (null if their spot isn't in one)
+var _people: Array[Dictionary] = [] # each survivor's entry in PEOPLE
+var _homes: Array[Vector3] = [] # each survivor's spot in the station yard
 var _player: Node3D
 var _dialogue: Node
 var _choices: Node # ui/choice_menu.gd
@@ -74,36 +80,36 @@ var _bedrolls := {} # survivor -> its bedroll in the yard
 var _timer := 0.0
 
 
-## Picks the houses, boards them up, and puts everyone (and their supplies) in
-## place. Uses no random numbers, so the rest of the town comes out the same.
-func setup(buildings: Array, fortifications: Node, builder: RefCounted) -> void:
+## spots: the town's SpawnPoints. Puts everyone in place, in PEOPLE order.
+func setup(spots: Array) -> void:
 	for person: Dictionary in PEOPLE:
-		var house := _nearest_house(buildings, person["near"])
-		houses.append(house)
-		fortifications.call("board_building", house)
-
+		var start := _spot(spots, "survivor", person["name"])
+		var home := _spot(spots, "survivor_home", person["name"])
+		if start == null or home == null:
+			push_warning("%s has no \"survivor\" or \"survivor_home\" SpawnPoint in the town scene." % person["name"])
+			continue
 		var survivor := SurvivorScene.instantiate() as Survivor
 		survivor.display_name = person["name"]
 		survivor.outfit_color = person["outfit"]
 		survivor.skin_color = person["skin"]
 		survivor.job = person.get("job", "")
-		var spot := house.transform * (house.bed_center + Vector3(0, 0.1, house.bed_toward_room * 1.3))
-		survivor.position = spot
-		# Facing the front of the house (its door side).
-		var toward_door := house.global_basis * Vector3(-1, 0, 0)
-		survivor.rotation.y = atan2(-toward_door.x, -toward_door.z)
+		survivor.position = start.global_position
+		survivor.rotation.y = start.global_rotation.y
 		get_parent().add_child(survivor)
 		survivors.append(survivor)
+		_people.append(person)
+		_homes.append(home.global_position)
+		var house: Node = start.get_parent()
+		while house != null and not house is Building:
+			house = house.get_parent()
+		houses.append(house as Building)
 
-		# Supplies on the floor beside them.
-		var side := house.global_basis * Vector3(1, 0, 0) # toward the back wall
-		var along := house.global_basis * Vector3(0, 0, house.bed_toward_room) # away from the bed
-		var floor_at := Vector3(spot.x, house.global_position.y + house.FLOOR_Y + 0.05, spot.z)
-		builder.call("add_ground_item", "canned_food", 1, floor_at + side * 0.6 + along * 0.3, 0.4)
-		builder.call("add_ground_item", "canned_food", 1, floor_at + side * 0.8 + along * 0.6, 1.9)
-		builder.call("add_ground_item", "health_pack", 1, floor_at - side * 0.6 + along * 0.3, 0.2)
-		builder.call("add_ground_item", "health_pack", 1, floor_at - side * 0.8 + along * 0.65, 2.6)
-	fortifications.call("rebake")
+
+func _spot(spots: Array, role: String, person_name: String) -> SpawnPoint:
+	for spot: SpawnPoint in spots:
+		if spot.role == role and spot.person == person_name:
+			return spot
+	return null
 
 
 ## Who's talking to them, and the base they'd join (main.gd creates these after
@@ -122,10 +128,12 @@ func attach(player: Node3D, dialogue: Node, choices: Node, crafting: Node, base:
 func move_zombies_out(zombies: Array) -> void:
 	for zombie: Node3D in zombies:
 		for house in houses:
+			if house == null:
+				continue
 			var local := house.global_transform.affine_inverse() * zombie.global_position
 			if local.x > 0.0 and local.x < house.size_depth and absf(local.z) < house.size_width / 2.0:
 				# Out front, clawing at the boards.
-				zombie.global_position = house.global_transform * Vector3(-3.0, 0.1, house.door_z + randf_range(-2.0, 2.0))
+				zombie.global_position = house.global_transform * Vector3(-3.0, 0.1, house.front_door_z() + randf_range(-2.0, 2.0))
 				break
 
 
@@ -134,7 +142,7 @@ func talk(survivor: Survivor) -> void:
 	var i := survivors.find(survivor)
 	if i < 0:
 		return
-	var person: Dictionary = PEOPLE[i]
+	var person: Dictionary = _people[i]
 	match survivor.state:
 		Survivor.State.WAITING:
 			if _base.call("is_full"):
@@ -181,7 +189,7 @@ func _process(delta: float) -> void:
 	var at := _player.global_position
 	for i in survivors.size():
 		var survivor := survivors[i]
-		var home: Vector3 = PEOPLE[i]["home"]
+		var home := _homes[i]
 		if survivor.state == Survivor.State.TRAVELLING and at.distance_to(survivor.global_position) > OUT_OF_SIGHT \
 				and at.distance_to(home) > OUT_OF_SIGHT:
 			_send_home(i)
@@ -209,14 +217,14 @@ func go_home_spot(survivor: Survivor) -> void:
 	var i := survivors.find(survivor)
 	if i < 0 or survivor.state != Survivor.State.HOME:
 		return
-	survivor.global_position = PEOPLE[i]["home"]
+	survivor.global_position = _homes[i]
 	survivor.rotation.y = 0.0 # facing the back of the station
 
 
 ## At home in the station's back yard, with a bedroll.
 func _send_home(i: int) -> void:
 	var survivor := survivors[i]
-	var home: Vector3 = PEOPLE[i]["home"]
+	var home := _homes[i]
 	survivor.state = Survivor.State.HOME
 	go_home_spot(survivor)
 	if _bedrolls.has(survivor):
@@ -233,17 +241,3 @@ func _send_home(i: int) -> void:
 	bedroll.add_child(inst)
 	get_parent().add_child(bedroll)
 	_bedrolls[survivor] = bedroll
-
-
-func _nearest_house(buildings: Array, near: Vector3) -> Building:
-	var best: Building = null
-	var best_dist := INF
-	for b in buildings:
-		var building := b as Building
-		if building == null or not building.is_house or building in houses:
-			continue
-		var dist := building.global_position.distance_to(near)
-		if dist < best_dist:
-			best = building
-			best_dist = dist
-	return best

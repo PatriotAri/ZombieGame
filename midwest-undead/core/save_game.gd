@@ -1,9 +1,9 @@
 extends RefCounted
 ## Reading and writing the save file. Never instanced.
 ##
-## How loading works: the town is generated from a fixed seed, so it comes out
-## identical every time. Loading therefore just reloads the scene (rebuilding
-## the town from scratch) and then main.gd applies the saved changes on top:
+## How loading works: the town is a scene (world/town/town.tscn), the same every
+## time. Loading therefore just reloads the game scene (loading the town fresh)
+## and then main.gd applies the saved changes on top:
 ## where you are, what you carry, what's been looted, which zombies and bandits
 ## are still up, the time of day, and how far the story has got.
 ##
@@ -12,7 +12,7 @@ extends RefCounted
 
 const PATH := "user://savegame.json"
 const GAME_SCENE := "res://world/main.tscn"
-const VERSION := 2 # bump whenever the save layout changes; older saves are ignored
+const VERSION := 3 # bump whenever the save layout changes; older saves are ignored
 
 ## Set by request_load(); main.gd picks it up after the scene reloads.
 static var pending_load: Dictionary = {}

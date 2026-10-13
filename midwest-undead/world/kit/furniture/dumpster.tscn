@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_687og"]
+[ext_resource type="Material" path="res://world/kit/materials/dumpster_green.tres" id="2_er8uy"]
+
+[node name="Dumpster" type="StaticBody3D" unique_id=7171865]
+script = ExtResource("1_687og")
+label = "Dumpster"
+size = Vector3(2, 1.3, 1.2)
+material = ExtResource("2_er8uy")
+sits_on_floor = true

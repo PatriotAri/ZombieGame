@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_2ixe2"]
+[ext_resource type="Material" path="res://world/kit/materials/wood_planks.tres" id="2_26kkx"]
+
+[node name="Dresser" type="StaticBody3D" unique_id=2086314767]
+script = ExtResource("1_2ixe2")
+label = "Dresser"
+size = Vector3(1.2, 1.1, 0.5)
+material = ExtResource("2_26kkx")
+sits_on_floor = true

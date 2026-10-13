@@ -608,9 +608,9 @@ func _looked_at() -> Node3D:
 	if hit.is_empty():
 		return null
 	var thing := hit["collider"] as Node3D
-	# Part of something bigger (a car's roof): that's what you're looking at.
-	if thing and thing.has_meta("part_of"):
-		return thing.get_meta("part_of") as Node3D
+	# Part of something bigger (a car's roof, under the car): that's what you're looking at.
+	if thing and thing.get_meta("part_of_parent", false):
+		return thing.get_parent() as Node3D
 	return thing
 
 

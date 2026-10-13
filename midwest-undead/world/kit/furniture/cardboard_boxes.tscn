@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_6kxo0"]
+[ext_resource type="Material" path="res://world/kit/materials/cardboard.tres" id="2_ns1ym"]
+
+[node name="CardboardBoxes" type="StaticBody3D" unique_id=521468463]
+script = ExtResource("1_6kxo0")
+label = "Cardboard boxes"
+size = Vector3(0.8, 0.7, 0.8)
+material = ExtResource("2_ns1ym")
+sits_on_floor = true

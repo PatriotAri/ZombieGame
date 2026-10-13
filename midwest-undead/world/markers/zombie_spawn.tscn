@@ -1,0 +1,7 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/markers/zombie_spawn.gd" id="1_le13c"]
+
+[node name="ZombieSpawn" type="Marker3D" unique_id=899270836]
+script = ExtResource("1_le13c")
+chance = 0.25

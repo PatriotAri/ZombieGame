@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_wall.gd" id="1_sw8b0"]
+[ext_resource type="Script" path="res://world/kit/kit_opening.gd" id="2_6e6tg"]
+
+[sub_resource type="Resource" id="Resource_b0odk"]
+script = ExtResource("2_6e6tg")
+
+[node name="Wall" type="Node3D" unique_id=1565023763]
+script = ExtResource("1_sw8b0")
+openings = Array[ExtResource("2_6e6tg")]([SubResource("Resource_b0odk")])

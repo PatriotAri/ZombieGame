@@ -1,0 +1,36 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/building.gd" id="1_ak5l6"]
+[ext_resource type="Script" path="res://world/kit/kit_opening.gd" id="2_0mlcj"]
+[ext_resource type="Material" path="res://world/kit/materials/brick_red.tres" id="3_mm7pn"]
+
+[sub_resource type="Resource" id="Resource_doxtx"]
+script = ExtResource("2_0mlcj")
+kind = "door"
+width = 1.6
+bottom = 0.0
+top = 2.4
+
+[sub_resource type="Resource" id="Resource_byj5k"]
+script = ExtResource("2_0mlcj")
+offset = -2.8000000000000003
+width = 2.6
+top = 2.6
+
+[sub_resource type="Resource" id="Resource_wi4me"]
+script = ExtResource("2_0mlcj")
+offset = 2.8000000000000003
+width = 2.6
+top = 2.6
+
+[sub_resource type="Resource" id="Resource_oygrm"]
+script = ExtResource("2_0mlcj")
+wall = "back"
+bottom = 1.1
+
+[node name="Building" type="Node3D" unique_id=1832416653]
+script = ExtResource("1_ak5l6")
+size_depth = 12.0
+openings = Array[ExtResource("2_0mlcj")]([SubResource("Resource_doxtx"), SubResource("Resource_byj5k"), SubResource("Resource_wi4me"), SubResource("Resource_oygrm")])
+boarded_painted_windows = PackedInt32Array()
+exterior_material = ExtResource("3_mm7pn")

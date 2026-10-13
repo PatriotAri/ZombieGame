@@ -10,6 +10,7 @@ extends Node
 ##     (survivors.gd); they stand at it. Take it down and they go back to the yard.
 ##   - Every morning each worked plot puts food, and each worked bench ammo, in
 ##     the supply crate in the station yard.
+## The crate is the container in the town scene in the "base_supply_crate" group.
 ## main.gd creates it. Saved: who works what, and when the crate was last filled.
 
 const Survivor := preload("res://characters/npcs/survivor.gd")
@@ -21,7 +22,6 @@ const PER_STATION := 2
 const SUPPLY_HOUR := 7
 const FOOD_PER_PLOT := 2 # cans each morning
 const AMMO_PER_BENCH := 10 # pistol rounds each morning
-const CRATE_SPOT := Vector3(52.0, 0.45, 28.7) # the station's back yard
 const CHECK_INTERVAL := 1.0
 
 var crate: Node3D # a LootSpot: main.gd saves it with the other containers
@@ -38,13 +38,13 @@ func _ready() -> void:
 	add_to_group("base_camp")
 
 
-func setup(builder: RefCounted, survivors: Node, woodworker: Node, structures: Node, day_night: Node, player: Node3D) -> void:
+func setup(supply_crate: Node3D, survivors: Node, woodworker: Node, structures: Node, day_night: Node, player: Node3D) -> void:
 	_survivors = survivors
 	_woodworker = woodworker
 	_structures = structures
 	_day_night = day_night
 	_player = player
-	crate = builder.call("add_loot", Vector3(1.2, 0.9, 0.9), CRATE_SPOT, Color(0.42, 0.34, 0.22), "Supply crate")
+	crate = supply_crate
 	supplied_day = int(day_night.get("day"))
 
 

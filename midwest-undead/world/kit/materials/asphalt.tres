@@ -1,0 +1,17 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://world/kit/kit_pattern.gdshader" id="1_ms8om"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_ms8om")
+shader_parameter/pattern = 0
+shader_parameter/color = Color(0.16, 0.16, 0.17, 1)
+shader_parameter/joint_color = Color(0.16, 0.16, 0.17, 1)
+shader_parameter/cell = Vector2(1, 1)
+shader_parameter/joint = 0.0
+shader_parameter/variation = 0.0
+shader_parameter/grime = 0.35
+shader_parameter/roughness_value = 0.95
+shader_parameter/metallic_value = 0.0
+shader_parameter/tint = Color(1, 1, 1, 1)
