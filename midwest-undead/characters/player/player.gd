@@ -1058,7 +1058,8 @@ func _try_shoot() -> void:
 		var target := hit["collider"] as Node3D
 		if target and target.has_method("take_hit"):
 			var hit_pos: Vector3 = hit["position"]
-			var headshot := hit_pos.y - target.global_position.y > 1.4 # heads sit at ~1.4-1.8 m
+			var headshot: bool = target.call("is_headshot", hit_pos) if target.has_method("is_headshot") \
+					else hit_pos.y - target.global_position.y > 1.4 # people's heads sit at ~1.4-1.8 m
 			damage_to[target] = float(damage_to.get(target, 0.0)) + float(gun["damage"]) * (headshot_multiplier if headshot else 1.0)
 	for target: Node3D in damage_to:
 		if is_instance_valid(target):

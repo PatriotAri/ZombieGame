@@ -15,6 +15,13 @@ extends CharacterBody3D
 ## (only while it's going somewhere: hunting or investigating, not idly wandering).
 ## Its paths can also run through windows (world/fortifications.gd): it smashes the
 ## glass, then climbs over the sill. Boarded windows and doors stop it for good.
+## Three kinds (set `kind` before adding it to the tree; main.gd rolls it):
+##   walker  - the usual shambler.
+##   runner  - thin and red-skinned; sprints at you (runner_speed) once it's
+##             hunting, leaning into it. Same health as a walker.
+##   crawler - drags itself along the ground: slow, low (aim down to hit it; its
+##             head is at the front, near the ground), and weaker (crawler_health).
+## Each has its own groan pitch.
 ## The node tree lives in zombie.tscn.
 ## TUNING: open zombie.tscn, select the Zombie node, and use the Inspector.
 
@@ -24,6 +31,8 @@ const WindowPane := preload("res://world/window_pane.gd")
 const Sound := preload("res://core/sound.gd")
 
 enum State { IDLE, INVESTIGATE, HUNT }
+
+@export_enum("walker", "runner", "crawler") var kind := "walker"
 
 @export var max_health := 100.0
 @export_range(1.0, 100.0) var sight_range := 20.0 ## In daylight.
@@ -43,10 +52,20 @@ enum State { IDLE, INVESTIGATE, HUNT }
 ## town, and back into places you've cleared, faster.
 @export_range(0.0, 1.0) var roam_chance_day := 0.05
 @export_range(0.0, 1.0) var roam_chance_night := 0.5
+@export_group("Runner")
+## While hunting. You walk at 4 and sprint at 7.
+@export var runner_speed := 7.0
+@export var runner_skin := Color(0.62, 0.36, 0.3)
+@export_group("Crawler")
+@export var crawler_health := 60.0
+@export var crawler_speed := 0.8
 
 const VIEW_DOT := 0.5 # cos(60 degrees): it sees a 120 degree cone in front of it
 const PROXIMITY_RANGE := 2.0 # this close, it notices you no matter what
 const EYE_HEIGHT := 1.6
+const CRAWLER_EYE_HEIGHT := 0.4
+const CRAWLER_HEAD := Vector3(0, 0.25, -0.8) # where a crawler's head is (its own space)
+const RUNNER_LEAN := 0.4 # radians forward while running flat out
 const ATTACK_RANGE := 1.3
 const ATTACK_HEIGHT := 1.5 # can't bite something more than this far above or below it
 const SENSE_INTERVAL := 0.2 # sight checks are raycasts; 5 per second is plenty
@@ -66,7 +85,8 @@ const FAR_DISTANCE := 80.0
 const FAR_TICK := 3
 
 var state := State.IDLE
-var health := 100.0 # set to max_health in _ready
+var health := 100.0 # set to max_health (crawler_health) in _ready
+var eye_height := EYE_HEIGHT
 var is_dead := false
 var speed := 1.6
 var target: Node3D = null # who it's hunting
@@ -107,6 +127,7 @@ func _ready() -> void:
 	add_to_group("noise_listeners")
 	speed = randf_range(min_speed, maxf(max_speed, min_speed)) # some shuffle, some lurch
 	health = max_health
+	_apply_kind()
 	# Stagger timers so dozens of zombies don't all raycast and repath on the same frame.
 	sense_timer = randf() * SENSE_INTERVAL
 	repath_timer = randf() * REPATH_INTERVAL
@@ -121,6 +142,45 @@ func _ready() -> void:
 	_unique_materials()
 
 
+## Shape, speed and health for its kind.
+func _apply_kind() -> void:
+	match kind:
+		"runner":
+			visual.scale = Vector3(0.75, 1.0, 0.75) # thin
+		"crawler":
+			speed = crawler_speed
+			health = crawler_health
+			eye_height = CRAWLER_EYE_HEIGHT
+			# Lying face down, head forward (-z), dragging itself along.
+			visual.rotation.x = -PI / 2.0
+			visual.position = Vector3(0, 0.3, 0.8)
+			for arm: Node3D in [$Visual/ArmLeft, $Visual/ArmRight]:
+				arm.rotation.x = PI / 2.0 # flat on the ground, reaching ahead
+				arm.position.z -= 0.25
+			var shape := CapsuleShape3D.new()
+			shape.radius = 0.3
+			shape.height = 1.6
+			collision.shape = shape
+			collision.transform = Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(0, 0.3, 0.05))
+
+
+## Where shots should aim: the middle of its body (guards use this).
+func aim_point() -> Vector3:
+	return global_position + (Vector3(0, 0.3, 0) if kind == "crawler" else Vector3(0, 1.2, 0))
+
+
+## A hit here counts as a headshot.
+func is_headshot(hit_pos: Vector3) -> bool:
+	if kind == "crawler":
+		return hit_pos.distance_to(global_transform * CRAWLER_HEAD) < 0.3
+	return hit_pos.y - global_position.y > 1.4 # heads sit at ~1.4-1.8 m
+
+
+## Its groans: higher for a runner, deeper for a crawler.
+func _voice_pitch() -> float:
+	return {"runner": 1.25, "crawler": 0.75}.get(kind, 1.0)
+
+
 ## Materials in a scene are shared by every instance, so flashing one zombie would
 ## flash them all. Give this zombie its own copies, and its own shirt color.
 func _unique_materials() -> void:
@@ -131,6 +191,8 @@ func _unique_materials() -> void:
 		var mat := (mesh_inst.mesh.surface_get_material(0) as StandardMaterial3D).duplicate() as StandardMaterial3D
 		if mesh_inst == clothes:
 			mat.albedo_color = Color.from_hsv(randf(), 0.3, 0.35)
+		elif kind == "runner":
+			mat.albedo_color = runner_skin
 		mesh_inst.material_override = mat
 		materials.append(mat)
 		base_colors.append(mat.albedo_color)
@@ -168,6 +230,9 @@ func _physics_process(delta: float) -> void:
 	_update_groan(delta)
 
 	var moving := false
+	if kind == "runner": # leans into it when running flat out, upright otherwise
+		var lean := RUNNER_LEAN if _flat(velocity).length() > runner_speed * 0.6 else 0.0
+		visual.rotation.x = move_toward(visual.rotation.x, -lean, 3.0 * delta)
 	match state:
 		State.HUNT:
 			if not _is_valid_target(target):
@@ -175,7 +240,7 @@ func _physics_process(delta: float) -> void:
 			else:
 				var to_target := _flat(target.global_position - global_position)
 				if to_target.length() > ATTACK_RANGE * 0.8:
-					moving = _walk_to(target.global_position, speed, delta)
+					moving = _walk_to(target.global_position, runner_speed if kind == "runner" else speed, delta)
 				else:
 					_face(to_target)
 				var height_gap := absf(target.global_position.y - global_position.y)
@@ -308,7 +373,7 @@ func _is_valid_target(node: Node3D) -> bool:
 
 
 func _can_see(candidate: Node3D, dist: float) -> bool:
-	var eye := global_position + Vector3(0, EYE_HEIGHT, 0)
+	var eye := global_position + Vector3(0, eye_height, 0)
 	var aim := candidate.global_position + Vector3(0, 1.0, 0)
 	# Up close it notices you whichever way it's facing, but still not through walls.
 	if dist < PROXIMITY_RANGE:
@@ -429,7 +494,7 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 	velocity.z = away.z * knockback
 	stagger_timer = 0.4
 	_flash()
-	Sound.play_at(self, "zombie_hit", global_position + Vector3.UP, -4.0, 20.0, 0.15)
+	Sound.play_at(self, "zombie_hit", global_position + Vector3.UP, -4.0, 20.0, 0.15, _voice_pitch())
 	if health <= 0.0:
 		die()
 		return
@@ -451,11 +516,15 @@ func die(animate := true) -> void:
 	remove_from_group("zombies") # stops hearing, being hit, and being targeted
 	collision.set_deferred("disabled", true) # deferred: physics may be mid-step
 	set_physics_process(false)
+	if kind == "crawler": # already down: it just goes still
+		if animate:
+			Sound.play_at(self, "zombie_death", global_position + Vector3.UP, -2.0, 25.0, 0.12, _voice_pitch())
+		return
 	if not animate:
 		visual.rotation.x = PI / 2.0
 		visual.position.y = 0.3
 		return
-	Sound.play_at(self, "zombie_death", global_position + Vector3.UP, -2.0, 25.0, 0.12)
+	Sound.play_at(self, "zombie_death", global_position + Vector3.UP, -2.0, 25.0, 0.12, _voice_pitch())
 	var tween := create_tween()
 	tween.tween_property(visual, "rotation:x", PI / 2.0, 0.6) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN) # topple backward
@@ -470,14 +539,14 @@ func _update_groan(delta: float) -> void:
 		return
 	var hunting := state == State.HUNT
 	groan_timer = randf_range(2.5, 5.0) if hunting else randf_range(6.0, 14.0)
-	Sound.play_at(self, "zombie_groan", global_position + Vector3(0, EYE_HEIGHT, 0),
-			-2.0 if hunting else -9.0, 22.0 if hunting else 16.0, 0.15)
+	Sound.play_at(self, "zombie_groan", global_position + Vector3(0, eye_height, 0),
+			-2.0 if hunting else -9.0, 22.0 if hunting else 16.0, 0.15, _voice_pitch())
 
 
 ## Just spotted (or been hit by) someone.
 func _alert_sound() -> void:
 	groan_timer = randf_range(2.5, 5.0) # don't moan right on top of the snarl
-	Sound.play_at(self, "zombie_alert", global_position + Vector3(0, EYE_HEIGHT, 0), 0.0, 28.0, 0.15)
+	Sound.play_at(self, "zombie_alert", global_position + Vector3(0, eye_height, 0), 0.0, 28.0, 0.15, _voice_pitch())
 
 
 func _flash() -> void:

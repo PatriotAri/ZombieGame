@@ -87,6 +87,10 @@ const Place := preload("res://world/markers/place.gd")
 ## How many zombies are up at once. When there are fewer, new ones turn up on the
 ## outskirts of town now and then (see world/zombie_population.gd).
 @export_range(0, 400) var zombie_population := 100
+## Every zombie (at the start and arriving later) has these chances of being a
+## crawler or a runner instead of an ordinary walker (characters/zombie/zombie.gd).
+@export_range(0.0, 1.0) var crawler_chance := 0.08
+@export_range(0.0, 1.0) var runner_chance := 0.03
 ## Seconds between new arrivals while there are fewer than zombie_population.
 @export var zombie_respawn_seconds_day := 30.0
 @export var zombie_respawn_seconds_night := 10.0
@@ -577,7 +581,7 @@ func _save_game(path: String) -> bool:
 	for zombie in zombies:
 		if is_instance_valid(zombie) and not zombie.is_dead:
 			zombie_data.append({"position": SaveGame.vec_to_array(zombie.global_position),
-					"yaw": zombie.rotation.y, "health": zombie.health})
+					"yaw": zombie.rotation.y, "health": zombie.health, "kind": zombie.kind})
 	var door_data := {}
 	for door in doors:
 		door_data[door.get_meta("town_id")] = door.save_state()
@@ -649,7 +653,7 @@ func _apply_save(data: Dictionary) -> void:
 		zombie.queue_free()
 	zombies.clear()
 	for entry: Dictionary in data.get("zombies", []):
-		var zombie := _add_zombie(SaveGame.array_to_vec(entry["position"]))
+		var zombie := _add_zombie(SaveGame.array_to_vec(entry["position"]), null, str(entry.get("kind", "walker")))
 		zombie.rotation.y = float(entry.get("yaw", 0.0))
 		zombie.health = float(entry.get("health", zombie.max_health))
 
@@ -766,11 +770,17 @@ func _near_container(pos: Vector3, min_dist: float) -> bool:
 	return false
 
 
-## dice: whose dice pick its facing; the game's (rng) unless said otherwise.
-func _add_zombie(pos: Vector3, dice: RandomNumberGenerator = null) -> Zombie:
+## dice: whose dice pick its facing and kind; the game's (rng) unless said
+## otherwise. kind: "walker", "runner" or "crawler"; "" rolls it (crawler_chance,
+## runner_chance).
+func _add_zombie(pos: Vector3, dice: RandomNumberGenerator = null, kind := "") -> Zombie:
 	if dice == null:
 		dice = rng
+	if kind == "":
+		var roll := dice.randf()
+		kind = "crawler" if roll < crawler_chance else "runner" if roll < crawler_chance + runner_chance else "walker"
 	var zombie := ZombieScene.instantiate() as Zombie
+	zombie.kind = kind
 	zombie.position = pos
 	zombie.rotation.y = dice.randf_range(0.0, TAU)
 	add_child(zombie)
