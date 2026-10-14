@@ -10,6 +10,7 @@ extends StaticBody3D
 
 const Inventory := preload("res://items/inventory.gd")
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
+const ViewDistance := preload("res://core/view_distance.gd")
 const DEFAULT_MATERIAL := preload("res://world/kit/materials/wood_planks.tres")
 
 ## What the prompt calls it ("search the Dresser"). Salvage (world/salvage.gd) goes by it too.
@@ -99,3 +100,6 @@ func _rebuild() -> void:
 	var at := Transform3D(Basis.IDENTITY, Vector3(0, size.y / 2.0 if sits_on_floor else 0.0, 0))
 	km.box(size, at, KitMesh.all(material if material else DEFAULT_MATERIAL))
 	_generated = km.add_to(self)
+	for node in _generated:
+		if node is GeometryInstance3D:
+			ViewDistance.limit_by_size(node, size)

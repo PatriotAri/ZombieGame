@@ -59,6 +59,7 @@ const MapMenu := preload("res://ui/map_menu.gd")
 const BackpackMenu := preload("res://ui/backpack_menu.gd")
 const Discoveries := preload("res://world/discoveries.gd")
 const ZombiePopulation := preload("res://world/zombie_population.gd")
+const StaticMerge := preload("res://world/static_merge.gd")
 const Horde := preload("res://world/horde.gd")
 const TraderArrival := preload("res://world/trader_arrival.gd")
 const WoodworkerRescue := preload("res://world/woodworker_rescue.gd")
@@ -347,6 +348,7 @@ func _load_town() -> void:
 		door.transform = town.transform * xform
 		door_holder.add_child(door, true)
 	nav_region.add_child(town)
+	StaticMerge.merge(town) # buildings and kit pieces as a few big meshes (fewer draw calls)
 	var start := _spawn_point("player")
 	player_spawn = Transform3D(Basis(Vector3.UP, start.global_rotation.y), start.global_position) if start \
 			else Transform3D(Basis.IDENTITY, Vector3(0, 0.1, 0))
@@ -529,7 +531,8 @@ func _build_environment() -> void:
 	add_child(world_env)
 
 	var sun := DirectionalLight3D.new()
-	sun.shadow_enabled = true
+	# Its shadows (off, medium, high) are the Shadows setting: Settings.apply_graphics.
+	sun.add_to_group("sun")
 	add_child(sun)
 
 	var moon := DirectionalLight3D.new()
@@ -543,6 +546,7 @@ func _build_environment() -> void:
 	day_night.night_ambient = night_ambient
 	add_child(day_night)
 	day_night.setup(env, sky_mat, sun, moon)
+	Settings.apply_graphics() # shadows, view distance, resolution
 
 
 ## A navigation mesh is the "where can zombies walk" map. Godot generates it by

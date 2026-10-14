@@ -7,6 +7,8 @@ extends StaticBody3D
 ## through. Planks over it (also fortifications.gd) stop all of that for good.
 
 const GameData := preload("res://core/game_data.gd")
+const ViewDistance := preload("res://core/view_distance.gd")
+const VIEW_METERS := 70.0 # past this the glass isn't drawn (core/view_distance.gd)
 const Sound := preload("res://core/sound.gd")
 
 const BASH_INTERVAL := 0.6 # seconds between audible blows, however many zombies are at it
@@ -39,9 +41,14 @@ func _ready() -> void:
 	for child in get_children():
 		if child is MeshInstance3D:
 			_mesh = child
-			_material = (_mesh.mesh.surface_get_material(0) as StandardMaterial3D).duplicate()
-			_mesh.material_override = _material
+			# Shared with every other pane of its color until this one cracks
+			# (_crack). The town scene saved a copy with each pane: swap in the
+			# shared one.
+			_material = _shared(_mesh.mesh.surface_get_material(0) as StandardMaterial3D)
+			_mesh.material_override = null
+			_mesh.set_surface_override_material(0, _material)
 			_base_alpha = _material.albedo_color.a
+			ViewDistance.limit(_mesh, VIEW_METERS)
 			return
 
 
@@ -55,10 +62,13 @@ func pane_size() -> Vector3:
 
 func setup(size: Vector3, color: Color) -> void:
 	collision_layer = GameData.LAYER_GLASS
-	_material = StandardMaterial3D.new()
-	_material.albedo_color = color
-	_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_material.roughness = 0.1
+	if not _glass.has(color):
+		var made := StandardMaterial3D.new()
+		made.albedo_color = color
+		made.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		made.roughness = 0.1
+		_glass[color] = made
+	_material = _glass[color] # shared until it cracks (_crack)
 	_base_alpha = color.a
 	var box := BoxMesh.new()
 	box.size = size
@@ -68,6 +78,7 @@ func setup(size: Vector3, color: Color) -> void:
 	_mesh.mesh = box
 	_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF # let sunlight in
 	add_child(_mesh)
+	ViewDistance.limit(_mesh, VIEW_METERS)
 	var shape := BoxShape3D.new()
 	shape.size = size
 	var col := CollisionShape3D.new()
@@ -93,8 +104,7 @@ func bash(damage: float) -> void:
 	if health <= 0.0:
 		smash()
 		return
-	# Cracks: it clouds over as it takes a beating.
-	_material.albedo_color.a = lerpf(0.75, _base_alpha, health / max_health)
+	_crack()
 	var now := Time.get_ticks_msec()
 	if now >= _next_bash_ms:
 		_next_bash_ms = now + int(BASH_INTERVAL * 1000.0)
@@ -123,4 +133,24 @@ func load_state(data: Dictionary) -> void:
 	if bool(data.get("broken", false)):
 		smash(true)
 	elif health < max_health:
-		_material.albedo_color.a = lerpf(0.75, _base_alpha, health / max_health)
+		_crack()
+
+
+## One material per glass color, shared by every pane until it cracks.
+static var _glass := {}
+
+
+static func _shared(mat: StandardMaterial3D) -> StandardMaterial3D:
+	var key := mat.albedo_color
+	if not _glass.has(key):
+		_glass[key] = mat
+	return _glass[key]
+
+
+## Cracks: it clouds over as it takes a beating. The first crack gives it its
+## own material (until then it shares one with every other pane).
+func _crack() -> void:
+	if _mesh.material_override == null:
+		_material = _material.duplicate()
+		_mesh.material_override = _material
+	_material.albedo_color.a = lerpf(0.75, _base_alpha, health / max_health)

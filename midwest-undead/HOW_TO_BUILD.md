@@ -178,3 +178,14 @@ KitZombieSpawn, KitPlace). In the editor each one shows a floating label.
 - **Saves find things by their path in the town scene** (district / building
   / name). Renaming or moving something to another parent means an older save
   won't find it.
+- **Buildings and modular pieces are merged when a game starts.** To keep the
+  game fast, every Building and modular piece (wall, floor, stairs, box) is
+  combined into a few big meshes by material (`world/static_merge.gd`). This
+  doesn't change anything in the editor, and their collision stays as it was.
+  Anything that has to change or move during play can't be one of these
+  pieces: containers, doors, windows and items stay separate, and so does
+  anything with a `salvage_label`.
+- **Small things stop being drawn far away**: containers, items on the
+  ground, windows, doors and the boards over them. The bigger a container,
+  the further it shows (`core/view_distance.gd`). The View Distance setting
+  scales them all.

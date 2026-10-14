@@ -985,6 +985,8 @@ width = 2.6
 top = 2.6000000476837157
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_wrb4c"]
+radial_segments = 16
+rings = 1
 material = ExtResource("24_s4ctw")
 top_radius = 0.04
 bottom_radius = 0.04

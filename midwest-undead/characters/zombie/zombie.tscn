@@ -9,11 +9,15 @@ albedo_color = Color(0.45, 0.52, 0.4, 1)
 albedo_color = Color(0.35, 0.3, 0.28, 1)
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_body"]
+radial_segments = 12
+rings = 2
 material = SubResource("StandardMaterial3D_clothes")
 radius = 0.3
 height = 1.4
 
 [sub_resource type="SphereMesh" id="SphereMesh_head"]
+radial_segments = 12
+rings = 6
 material = SubResource("StandardMaterial3D_skin")
 radius = 0.2
 height = 0.4

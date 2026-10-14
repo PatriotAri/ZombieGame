@@ -32,6 +32,13 @@ const Player := preload("res://characters/player/player.gd")
 const GameData := preload("res://core/game_data.gd")
 const WindowPane := preload("res://world/window_pane.gd")
 const Sound := preload("res://core/sound.gd")
+## Every zombie is one mesh with this one material; its colors and hit flash
+## are set per zombie (_combine_parts).
+const BODY_MATERIAL := preload("res://characters/zombie/zombie_body.tres")
+
+## posture -> its body, head and arms as one mesh, shared by every zombie that
+## stands (or crawls) that way.
+static var _combined := {}
 
 enum State { IDLE, INVESTIGATE, HUNT }
 
@@ -74,9 +81,12 @@ const SHUFFLE_SPEED := 0.35
 const ROAM_TURN := 0.8 # radians: how far each leg can veer from the last
 const HERD_RADIUS := 15.0 # roamers this close pull its heading toward theirs
 const HERD_PULL := 0.7
-# Far from the camera and not after anyone, it only thinks and moves every
-# FAR_TICK physics frames (covering the same ground): a town's worth of
-# zombies costs much less, and nobody's close enough to see the difference.
+# Away from the camera and not after anyone, it only thinks and moves every
+# few physics frames (covering the same ground): every MID_TICK frames past
+# MID_DISTANCE, every FAR_TICK past FAR_DISTANCE. A town's worth of zombies (or
+# a horde) costs much less, and nobody's close enough to see the difference.
+const MID_DISTANCE := 40.0
+const MID_TICK := 2
 const FAR_DISTANCE := 80.0
 const FAR_TICK := 3
 
@@ -89,8 +99,7 @@ var is_dead := false
 var speed := 1.6
 var target: Node3D = null # who it's hunting
 var day_night: Node
-var materials: Array[StandardMaterial3D] = []
-var base_colors: Array[Color] = []
+var _body: MeshInstance3D # all of it as one mesh (_combine_parts)
 
 var investigate_pos := Vector3.ZERO
 var last_seen_pos := Vector3.ZERO
@@ -113,7 +122,7 @@ var _window_entry := Vector3.ZERO
 var _window_exit := Vector3.ZERO
 var _vaulting := false
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-var _far_phase := 0 # which of the FAR_TICK frames is its turn (spread across zombies)
+var _far_phase := 0 # which of the frames is its turn when it skips some (spread across zombies)
 var _far_frame := 0
 var _far_delta := 0.0 # time saved up between its turns
 var _step_scale := 1.0 # how many frames' worth this physics step moves it
@@ -140,11 +149,11 @@ func _ready() -> void:
 	groan_timer = randf_range(2.0, 12.0)
 	wander_target = global_position
 	roam_heading = Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU)
-	_far_phase = randi() % FAR_TICK
+	_far_phase = randi() % (MID_TICK * FAR_TICK)
 	# Layer 1 is the ground; layer 2 is the links through windows (fortifications.gd).
 	agent.navigation_layers = 1 | 2
 	agent.link_reached.connect(_on_link_reached)
-	_unique_materials()
+	_combine_parts()
 
 
 ## Its kind's shape.
@@ -191,31 +200,82 @@ func _hunt_speed() -> float:
 	return kind_data.hunt_speed if kind_data.hunt_speed > 0.0 else speed
 
 
-## Materials in a scene are shared by every instance, so flashing one zombie would
-## flash them all. Give this zombie its own copies, and its own shirt color.
-func _unique_materials() -> void:
+## Its body, head and arms (zombie.tscn, posed by _apply_kind) become one mesh,
+## so the graphics card draws a zombie in one go instead of four. The combined
+## mesh is made once per posture and shared; the vertex color's alpha marks the
+## shirt (1) from the skin (0), and the shared material (BODY_MATERIAL) colors
+## them per zombie: a random shirt, and its kind's skin (or the scene's usual).
+func _combine_parts() -> void:
+	var parts: Array[MeshInstance3D] = []
 	for child in visual.get_children():
-		var mesh_inst := child as MeshInstance3D
-		if mesh_inst == null:
-			continue
-		var mat := (mesh_inst.mesh.surface_get_material(0) as StandardMaterial3D).duplicate() as StandardMaterial3D
-		if mesh_inst == clothes:
-			mat.albedo_color = Color.from_hsv(randf(), 0.3, 0.35)
-		elif kind_data.skin_color.a > 0.0:
-			mat.albedo_color = kind_data.skin_color
-		mesh_inst.material_override = mat
-		materials.append(mat)
-		base_colors.append(mat.albedo_color)
+		if child is MeshInstance3D:
+			parts.append(child)
+	var skin := Color(0.45, 0.52, 0.4)
+	for part in parts:
+		if part != clothes: # the head and arms are skin (zombie.tscn's skin material)
+			skin = (part.mesh.surface_get_material(0) as StandardMaterial3D).albedo_color
+			break
+	if kind_data.skin_color.a > 0.0:
+		skin = kind_data.skin_color
+	var key := kind_data.posture
+	if not _combined.has(key):
+		_combined[key] = _combine(parts, clothes)
+	for part in parts:
+		visual.remove_child(part)
+		part.queue_free()
+	_body = MeshInstance3D.new()
+	_body.name = "Body"
+	_body.mesh = _combined[key]
+	_body.material_override = BODY_MATERIAL
+	visual.add_child(_body)
+	_body.set_instance_shader_parameter("skin", skin)
+	_body.set_instance_shader_parameter("shirt", Color.from_hsv(randf(), 0.3, 0.35))
+
+
+## parts (as posed) as one mesh; shirt's vertices get alpha 1, the rest 0.
+static func _combine(parts: Array[MeshInstance3D], shirt: MeshInstance3D) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	for part in parts:
+		var arrays := part.mesh.surface_get_arrays(0)
+		var xform := part.transform
+		var start := verts.size()
+		var part_verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var part_normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var alpha := 1.0 if part == shirt else 0.0
+		for i in part_verts.size():
+			verts.append(xform * part_verts[i])
+			normals.append((xform.basis * part_normals[i]).normalized())
+			colors.append(Color(1, 1, 1, alpha))
+		var part_indices = arrays[Mesh.ARRAY_INDEX]
+		if part_indices == null:
+			for i in part_verts.size():
+				indices.append(start + i)
+		else:
+			for i: int in part_indices:
+				indices.append(start + i)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 func _physics_process(delta: float) -> void:
 	if _vaulting:
 		return # a tween is carrying it over a windowsill
 	_step_scale = 1.0
-	if state == State.IDLE and stagger_timer <= 0.0 and _far_from_camera():
+	var every := _update_every()
+	if every > 1:
 		_far_delta += delta
-		_far_frame = (_far_frame + 1) % FAR_TICK
-		if _far_frame != _far_phase:
+		_far_frame += 1
+		if _far_frame % every != _far_phase % every:
 			return
 		_step_scale = _far_delta / delta
 		delta = _far_delta
@@ -631,11 +691,13 @@ func _alert_sound() -> void:
 	Sound.play_at(self, "zombie_alert", global_position + Vector3(0, eye_height, 0), 0.0, 28.0, 0.15, _voice_pitch())
 
 
+func _set_flash(amount: float) -> void:
+	_body.set_instance_shader_parameter("flash", amount)
+
+
 func _flash() -> void:
 	var tween := create_tween().set_parallel(true)
-	for i in materials.size():
-		materials[i].albedo_color = Color(1.0, 0.85, 0.85)
-		tween.tween_property(materials[i], "albedo_color", base_colors[i], 0.25)
+	tween.tween_method(_set_flash, 1.0, 0.0, 0.25)
 
 
 # --- Movement ----------------------------------------------------------------
@@ -676,9 +738,19 @@ func _move(frames: float) -> void:
 	velocity /= frames
 
 
-func _far_from_camera() -> bool:
+## How often it thinks and moves: every physics frame up close or while after
+## someone (or reeling from a hit), every MID_TICK frames from MID_DISTANCE, and
+## every FAR_TICK frames from FAR_DISTANCE.
+func _update_every() -> int:
+	if state == State.HUNT or stagger_timer > 0.0:
+		return 1
 	var camera := get_viewport().get_camera_3d()
-	return camera != null and global_position.distance_squared_to(camera.global_position) > FAR_DISTANCE * FAR_DISTANCE
+	if camera == null:
+		return 1
+	var dist_sq := global_position.distance_squared_to(camera.global_position)
+	if dist_sq > FAR_DISTANCE * FAR_DISTANCE:
+		return FAR_TICK
+	return MID_TICK if dist_sq > MID_DISTANCE * MID_DISTANCE else 1
 
 
 func _face(dir: Vector3) -> void:

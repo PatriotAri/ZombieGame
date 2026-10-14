@@ -122,6 +122,8 @@ func _build_wagon() -> void:
 			mesh.top_radius = 0.55
 			mesh.bottom_radius = 0.55
 			mesh.height = 0.12
+			mesh.radial_segments = 16
+			mesh.rings = 1
 			mesh.material = _material(WOOD_DARK)
 			wheel.mesh = mesh
 			wheel.position = Vector3(x, 0.55, z)

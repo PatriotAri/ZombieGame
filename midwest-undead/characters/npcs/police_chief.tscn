@@ -7,12 +7,16 @@
 albedo_color = Color(0.08, 0.1, 0.18, 1)
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_crown"]
+radial_segments = 16
+rings = 1
 material = SubResource("StandardMaterial3D_hat")
 top_radius = 0.2
 bottom_radius = 0.2
 height = 0.14
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_brim"]
+radial_segments = 16
+rings = 1
 material = SubResource("StandardMaterial3D_hat")
 top_radius = 0.28
 bottom_radius = 0.28
