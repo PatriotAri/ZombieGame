@@ -9,6 +9,7 @@ extends Node3D
 ##   world/loot.gd        rolls the containers' loot tables (items/loot/)
 ##   quests/              the main story and side quests (see QUESTS.md)
 ##   ui/hud.gd            everything on screen during play
+##   ui/perf_overlay.gd   the performance readout (F3)
 ##
 ## What's fixed and what's random: the town, its containers and the items lying
 ## around are exactly what the town scene has. What's in the containers (beyond
@@ -72,6 +73,7 @@ const ChoiceMenu := preload("res://ui/choice_menu.gd")
 const Survivor := preload("res://characters/npcs/survivor.gd")
 const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Hud := preload("res://ui/hud.gd")
+const PerfOverlay := preload("res://ui/perf_overlay.gd")
 const Loot := preload("res://world/loot.gd")
 const SkyShader := preload("res://world/sky_clouds.gdshader")
 const Fortifications := preload("res://world/fortifications.gd")
@@ -179,6 +181,7 @@ func _ready() -> void:
 	survivors.setup(spawn_points)
 	hud = Hud.new()
 	add_child(hud)
+	add_child(PerfOverlay.new())
 	_spawn_player()
 	_spawn_zombies()
 	zones = Zones.new()

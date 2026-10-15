@@ -90,12 +90,20 @@ const HERD_RADIUS := 15.0 # roamers this close pull its heading toward theirs
 const HERD_PULL := 0.7
 # Away from the camera and not after anyone, it only thinks and moves every
 # few physics frames (covering the same ground): every MID_TICK frames past
-# MID_DISTANCE, every FAR_TICK past FAR_DISTANCE. A town's worth of zombies (or
-# a horde) costs much less, and nobody's close enough to see the difference.
+# MID_DISTANCE, every FAR_TICK past FAR_DISTANCE, every VERY_FAR_TICK past
+# VERY_FAR_DISTANCE. A town's worth of zombies (or a horde) costs much less, and
+# nobody's close enough to see the difference.
 const MID_DISTANCE := 40.0
 const MID_TICK := 2
 const FAR_DISTANCE := 80.0
 const FAR_TICK := 3
+const VERY_FAR_DISTANCE := 130.0
+const VERY_FAR_TICK := 6
+## Working out a path is the costliest thing a zombie does (up to about a
+## millisecond on the town's map), so all zombies together start at most this
+## many per physics frame. Without a limit, a crowd that all wants a new path at
+## once makes the game stutter; the rest wait a frame or two (_walk_to).
+const PATHS_PER_FRAME := 4
 
 var state := State.IDLE
 var max_health := 100.0 # its kind's
@@ -117,6 +125,8 @@ var march_to := Vector3.INF # in a horde: where it's walking to (INF: not in one
 var march_map := RID() # in a horde: the outdoor map it walks there on (horde.gd)
 var _march_time_left := INF # gives up on the walk when this runs out (set when it starts)
 var _stuck_time := 0.0
+static var _paths_frame := -1 # the physics frame _paths_left counts for
+static var _paths_left := 0 # path requests still allowed this physics frame (PATHS_PER_FRAME)
 var _gap_time := 0.0 # > 0: just broke a fence, so it heads straight through (_through_gap)
 var linger_timer := 0.0
 var wander_timer := 0.0
@@ -157,7 +167,7 @@ func _ready() -> void:
 	groan_timer = randf_range(2.0, 12.0)
 	wander_target = global_position
 	roam_heading = Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU)
-	_far_phase = randi() % (MID_TICK * FAR_TICK)
+	_far_phase = randi() % VERY_FAR_TICK # (a multiple of MID_TICK and FAR_TICK)
 	# Layer 1 is the ground; layer 2 is the links through windows (fortifications.gd).
 	agent.navigation_layers = 1 | 2
 	agent.link_reached.connect(_on_link_reached)
@@ -780,10 +790,19 @@ func _walk_to(point: Vector3, move_speed: float, delta: float) -> bool:
 	if not _navigation_ready():
 		return false
 	repath_timer -= delta
-	if repath_timer <= 0.0 or point.distance_squared_to(agent.target_position) > 1.0:
-		agent.target_position = point
-		repath_timer = REPATH_INTERVAL if state == State.HUNT else CALM_REPATH_INTERVAL
+	var new_point := point.distance_squared_to(agent.target_position) > 1.0
+	var waiting := false # wants a path to a new point, but this frame's are used up
+	if repath_timer <= 0.0 or new_point:
+		if _take_path_request():
+			agent.target_position = point
+			repath_timer = REPATH_INTERVAL if state == State.HUNT else CALM_REPATH_INTERVAL
+		else:
+			waiting = new_point
 	if agent.is_navigation_finished():
+		if waiting: # its old path is done: stand still a frame rather than look arrived
+			velocity.x = 0.0
+			velocity.z = 0.0
+			return true
 		return false
 	var dir := _flat(agent.get_next_path_position() - global_position)
 	if dir.length() < 0.05:
@@ -792,6 +811,18 @@ func _walk_to(point: Vector3, move_speed: float, delta: float) -> bool:
 	velocity.x = dir.x * move_speed
 	velocity.z = dir.z * move_speed
 	_face(dir)
+	return true
+
+
+## One of this physics frame's PATHS_PER_FRAME path requests, if any are left.
+static func _take_path_request() -> bool:
+	var frame := Engine.get_physics_frames()
+	if frame != _paths_frame:
+		_paths_frame = frame
+		_paths_left = PATHS_PER_FRAME
+	if _paths_left <= 0:
+		return false
+	_paths_left -= 1
 	return true
 
 
@@ -807,8 +838,9 @@ func _move(frames: float) -> void:
 
 
 ## How often it thinks and moves: every physics frame up close or while after
-## someone (or reeling from a hit), every MID_TICK frames from MID_DISTANCE, and
-## every FAR_TICK frames from FAR_DISTANCE.
+## someone (or reeling from a hit), every MID_TICK frames from MID_DISTANCE,
+## every FAR_TICK frames from FAR_DISTANCE and every VERY_FAR_TICK frames from
+## VERY_FAR_DISTANCE.
 func _update_every() -> int:
 	if state == State.HUNT or stagger_timer > 0.0:
 		return 1
@@ -816,6 +848,8 @@ func _update_every() -> int:
 	if camera == null:
 		return 1
 	var dist_sq := global_position.distance_squared_to(camera.global_position)
+	if dist_sq > VERY_FAR_DISTANCE * VERY_FAR_DISTANCE:
+		return VERY_FAR_TICK
 	if dist_sq > FAR_DISTANCE * FAR_DISTANCE:
 		return FAR_TICK
 	return MID_TICK if dist_sq > MID_DISTANCE * MID_DISTANCE else 1
