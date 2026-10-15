@@ -22,6 +22,7 @@ const Controls := preload("res://core/controls.gd")
 const Inventory := preload("res://items/inventory.gd")
 const LootSpot := preload("res://items/loot_spot.gd")
 const GroundItem := preload("res://items/ground_item.gd")
+const StructurePiece := preload("res://world/structure_piece.gd")
 const Sound := preload("res://core/sound.gd")
 const Settings := preload("res://core/settings.gd")
 const Fortifications := preload("res://world/fortifications.gd")
@@ -30,7 +31,11 @@ const Fortifications := preload("res://world/fortifications.gd")
 @export var walk_speed := 4.0
 @export var sprint_speed := 7.0
 @export var crouch_speed := 2.0
-@export var jump_velocity := 4.5
+## A jump: 0.75 m high and 0.55 s in the air (~2.2 m ahead walking, ~3.9 m
+## sprinting), with gravity times jump_gravity_scale from the jump until you
+## land. Falling off a ledge without jumping uses normal gravity.
+@export var jump_velocity := 5.42
+@export var jump_gravity_scale := 2.0
 ## Meters per second up or down a ladder.
 @export var climb_speed := 2.5
 
@@ -128,6 +133,7 @@ var is_dead := false
 ## What killed you, for the death message: "bitten", "shot" or "starved".
 var death_cause := ""
 var is_crouching := false
+var _jumping := false # in the air from a jump (heavier gravity, jump_gravity_scale)
 var hunger := 20.0 # 0 = just ate, 100 = starving; set to starting_hunger in _ready
 var flashlight_charge := 1.0 # what's left in the batteries in the flashlight, 0-1
 var menu_open := false # set by the inventory/shop screens; freezes your controls
@@ -283,8 +289,11 @@ func _physics_process(delta: float) -> void:
 	var climbing := not _ladders.is_empty()
 	if climbing:
 		velocity.y = 0.0 # holding on: no falling (_climb moves you up and down)
+		_jumping = false
 	elif not is_on_floor():
-		velocity.y -= gravity * delta
+		velocity.y -= gravity * (jump_gravity_scale if _jumping else 1.0) * delta
+	else:
+		_jumping = false
 
 	_update_aim(delta)
 	if menu_open:
@@ -335,6 +344,7 @@ func _physics_process(delta: float) -> void:
 
 	if Input.is_action_just_pressed("jump") and not just_resumed and is_on_floor() and not is_crouching:
 		velocity.y = jump_velocity
+		_jumping = true
 
 	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	if input_dir.length() < 0.1:
@@ -578,6 +588,8 @@ func _use_held() -> void:
 			_try_barricade()
 		"build":
 			_try_build()
+		"plate":
+			_try_plate()
 
 
 ## Bandaging and eating take a moment: the item comes up toward your face, and
@@ -740,6 +752,16 @@ func _fortify_prompt() -> String:
 	if fort == null:
 		return ""
 	var key := Controls.hint("use_held")
+	var piece := _aimed_piece()
+	if GameData.item_use(held) == "board" and piece and piece.is_damaged():
+		return "%s: repair the %s" % [key, GameData.item_name(piece.kind).to_lower()]
+	if GameData.item_use(held) == "plate" and piece and not piece.broken:
+		if piece.plated:
+			return "Already plated"
+		var sheets: int = StructurePiece.SHEETS[piece.kind]
+		if inventory.count("sheet_metal") < sheets:
+			return "Plating the %s takes %d sheet metal" % [GameData.item_name(piece.kind).to_lower(), sheets]
+		return "%s: plate the %s (%d sheet metal)" % [key, GameData.item_name(piece.kind).to_lower(), sheets]
 	if GameData.item_use(held) == "board":
 		var index := _aimed_opening()
 		if index >= 0 and not fort.is_boarded(index):
@@ -751,7 +773,40 @@ func _fortify_prompt() -> String:
 	return ""
 
 
+## The fence or gate you built that you're looking at (structure_piece.gd), or null.
+func _aimed_piece() -> StructurePiece:
+	var target := _looked_at()
+	if target != null and target.get("piece") != null: # a gate's leaf
+		target = target.get("piece")
+	var piece := target as StructurePiece
+	return piece if piece != null and piece.is_breakable() else null
+
+
+## Holding sheet metal: cover the fence or gate you're looking at (structures.gd).
+func _try_plate() -> void:
+	var piece := _aimed_piece()
+	if piece == null or piece.broken:
+		notify.emit("Aim at a fence or gate you built to plate it.")
+		return
+	if piece.plated:
+		notify.emit("That's already plated.")
+		return
+	var sheets: int = StructurePiece.SHEETS[piece.kind]
+	if inventory.count("sheet_metal") < sheets:
+		notify.emit("That takes %d sheet metal." % sheets)
+		return
+	take_item("sheet_metal", sheets)
+	_structures().call("plate", piece)
+	attack_cooldown = 0.6
+
+
 func _try_board() -> void:
+	var piece := _aimed_piece()
+	if piece and piece.is_damaged(): # planks mend a damaged fence or gate
+		_structures().call("repair", piece)
+		take_item(held)
+		attack_cooldown = 0.6
+		return
 	var fort := _fortifications()
 	var index := _aimed_opening()
 	if fort == null or index < 0:

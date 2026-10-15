@@ -30,6 +30,7 @@ tables, recipes, quests and markers. Don't change one once it's in use.
   - `heal` / `eat`: used up like a health pack / canned food.
   - `board` / `barricade` / `build`: like planks / a barricade / a building
     piece. A new `build` item also needs code in `world/structures.gd`.
+  - `plate`: like sheet metal: covers the fence or gate you're looking at.
 - **Order:** where it comes in inventory lists (lower first). Today's items use
   10, 20, 30...
 - **Looks:**

@@ -243,11 +243,11 @@ func _ready() -> void:
 		elif obj is GateLeaf:
 			structures.toggle_gate((obj as GateLeaf).piece)
 		elif obj is StructurePiece:
-			var item := structures.take_down(obj as StructurePiece)
-			if item == "":
+			var back := structures.take_down(obj as StructurePiece)
+			if back.is_empty():
 				hud.show_toast("Take down what's on top of it first.")
-			else:
-				player.give_item(item))
+			for id: String in back:
+				player.give_item(id, back[id]))
 	# Getting hurt never closes a menu or a conversation: only Esc (each menu
 	# handles its own) or dying does.
 	for menu: Callable in [inventory_menu.close, shop_menu.close, dialogue.close, save_menu.close, map_menu.close,

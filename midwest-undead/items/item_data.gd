@@ -9,8 +9,9 @@ extends Resource
 @export var id := ""
 @export var display_name := ""
 ## What the use button does while you hold it. "none": it can't be held (ammo,
-## batteries, materials just sit in your inventory). Weapons set this themselves.
-@export_enum("none", "heal", "eat", "board", "barricade", "build") var use := "none"
+## batteries, materials just sit in your inventory). "plate": puts metal over a
+## fence or gate you built (sheet metal). Weapons set this themselves.
+@export_enum("none", "heal", "eat", "board", "barricade", "build", "plate") var use := "none"
 ## Where it comes in inventory lists: lower first.
 @export var order := 100
 

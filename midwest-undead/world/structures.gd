@@ -12,10 +12,15 @@ extends Node
 ##     nearer end, to run a wall along.
 ## A see-through copy shows where it'll go before you place it: green if it fits,
 ## red if it doesn't (player.gd draws it with show_ghost()).
-## Like barricades, none of it has health and zombies can't break it. Placing,
-## taking down, or opening a gate re-bakes the navigation mesh (shared with
+## Fences and fence gates can be broken (structure_piece.gd): zombies bash them
+## like doors, they darken as they're hit, planks repair them, sheet metal
+## (from the machinist) plates them so nothing breaks them, and a broken one is
+## a wreck you can walk through and take down for some materials. Everything
+## else has no health and can't be broken. Placing, taking down, opening a
+## gate, or one breaking re-bakes the navigation mesh (shared with
 ## fortifications.gd, so only one bake runs at a time).
-## Saved: every piece, what it stands on, and whether gates are open.
+## Saved: every piece, what it stands on, whether gates are open, and each
+## fence's or gate's health, plating and whether it's broken.
 
 const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
@@ -43,6 +48,12 @@ const WOOD := Color(0.58, 0.45, 0.28)
 const WOOD_DARK := Color(0.4, 0.3, 0.19)
 const STEEL := Color(0.42, 0.43, 0.45)
 const PLYWOOD := Color(0.55, 0.45, 0.3)
+const METAL := Color(0.5, 0.52, 0.55)
+const DARKEN_STEPS := 8 # damage shows in this many shades (each a shared material)
+## Planks back from taking down a wreck: [item, how many]. A gate's hinges are scrap.
+const WRECK_ITEMS := {"fence": {"used_planks": 2}, "fence_gate": {"used_planks": 2, "scrap_metal": 1}}
+## Health one plank puts back (a third of a fence).
+const PLANK_REPAIR := 2500.0
 
 var pieces: Array[StructurePiece] = []
 var _nav_region: NavigationRegion3D
@@ -225,6 +236,7 @@ func _size(kind: String) -> Vector3:
 func build(kind: String, xform: Transform3D, on: StructurePiece, quiet := false) -> StructurePiece:
 	var piece := StructurePiece.new()
 	piece.kind = kind
+	piece.structures = self
 	piece.transform = xform
 	_model(kind, piece, null)
 	_collision(kind, piece)
@@ -243,11 +255,12 @@ func build(kind: String, xform: Transform3D, on: StructurePiece, quiet := false)
 	return piece
 
 
-## Takes a piece down. Returns the item to give back, or "" if something on top
-## of it has to come down first.
-func take_down(piece: StructurePiece) -> String:
+## Takes a piece down. Returns what to give back ({item: how many}): the piece,
+## with its sheet metal if it was plated, or a wreck's planks. Empty if
+## something on top of it has to come down first.
+func take_down(piece: StructurePiece) -> Dictionary:
 	if piece.above != null:
-		return ""
+		return {}
 	if piece.below:
 		piece.below.above = null
 	pieces.erase(piece)
@@ -257,7 +270,86 @@ func take_down(piece: StructurePiece) -> String:
 	piece.get_parent().remove_child(piece) # gone before the re-bake reads the scene
 	piece.queue_free()
 	_fortifications.call("rebake")
-	return piece.kind
+	if piece.broken:
+		return WRECK_ITEMS[piece.kind]
+	var back := {piece.kind: 1}
+	if piece.plated:
+		back["sheet_metal"] = StructurePiece.SHEETS[piece.kind]
+	return back
+
+
+# --- Damage, repair, plating ------------------------------------------------------
+
+## A zombie hit it (structure_piece.gd's bash): darker the more it's taken, and
+## a wreck once it's gone.
+func damaged(piece: StructurePiece, quiet := false) -> void:
+	if piece.health <= 0.0:
+		_break(piece, quiet)
+	else:
+		_shade(piece)
+
+
+## Planks put back PLANK_REPAIR health each.
+func repair(piece: StructurePiece) -> void:
+	piece.health = minf(piece.health + PLANK_REPAIR, StructurePiece.MAX_HEALTH)
+	_shade(piece)
+	Sound.play_at(piece, "hammer", piece.global_position + Vector3.UP, -2.0, 25.0)
+
+
+## Covered in sheet metal: nothing breaks it from now on (and it's as good as new).
+func plate(piece: StructurePiece, quiet := false) -> void:
+	piece.plated = true
+	piece.health = StructurePiece.MAX_HEALTH
+	_shade(piece)
+	if piece.kind == "fence":
+		for z: float in [-0.06, 0.06]: # both faces
+			_box(piece, Vector3(FENCE.x - 0.1, FENCE.y - 0.1, 0.02), Vector3(0, FENCE.y / 2.0, z), 0.0, 0.0, METAL, null)
+	elif piece.leaf: # the gate's leaf, so the plates swing with it
+		var width := FENCE.x - 0.2
+		for z: float in [-0.06, 0.1]:
+			_box(piece.leaf, Vector3(width, FENCE.y - 0.2, 0.02), Vector3(FENCE.x / 2.0 - 0.08, FENCE.y / 2.0 + 0.05, z), 0.0, 0.0, METAL, null)
+	if not quiet:
+		Sound.play_at(piece, "hammer", piece.global_position + Vector3.UP, 0.0, 30.0)
+
+
+## Darker the more damaged, in DARKEN_STEPS shades (materials shared by every piece).
+func _shade(piece: StructurePiece) -> void:
+	var step := 0 if piece.plated else int((1.0 - piece.health / StructurePiece.MAX_HEALTH) * DARKEN_STEPS)
+	var nodes: Array[Node] = piece.find_children("*", "MeshInstance3D", true, false)
+	for node in nodes:
+		var mesh := node as MeshInstance3D
+		var base := (mesh.mesh.surface_get_material(0) as StandardMaterial3D).albedo_color
+		mesh.material_override = null if step == 0 else _wood(base.darkened(0.6 * step / DARKEN_STEPS))
+
+
+## Broken: no longer stops anyone. The upright parts go, a few boards lie where
+## it stood, and taking that down gives some planks back.
+func _break(piece: StructurePiece, quiet := false) -> void:
+	piece.broken = true
+	piece.health = 0.0
+	if piece.leaf:
+		piece.leaf.queue_free()
+		piece.leaf = null
+		piece.gate_open = false
+	for child in piece.get_children():
+		if child is MeshInstance3D or child is CollisionShape3D:
+			piece.remove_child(child)
+			child.queue_free()
+	var wood := [Vector3(-0.8, 0.04, 0.3), Vector3(0.4, 0.04, -0.2), Vector3(0.9, 0.04, 0.5)]
+	for i in wood.size():
+		_box(piece, Vector3(1.4, 0.05, 0.22), wood[i], 0.4 * (i - 1), 0.0, WOOD_DARK, null)
+	_box(piece, Vector3(0.14, 0.6, 0.14), Vector3(-FENCE.x / 2.0, 0.3, 0), 0.0, 0.0, WOOD_DARK, null) # a post stump
+	# You can still look at it (to take it down) but nothing bumps into it, and
+	# the navigation bake doesn't see it (an area, not a body).
+	var zone := Area3D.new()
+	zone.collision_layer = GameData.LAYER_ITEMS
+	zone.collision_mask = 0
+	zone.set_meta("part_of_parent", true)
+	_shape(zone, Vector3(FENCE.x, 0.6, 0.8), Vector3(0, 0.3, 0))
+	piece.add_child(zone)
+	if not quiet:
+		Sound.play_at(piece, "door_break", piece.global_position + Vector3.UP, 2.0, 35.0, 0.08)
+		_fortifications.call("rebake")
 
 
 func toggle_gate(piece: StructurePiece, quiet := false) -> void:
@@ -285,8 +377,13 @@ func save_state() -> Array:
 	var data := []
 	for piece in pieces:
 		var p := piece.global_position
-		data.append({"kind": piece.kind, "position": [p.x, p.y, p.z], "yaw": piece.global_rotation.y,
-				"on": pieces.find(piece.below) if piece.below else -1, "open": piece.gate_open})
+		var entry := {"kind": piece.kind, "position": [p.x, p.y, p.z], "yaw": piece.global_rotation.y,
+				"on": pieces.find(piece.below) if piece.below else -1, "open": piece.gate_open}
+		if piece.is_breakable():
+			entry["health"] = piece.health
+			entry["plated"] = piece.plated
+			entry["broken"] = piece.broken
+		data.append(entry)
 	return data
 
 
@@ -306,8 +403,17 @@ func load_state(data: Array) -> void:
 			continue
 		var piece := build(kind, xform, on, true)
 		built.append(piece)
-		if kind == "fence_gate" and bool(entry.get("open", false)):
+		if kind == "fence_gate" and bool(entry.get("open", false)) and not bool(entry.get("broken", false)):
 			toggle_gate(piece, true)
+		if piece.is_breakable():
+			piece.health = float(entry.get("health", StructurePiece.MAX_HEALTH))
+			if bool(entry.get("broken", false)):
+				piece.health = 0.0
+				damaged(piece, true)
+			elif bool(entry.get("plated", false)):
+				plate(piece, true)
+			else:
+				_shade(piece)
 	if not data.is_empty():
 		_fortifications.call("rebake")
 

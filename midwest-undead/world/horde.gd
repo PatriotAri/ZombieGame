@@ -13,8 +13,8 @@ extends Node
 ## (that isn't broken) as a solid wall, and marching zombies find their way on
 ## that (zombie.gd: march_map). Windows aren't on it either.
 ##
-## The first horde is 30 strong, and each one after brings 5 to 15 more, up to
-## 100. Once one has been 100 strong, each is a random 40 to 100.
+## The first horde is 20 strong, and each one after brings 3 to 7 more, up to
+## 40. Once one has been 40 strong, each is a random 25 to 40.
 ##
 ## They come on top of the town's usual number: zombie_population.gd doesn't
 ## top the town back up until there are fewer than its population again.
@@ -27,10 +27,10 @@ const Door := preload("res://world/door.gd")
 const SaveGame := preload("res://core/save_game.gd")
 
 const DAYS_BETWEEN := Vector2i(10, 18)
-const FIRST_SIZE := 30
-const GROWTH := Vector2i(5, 15) # more each time, until...
-const MAX_SIZE := 100
-const LATER_SIZE := Vector2i(40, 100) # ...after one has been MAX_SIZE strong
+const FIRST_SIZE := 20
+const GROWTH := Vector2i(3, 7) # more each time, until...
+const MAX_SIZE := 40
+const LATER_SIZE := Vector2i(25, 40) # ...after one has been MAX_SIZE strong
 const SPREAD := 25.0 # meters from the middle of the group that each one starts
 const PER_FRAME := 5 # zombies put in the world each frame (100 at once would stutter)
 const CHECK_INTERVAL := 1.0

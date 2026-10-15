@@ -22,6 +22,9 @@ extends CharacterBody3D
 ## somewhere it can't get across from (indoors).
 ## Its paths can also run through windows (world/fortifications.gd): it smashes the
 ## glass, then climbs over the sill. Boarded windows and doors stop it for good.
+## A fence or fence gate you built (unless it's plated) between it and someone
+## it's after, or a noise it heard, gets bashed the same way (_bash_blocker);
+## once it's down it walks through the gap (_through_gap).
 ## Its kind (walker, runner, crawler...) is a file in characters/zombie/kinds/
 ## (ZombieKind): health, speeds, shape, skin, voice. Set `kind` to its id before
 ## adding it to the tree; main.gd rolls it.
@@ -76,6 +79,10 @@ const ROAM_LEG := Vector2(15.0, 45.0) # meters per leg, min and max
 const ROAM_SPEED := 0.45 # times its walking speed
 const MARCH_SPEED := 1.2 # m/s in a horde (or its own speed, if slower), so the group keeps together
 const MARCH_ARRIVED := 6.0 # meters from march_to that counts as there
+const BLOCKER_REACH := 2.5 # meters: how close a fence in its way has to be for it to bash it
+## Seconds after breaking a fence that it walks straight through the gap (the
+## navigation mesh takes a few seconds to catch up with the wreck).
+const GAP_TIME := 8.0
 const UNSTICK_AFTER := 1.5 # seconds hardly moving (jammed in a crowd, against a wall) before it gives up getting closer
 const SHUFFLE_SPEED := 0.35
 const ROAM_TURN := 0.8 # radians: how far each leg can veer from the last
@@ -110,6 +117,7 @@ var march_to := Vector3.INF # in a horde: where it's walking to (INF: not in one
 var march_map := RID() # in a horde: the outdoor map it walks there on (horde.gd)
 var _march_time_left := INF # gives up on the walk when this runs out (set when it starts)
 var _stuck_time := 0.0
+var _gap_time := 0.0 # > 0: just broke a fence, so it heads straight through (_through_gap)
 var linger_timer := 0.0
 var wander_timer := 0.0
 var sense_timer := 0.0
@@ -311,6 +319,10 @@ func _physics_process(delta: float) -> void:
 				var to_target := _flat(target.global_position - global_position)
 				if to_target.length() > ATTACK_RANGE * 0.8:
 					moving = _walk_to(target.global_position, _hunt_speed(), delta)
+					if not moving and to_target.length() > ATTACK_RANGE * 1.5:
+						# As close as it gets: a fence in the way? (Or one it just broke.)
+						if not _bash_blocker(target.global_position, delta):
+							moving = _through_gap(target.global_position, _hunt_speed())
 				else:
 					_face(to_target)
 				var height_gap := absf(target.global_position.y - global_position.y)
@@ -320,11 +332,17 @@ func _physics_process(delta: float) -> void:
 		State.INVESTIGATE:
 			moving = _walk_to(investigate_pos, speed, delta)
 			# Jammed against a wall or a crowd short of the spot counts as there:
-			# as close as it's going to get.
+			# as close as it's going to get. Unless a fence or gate is what's in
+			# the way: then it beats on that, and doesn't lose interest meanwhile.
 			if not moving or _stuck_time >= UNSTICK_AFTER:
-				linger_timer -= delta
-				if linger_timer <= 0.0:
-					_set_idle()
+				if _bash_blocker(investigate_pos, delta):
+					pass
+				elif _through_gap(investigate_pos, speed):
+					moving = true
+				else:
+					linger_timer -= delta
+					if linger_timer <= 0.0:
+						_set_idle()
 		State.IDLE:
 			if march_to != Vector3.INF:
 				_march_time_left -= delta
@@ -361,6 +379,56 @@ func _physics_process(delta: float) -> void:
 		_stuck_time = 0.0
 	elif moving and (state == State.INVESTIGATE or (state == State.IDLE and march_to != Vector3.INF)):
 		_check_stuck(before, delta)
+
+
+## Hunting or investigating and as close as its path gets, short of where it's
+## going: if something it can bash (a fence or gate you built, structure_piece.gd)
+## is right there between it and that spot (within BLOCKER_REACH, and no
+## further than the spot), it beats on it. (Fences are in the
+## navigation mesh, so paths go around them and never run into one the way they
+## run into doors.) True if it's bashing something.
+func _bash_blocker(toward: Vector3, delta: float) -> bool:
+	var from := global_position + Vector3(0, 0.6, 0)
+	var to := _flat(toward - global_position)
+	if to.length() < 0.1:
+		return false
+	var dir := to.normalized()
+	# No further than the spot itself: a fence beyond it isn't in the way.
+	var reach := minf(BLOCKER_REACH, to.length())
+	var query := PhysicsRayQueryParameters3D.create(from, from + dir * reach, GameData.LAYER_WORLD, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return false
+	var thing: Object = hit["collider"]
+	if not (thing.has_method("can_be_bashed") and thing.call("can_be_bashed")):
+		return false
+	_face(dir)
+	thing.call("bash", door_damage_per_second * delta)
+	if not thing.call("can_be_bashed"):
+		_gap_time = GAP_TIME # broke it
+	return true
+
+
+## Just broke a fence on its way to toward: walks straight at it while the
+## navigation mesh catches up, as long as nothing's in the way and it's on the
+## level. True if it's walking.
+func _through_gap(toward: Vector3, move_speed: float) -> bool:
+	if _gap_time <= 0.0:
+		return false
+	_gap_time -= get_physics_process_delta_time() * _step_scale
+	var to := _flat(toward - global_position)
+	if to.length() < 0.5 or absf(toward.y - global_position.y) > 0.5:
+		_gap_time = 0.0
+		return false
+	var from := global_position + Vector3(0, 0.6, 0)
+	var query := PhysicsRayQueryParameters3D.create(from, from + to.normalized() * minf(to.length(), BLOCKER_REACH),
+			GameData.LAYER_WORLD, [get_rid()])
+	if not get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+		return false
+	velocity.x = to.normalized().x * move_speed
+	velocity.z = to.normalized().z * move_speed
+	_face(to)
+	return true
 
 
 ## Its path runs through doorways (doors aren't in the navigation mesh), so a

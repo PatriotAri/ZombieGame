@@ -1,10 +1,10 @@
 extends Node
 ## Survivors holed up in boarded-up houses around town. Each is a file in
 ## characters/npcs/survivors/ (SurvivorData: who they are and what they say):
-## four, plus Walt the machinist (who makes ammo benches once the woodworker is
-## at the station). Every door and
-## window of their house is planked shut from outside (set "boarded at start" in
-## the town scene): pull the planks off the door to get in. Each is in the
+## four, plus Walt the machinist (who makes sheet metal, and ammo benches once
+## the woodworker is at the station). Every door and window of their house is
+## planked shut from outside (set "boarded at start" in the town scene): pull
+## the planks off the door to get in. Each is in the
 ## bedroom, by the bed, with a couple of cans of food and two health packs on the
 ## floor beside them (ground items in the town scene).
 ## Where each one starts, and their spot in the station's back yard, are
@@ -41,7 +41,7 @@ const FULL_LINES: Array[String] = [
 ]
 const STATION_NAMES := {"garden_plot": "garden", "ammo_bench": "ammo bench", "shell_bench": "shell bench",
 		"rifle_bench": "rifle bench"}
-const MACHINIST_NEEDS_WOODWORKER := "I can make you ammo benches, but not the frames for them. Get a woodworker set up at the station and I'll get to work."
+const MACHINIST_NEEDS_WOODWORKER := "I can press scrap into sheet metal for you. Ammo benches need frames, though: get a woodworker set up at the station and I'll make those too."
 
 
 var survivors: Array[Survivor] = []
@@ -163,7 +163,8 @@ func talk(survivor: Survivor) -> void:
 func _work_menu(survivor: Survivor, person: SurvivorData) -> void:
 	if survivor.job == "machinist":
 		var home: bool = _woodworker.call("state") == Woodworker.State.HOME
-		_crafting.call("open", _player, survivor.display_name, Recipes.MACHINIST if home else [],
+		_crafting.call("open", _player, survivor.display_name,
+				Recipes.MACHINIST_ANYTIME + (Recipes.MACHINIST if home else []),
 				"" if home else MACHINIST_NEEDS_WOODWORKER)
 	else:
 		_offer_jobs(survivor, person)
