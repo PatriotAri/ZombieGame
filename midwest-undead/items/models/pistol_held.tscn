@@ -14,6 +14,13 @@ albedo_color = Color(0.12, 0.12, 0.14, 1)
 material = SubResource("StandardMaterial3D_w8dg8")
 size = Vector3(0.045, 0.12, 0.06)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mag"]
+albedo_color = Color(0.2, 0.2, 0.22, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_mag"]
+material = SubResource("StandardMaterial3D_mag")
+size = Vector3(0.035, 0.11, 0.045)
+
 [node name="Pistol" type="Node3D" unique_id=1597249436]
 
 [node name="Slide" type="MeshInstance3D" parent="." unique_id=1253713778]
@@ -31,3 +38,8 @@ visible = false
 light_color = Color(1, 0.8, 0.5, 1)
 light_energy = 4.0
 omni_range = 6.0
+
+[node name="Magazine" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.9659258, 0.25881904, 0, -0.25881904, 0.9659258, 0, -0.095, 0.075)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_mag")

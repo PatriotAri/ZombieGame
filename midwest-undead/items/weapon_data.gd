@@ -6,11 +6,15 @@ extends ItemData
 @export_enum("gun", "melee") var weapon_kind := "gun"
 
 @export_group("In your hands")
-## The model in front of the camera. A gun's can have an OmniLight3D called
-## "MuzzleFlash" (shown for a moment on each shot). Empty: a box like on the ground.
+## The model in front of the camera. Empty: a box like on the ground. It can
+## have named parts the game animates (Slide, Pump, Bolt, Magazine, LoadingPort,
+## MuzzleFlash, Sight) and its own animations (draw, holster, fire, reload,
+## swing): see items/held_model.gd and HOW_TO_MODEL.md.
 @export var held_model: PackedScene
 ## Where it sits in front of the camera (meters; x right, y up, -z ahead).
 @export var held_position := Vector3(0.25, -0.22, -0.45)
+## Seconds to bring it up when you switch to it. It can't be used until it's up.
+@export_range(0.05, 2.0, 0.05) var draw_time := 0.35
 
 @export_group("Hitting")
 ## Per hit (a gun: per pellet). Headshots do more (the player's headshot_multiplier).
