@@ -56,7 +56,7 @@ const WRECK_ITEMS := {"fence": {"used_planks": 2}, "fence_gate": {"used_planks":
 const PLANK_REPAIR := 2500.0
 
 var pieces: Array[StructurePiece] = []
-var _nav_region: NavigationRegion3D
+var _nav_region: Node3D # world/nav_tiles.gd: pieces go under it, so the navigation bake sees them
 var _fortifications: Node # owns the shared navigation re-bake
 var zones: Zones # set by main.gd once the zones exist (for the clear-zone rule)
 var _materials := {} # Color -> StandardMaterial3D, shared by every piece
@@ -69,7 +69,7 @@ func _ready() -> void:
 	add_to_group("structures")
 
 
-func setup(nav_region: NavigationRegion3D, fortifications: Node) -> void:
+func setup(nav_region: Node3D, fortifications: Node) -> void:
 	_nav_region = nav_region
 	_fortifications = fortifications
 
@@ -251,7 +251,7 @@ func build(kind: String, xform: Transform3D, on: StructurePiece, quiet := false)
 		_add_ladder(piece, _ground_height(on, xform.origin.y))
 	if not quiet:
 		Sound.play_at(piece, "hammer", piece.global_position + Vector3.UP, 0.0, 30.0)
-		_fortifications.call("rebake")
+		_fortifications.call("rebake", piece.global_position)
 	return piece
 
 
@@ -266,10 +266,11 @@ func take_down(piece: StructurePiece) -> Dictionary:
 	pieces.erase(piece)
 	if piece.ladder:
 		_let_go(piece.ladder)
-	Sound.play_at(piece, "hammer", piece.global_position + Vector3.UP, -3.0, 25.0)
+	var at := piece.global_position
+	Sound.play_at(piece, "hammer", at + Vector3.UP, -3.0, 25.0)
 	piece.get_parent().remove_child(piece) # gone before the re-bake reads the scene
 	piece.queue_free()
-	_fortifications.call("rebake")
+	_fortifications.call("rebake", at)
 	if piece.broken:
 		return WRECK_ITEMS[piece.kind]
 	var back := {piece.kind: 1}
@@ -349,7 +350,7 @@ func _break(piece: StructurePiece, quiet := false) -> void:
 	piece.add_child(zone)
 	if not quiet:
 		Sound.play_at(piece, "door_break", piece.global_position + Vector3.UP, 2.0, 35.0, 0.08)
-		_fortifications.call("rebake")
+		_fortifications.call("rebake", piece.global_position)
 
 
 func toggle_gate(piece: StructurePiece, quiet := false) -> void:
@@ -360,7 +361,7 @@ func toggle_gate(piece: StructurePiece, quiet := false) -> void:
 		return
 	var tween := piece.create_tween()
 	tween.tween_property(piece.leaf, "rotation:y", angle, 0.4).set_trans(Tween.TRANS_SINE)
-	tween.tween_callback(func() -> void: _fortifications.call("rebake")) # once it's swung
+	tween.tween_callback(func() -> void: _fortifications.call("rebake", piece.global_position)) # once it's swung
 	Sound.play_at(piece, "door_open" if piece.gate_open else "door_close", piece.global_position + Vector3.UP, -4.0, 20.0)
 
 

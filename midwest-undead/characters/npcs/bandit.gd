@@ -10,6 +10,7 @@ extends HumanNPC
 enum State { IDLE, ALERT, COMBAT }
 
 const GroundItem := preload("res://items/ground_item.gd")
+const Ground := preload("res://world/ground.gd")
 
 @export_group("Senses")
 @export var sight_range := 25.0 ## In daylight.
@@ -295,7 +296,7 @@ func _drop_loot() -> void:
 	for drop in drops:
 		var item := GroundItem.new()
 		var offset := Vector3(cos(i * 2.1), 0.0, sin(i * 2.1)) * 0.7
-		item.position = Vector3(global_position.x, 0.02, global_position.z) + offset
+		item.position = Ground.snap(global_position + offset, 0.02)
 		item.setup(drop[0], drop[1])
 		get_parent().add_child.call_deferred(item) # deferred: may be mid-physics
 		i += 1

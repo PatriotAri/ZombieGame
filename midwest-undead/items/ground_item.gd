@@ -18,7 +18,7 @@ func setup(id: String, count := 1) -> void:
 	amount = count
 
 
-## Items in the town scene come with their meshes and pickup zone already (made
+## Items in the map scene come with their meshes and pickup zone already (made
 ## when the town was frozen); one placed with just an item_id gets them here. An
 ## item with a model (items/data/) shows that instead of the saved boxes.
 func _ready() -> void:
@@ -32,7 +32,7 @@ func _ready() -> void:
 	if get_child_count() == 0:
 		_build(item)
 	elif not item.model:
-		# The town scene saved a material with each box: share one per color.
+		# The map scene saved a material with each box: share one per color.
 		for child in get_children():
 			var mesh := child as MeshInstance3D
 			if mesh and mesh.mesh and mesh.mesh.get_surface_count() > 0:

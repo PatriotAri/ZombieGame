@@ -56,7 +56,7 @@ Each step has an **Id** (other steps and replies refer to it), an
 
 | Kind | Target | Done when |
 |---|---|---|
-| `go_to_place` | a Place marker's name (`Gas Station`, `Safe House`, `Police Station`, `Grocery Store`) | you're within the place's radius |
+| `go_to_place` | a Place marker's name (`Gas Station`, `Safe House`, `Police Station`, `Grocery Store`, once you've put them on the map: HOW_TO_MAP.md section 12) | you're within the place's radius |
 | `talk_to` | an NPC's name | you finish the step's **Dialogue** with them |
 | `clear_zone` | a zone's name (`Zone 1`, ...) | no zombies are left in it |
 | `event` | an event name (below) | the game reports it |

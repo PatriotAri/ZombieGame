@@ -12,6 +12,10 @@ extends Node3D
 ## (alternating sides going up). Over the top floor sits either a flat roof or,
 ## with Upper Height, a solid block you can't enter, with painted-on windows.
 ##
+## On uneven ground it stands on a foundation down to the ground all round
+## (Foundation: concrete block, stone or wooden posts), made from the terrain
+## under it; move it and the foundation follows.
+##
 ## What it makes (walls, floors, glass, doors) isn't saved in the scene: it's
 ## made fresh from the settings every time. Furniture, containers and markers
 ## you put under the building are yours and are saved as usual.
@@ -38,6 +42,13 @@ const DEFAULT_CEILING := preload("res://world/kit/materials/ceiling_tiles.tres")
 const DEFAULT_ROOF := preload("res://world/kit/materials/roof_tar.tres")
 const WINDOW_DARK := preload("res://world/kit/materials/window_dark.tres")
 const BOARDS := preload("res://world/kit/materials/wood_planks.tres")
+const FOUNDATION_MATERIALS := {
+	"Concrete block": preload("res://world/kit/materials/concrete_block.tres"),
+	"Stone": preload("res://world/kit/materials/stone_gray.tres"),
+	"Wooden posts": preload("res://world/kit/materials/timber.tres"),
+}
+const TerrainEdit := preload("res://world/map/terrain_edit.gd")
+const POST_SPACING := 2.5 # wooden posts: this far apart along each side
 
 @export_group("Size")
 ## How far back from the front wall it goes (local +x), in meters.
@@ -59,6 +70,13 @@ const BOARDS := preload("res://world/kit/materials/wood_planks.tres")
 @export_range(0.0, 1.0, 0.01) var floor_y := SIDEWALK_FLOOR_Y:
 	set(value):
 		floor_y = value
+		_changed()
+## What it stands on where the ground under it drops away (a hillside): a
+## concrete block or stone base, or wooden posts (cabins, porches, trailers).
+## Put the building's node at the height of the highest ground under it.
+@export_enum("Concrete block", "Stone", "Wooden posts") var foundation := "Concrete block":
+	set(value):
+		foundation = value
 		_changed()
 ## A solid block over the top floor (you can't go in), this many meters tall,
 ## with painted-on windows across the front. 0 = a flat roof.
@@ -128,12 +146,21 @@ const BOARDS := preload("res://world/kit/materials/wood_planks.tres")
 		_changed()
 
 var _generated: Array[Node] = []
+var _foundation_body: StaticBody3D
 var _dirty := true
 var _queued := false
 
 
 func _ready() -> void:
 	ensure_built()
+	_build_foundation() # now that it's on the map: the terrain is there to measure
+	if Engine.is_editor_hint():
+		set_notify_transform(true) # moved: the foundation follows the ground
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSFORM_CHANGED and Engine.is_editor_hint():
+		_changed()
 
 
 ## Builds it now if anything changed (main.gd calls this before the town is in
@@ -288,8 +315,60 @@ func _rebuild() -> void:
 	for node in made:
 		add_child(node, false, Node.INTERNAL_MODE_BACK)
 		_generated.append(node)
+	if is_inside_tree():
+		_build_foundation()
 	if Engine.is_editor_hint():
 		update_configuration_warnings()
+
+
+## The foundation, on its own (see `foundation`): main.gd builds buildings before
+## the map is in the game, so this comes once it is (_ready).
+func _build_foundation() -> void:
+	if _foundation_body:
+		remove_child(_foundation_body)
+		_foundation_body.queue_free()
+		_foundation_body = null
+	var km := KitMesh.new()
+	_foundation(km)
+	if km.shapes.is_empty():
+		return
+	_foundation_body = StaticBody3D.new()
+	_foundation_body.name = "Foundation"
+	add_child(_foundation_body, false, Node.INTERNAL_MODE_BACK)
+	km.add_to(_foundation_body)
+
+
+## From the building's base (its node's height) down into the ground all
+## round, where the ground is lower than the base (see `foundation`).
+func _foundation(km: KitMesh) -> void:
+	var terrain := TerrainEdit.find_terrain(self) if is_inside_tree() else null
+	if terrain == null:
+		return
+	var d := size_depth
+	var w := size_width
+	var lowest := 0.0 # the ground's lowest point under the walls, from the base
+	var steps := maxi(2, int(ceil(maxf(d, w))))
+	for i in steps + 1:
+		var t := float(i) / steps
+		for local: Vector3 in [Vector3(t * d, 0, -w / 2.0), Vector3(t * d, 0, w / 2.0),
+				Vector3(0, 0, (t - 0.5) * w), Vector3(d, 0, (t - 0.5) * w)]:
+			var world := global_transform * local
+			lowest = minf(lowest, TerrainEdit.height_at(terrain, world) - world.y)
+	if lowest > -0.05:
+		return # level ground: nothing shows
+	var depth := -lowest + 0.3 # a little into the ground
+	var mat: Material = FOUNDATION_MATERIALS.get(foundation, FOUNDATION_MATERIALS["Concrete block"])
+	if foundation != "Wooden posts":
+		km.box(Vector3(d, depth, w), _at(Vector3(d / 2.0, -depth / 2.0, 0)), [mat, mat, null, null, mat, mat])
+		return
+	var along_x := maxi(1, int(ceil(d / POST_SPACING)))
+	var along_z := maxi(1, int(ceil(w / POST_SPACING)))
+	for i in along_x + 1:
+		for j in along_z + 1:
+			if i != 0 and i != along_x and j != 0 and j != along_z:
+				continue # round the edge only
+			var pos := Vector3(0.15 + (d - 0.3) * i / along_x, -depth / 2.0, -w / 2.0 + 0.15 + (w - 0.3) * j / along_z)
+			km.box(Vector3(0.25, depth, 0.25), _at(pos), [mat, mat, null, null, mat, mat])
 
 
 static func _at(pos: Vector3) -> Transform3D:

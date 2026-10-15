@@ -13,12 +13,12 @@ extends Node
 ## the bake (zombie paths run through them so they can bash them), but planks are,
 ## so a boarded doorway is a wall to the pathfinding.
 ##
-## Every door and window in the town scene can be boarded (a door's or window's
+## Every door and window in the map scene can be boarded (a door's or window's
 ## boardable setting turns that off: the compound gate, upstairs windows). Ones set "boarded at
 ## start" get their planks when a new game starts, like the survivors' houses.
 ##
 ## Saved state: which openings are boarded, every window's damage, and where the
-## barricades stand. Openings are saved by their place in the town scene (main.gd
+## barricades stand. Openings are saved by their place in the map scene (main.gd
 ## gives each one a "town_id").
 
 const GameData := preload("res://core/game_data.gd")
@@ -27,6 +27,8 @@ const Door := preload("res://world/door.gd")
 const WindowPane := preload("res://world/window_pane.gd")
 const Fortification := preload("res://world/fortification.gd")
 const Sound := preload("res://core/sound.gd")
+const Ground := preload("res://world/ground.gd")
+const NavTiles := preload("res://world/nav_tiles.gd")
 const ViewDistance := preload("res://core/view_distance.gd")
 const VIEW_METERS := 80.0 # boards past this aren't drawn (core/view_distance.gd)
 
@@ -38,26 +40,23 @@ const LINK_REACH := 0.9 # how far out from the wall, each side, a window's path 
 ## can't climb through windows, so they'd only get stuck).
 const WINDOW_LINK_LAYER := 2
 
-var nav_region: NavigationRegion3D
+var nav_region: NavTiles # where planks and barricades go (they're in the navigation bake)
 ## One per boardable opening: {"kind": "door"/"window", "door"/"window": the node,
 ## "id": its town_id (for saving), "width", "height", "transform" (world: see
 ## _add_opening), "area" (what the planks aim at), "link" (windows only),
 ## "planks" (or null), "at_start": boarded when a new game starts}.
 var openings: Array[Dictionary] = []
 var barricades: Array[Fortification] = []
-var _baking := false
-var _rebake_again := false
 
 
 func _ready() -> void:
 	add_to_group("fortifications")
 
 
-## windows and doors: every WindowPane and Door in the town. Boards up the ones
+## windows and doors: every WindowPane and Door on the map. Boards up the ones
 ## set "boarded at start" (quietly: call before the first navigation bake).
-func setup(region: NavigationRegion3D, windows: Array, doors: Array) -> void:
+func setup(region: NavTiles, windows: Array, doors: Array) -> void:
 	nav_region = region
-	nav_region.bake_finished.connect(_on_bake_finished)
 	for pane: WindowPane in windows:
 		if not pane.boardable:
 			continue
@@ -88,7 +87,7 @@ func _floor_y(pane: Node3D) -> float:
 	while node != null and not node is Building:
 		node = node.get_parent()
 	if node == null:
-		return 0.0 # not in a building: the ground
+		return Ground.height_at(pane.global_position) # not in a building: the ground
 	return (node as Building).global_position.y + (node as Building).floor_y
 
 
@@ -141,7 +140,7 @@ func board(index: int, quiet := false, used := false) -> void:
 		(o["link"] as NavigationLink3D).enabled = false
 	if not quiet:
 		Sound.play_at(planks, "hammer", planks.global_position, 0.0, 30.0)
-		rebake()
+		rebake(planks.global_position)
 
 
 func place_barricade(xform: Transform3D, quiet := false) -> void:
@@ -159,7 +158,7 @@ func place_barricade(xform: Transform3D, quiet := false) -> void:
 	barricades.append(body)
 	if not quiet:
 		Sound.play_at(body, "hammer", body.global_position, 0.0, 30.0)
-		rebake()
+		rebake(body.global_position)
 
 
 ## Planks gone without a trace (loading a save where you'd taken them down).
@@ -181,12 +180,13 @@ func take_down(piece: Fortification, quiet := false) -> String:
 			(o["link"] as NavigationLink3D).enabled = true
 	else:
 		barricades.erase(piece)
+	var at := piece.global_position
 	if not quiet:
-		Sound.play_at(piece, "hammer", piece.global_position, -3.0, 25.0)
+		Sound.play_at(piece, "hammer", at, -3.0, 25.0)
 	piece.get_parent().remove_child(piece) # gone before the re-bake reads the scene
 	piece.queue_free()
 	if not quiet:
-		rebake()
+		rebake(at)
 	return piece.item_id()
 
 
@@ -321,18 +321,15 @@ func _box_collision(parent: Node3D, size: Vector3, pos: Vector3) -> void:
 
 # --- Navigation ------------------------------------------------------------------
 
-## Re-bake on a thread. Changes that land while one is running wait for it, then
-## bake once more. structures.gd uses this too, so only one bake runs at a time.
-func rebake() -> void:
-	if _baking:
-		_rebake_again = true
-		return
-	_baking = true
-	nav_region.bake_navigation_mesh(true)
+## How far around a change the navigation is baked again (meters each way).
+const REBAKE_REACH := 8.0
 
 
-func _on_bake_finished() -> void:
-	_baking = false
-	if _rebake_again:
-		_rebake_again = false
-		rebake()
+## Re-bake the navigation around something that changed at `at` (in the
+## background; world/nav_tiles.gd), or everywhere when `at` is left out.
+## structures.gd uses this too.
+func rebake(at := Vector3.INF) -> void:
+	if at == Vector3.INF:
+		nav_region.rebake_all()
+	else:
+		nav_region.rebake(AABB(at - Vector3.ONE * REBAKE_REACH, Vector3.ONE * REBAKE_REACH * 2.0))

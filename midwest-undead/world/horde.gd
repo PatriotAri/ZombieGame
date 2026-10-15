@@ -1,6 +1,6 @@
 extends Node
 ## Hordes. Every 10 to 18 days, at a random hour, a horde turns up together on
-## one edge of town (a random side well out of your sight) and walks across to
+## one edge of the map (a random side well out of your sight) and walks across to
 ## the far side, where it breaks up into ordinary roaming zombies. Nothing sends
 ## it anywhere in particular, and there's no warning: you find out when you see
 ## or hear it. On the way, any that see or hear someone go after them like any
@@ -16,8 +16,8 @@ extends Node
 ## The first horde is 20 strong, and each one after brings 3 to 7 more, up to
 ## 40. Once one has been 40 strong, each is a random 25 to 40.
 ##
-## They come on top of the town's usual number: zombie_population.gd doesn't
-## top the town back up until there are fewer than its population again.
+## They come on top of the map's usual number: zombie_population.gd doesn't
+## top the map back up until there are fewer than its population again.
 ## main.gd creates it and saves it.
 ## TUNING: the constants below.
 
@@ -25,6 +25,8 @@ const ZombiePopulation := preload("res://world/zombie_population.gd")
 const Zombie := preload("res://characters/zombie/zombie.gd")
 const Door := preload("res://world/door.gd")
 const SaveGame := preload("res://core/save_game.gd")
+const Ground := preload("res://world/ground.gd")
+const NavTiles := preload("res://world/nav_tiles.gd")
 
 const DAYS_BETWEEN := Vector2i(10, 18)
 const FIRST_SIZE := 20
@@ -42,22 +44,21 @@ var next_hour := 0.0
 var last_size := 0 # the last horde's size (0: none yet)
 var peaked := false # one has been MAX_SIZE strong
 var outdoor_map := RID() # see the top; made the first time it's needed
-var _outdoor_region := RID()
-var _outdoor_mesh: NavigationMesh
+var _outdoor_regions := {} # tile -> RID: one region per navigation tile
 var _baking := false
 var _outdoor_ready := false
 var _sending := 0 # a horde this size waits on the bake
 var _pending: Array[Dictionary] = [] # {"position", "march"}: still to put in the world
 var _main: Node # main.gd: _add_zombie, zombies, doors
 var _population: ZombiePopulation # the walkable area, random spots on it
-var _nav_region: NavigationRegion3D
+var _nav_region: NavTiles
 var _player: Node3D
 var _day_night: Node
 var _check_timer := 0.0
 var _rng := RandomNumberGenerator.new()
 
 
-func setup(main: Node, population: ZombiePopulation, nav_region: NavigationRegion3D, player: Node3D, day_night: Node) -> void:
+func setup(main: Node, population: ZombiePopulation, nav_region: NavTiles, player: Node3D, day_night: Node) -> void:
 	_main = main
 	_population = population
 	_nav_region = nav_region
@@ -68,8 +69,8 @@ func setup(main: Node, population: ZombiePopulation, nav_region: NavigationRegio
 
 
 func _exit_tree() -> void:
-	if _outdoor_region.is_valid():
-		NavigationServer3D.free_rid(_outdoor_region)
+	for region: RID in _outdoor_regions.values():
+		NavigationServer3D.free_rid(region)
 	if outdoor_map.is_valid():
 		NavigationServer3D.free_rid(outdoor_map)
 
@@ -113,22 +114,20 @@ func _schedule() -> void:
 
 # --- The outdoor map ------------------------------------------------------------
 
-## The town's walkable area again, with every door that isn't broken as a wall.
-## Baked fresh each horde (on a thread), so it has whatever you've built since.
+## The map's walkable area again, with every door that isn't broken as a wall.
+## Baked fresh each horde (on a thread, tile by tile: world/nav_tiles.gd), so it
+## has whatever you've built since.
 func _bake_outdoor() -> void:
 	if _baking:
 		return
 	_baking = true
-	_outdoor_mesh = _nav_region.navigation_mesh.duplicate()
-	var source := NavigationMeshSourceGeometryData3D.new()
-	NavigationServer3D.parse_source_geometry_data(_outdoor_mesh, source, _nav_region)
+	var doors := NavigationMeshSourceGeometryData3D.new()
 	for door: Door in _main.get("doors"):
 		if door.is_broken:
 			continue
 		var size := Vector3(maxf(door.leaf_size.x, DOOR_THICKNESS), door.leaf_size.y, door.leaf_size.z)
-		source.add_faces(_box_faces(size), door.closed_transform() * Transform3D(Basis.IDENTITY, door.leaf_offset))
-	NavigationServer3D.bake_from_source_geometry_data_async(_outdoor_mesh, source,
-			func() -> void: _on_outdoor_baked.call_deferred())
+		doors.add_faces(_box_faces(size), door.closed_transform() * Transform3D(Basis.IDENTITY, door.leaf_offset))
+	_nav_region.bake_variant(doors, _on_outdoor_baked)
 
 
 ## A box's triangles, centered on the origin. (Not a BoxMesh: the bake would
@@ -144,23 +143,32 @@ static func _box_faces(size: Vector3) -> PackedVector3Array:
 	return faces
 
 
-func _on_outdoor_baked() -> void:
+func _on_outdoor_baked(meshes: Dictionary) -> void:
 	if not is_inside_tree():
 		return
 	_baking = false
 	if not outdoor_map.is_valid():
-		var town_map := _nav_region.get_navigation_map()
+		var main_map := _nav_region.get_world_3d().navigation_map
 		outdoor_map = NavigationServer3D.map_create()
-		NavigationServer3D.map_set_cell_size(outdoor_map, NavigationServer3D.map_get_cell_size(town_map))
-		NavigationServer3D.map_set_cell_height(outdoor_map, NavigationServer3D.map_get_cell_height(town_map))
+		NavigationServer3D.map_set_cell_size(outdoor_map, NavigationServer3D.map_get_cell_size(main_map))
+		NavigationServer3D.map_set_cell_height(outdoor_map, NavigationServer3D.map_get_cell_height(main_map))
 		NavigationServer3D.map_set_active(outdoor_map, true)
-		_outdoor_region = NavigationServer3D.region_create()
-		NavigationServer3D.region_set_map(_outdoor_region, outdoor_map)
-		NavigationServer3D.region_set_transform(_outdoor_region, _nav_region.global_transform)
-	NavigationServer3D.region_set_navigation_mesh(_outdoor_region, _outdoor_mesh)
-	# The map takes the new mesh in over the next few physics steps (on a thread):
-	# wait until it answers with a spot on it.
-	var probe := _nav_region.global_transform * _outdoor_mesh.get_vertices()[_outdoor_mesh.get_polygon(0)[0]]
+	var probe := Vector3.INF
+	for tile: Vector2i in meshes:
+		if not _outdoor_regions.has(tile):
+			var region := NavigationServer3D.region_create()
+			NavigationServer3D.region_set_map(region, outdoor_map)
+			NavigationServer3D.region_set_transform(region, _nav_region.global_transform)
+			_outdoor_regions[tile] = region
+		var mesh: NavigationMesh = meshes[tile]
+		NavigationServer3D.region_set_navigation_mesh(_outdoor_regions[tile], mesh)
+		if probe == Vector3.INF and mesh.get_polygon_count() > 0:
+			probe = _nav_region.global_transform * mesh.get_vertices()[mesh.get_polygon(0)[0]]
+	if probe == Vector3.INF:
+		push_warning("The map has nowhere to walk: no horde can come.")
+		return
+	# The map takes the new meshes in over the next few physics steps (on a
+	# thread): wait until it answers with a spot on them.
 	while NavigationServer3D.map_get_iteration_id(outdoor_map) == 0 \
 			or NavigationServer3D.map_get_closest_point(outdoor_map, probe).distance_to(probe) > 0.5:
 		await get_tree().physics_frame
@@ -189,11 +197,11 @@ func _send_now() -> void:
 
 # --- Where it starts --------------------------------------------------------------
 
-## Where each one starts and where it walks to: a group on one side of town,
+## Where each one starts and where it walks to: a group on one side of the map,
 ## each heading for the matching spot on the far side. The side is wherever a
 ## random good spot for the group's middle turned up (_anchor), so it's random
-## among the sides that are far enough from you: the town is small, and from
-## some places only one side is.
+## among the sides that are far enough from you: from some places only one
+## side is.
 func _plan(size: int) -> Array[Dictionary]:
 	var plan: Array[Dictionary] = []
 	var center := Vector3(_population.bounds.get_center().x, 0.0, _population.bounds.get_center().y)
@@ -212,7 +220,7 @@ func _plan(size: int) -> Array[Dictionary]:
 	return plan
 
 
-## The matching spot on the far side: mirrored across the middle of town, along
+## The matching spot on the far side: mirrored across the middle of the map, along
 ## the way it's going.
 func _goal(start: Vector3, center: Vector3, across: Vector3) -> Vector3:
 	return NavigationServer3D.map_get_closest_point(outdoor_map, start + across * 2.0 * (center - start).dot(across))
@@ -230,7 +238,7 @@ func _anchor(center: Vector3) -> Vector3:
 	var inner := _population.bounds.grow(-ZombiePopulation.OUTSKIRTS)
 	for attempt in 400:
 		var pos := _population.random_point(_rng)
-		if pos.y > ZombiePopulation.MAX_SPAWN_HEIGHT or inner.has_point(Vector2(pos.x, pos.z)):
+		if not Ground.is_ground_level(pos) or inner.has_point(Vector2(pos.x, pos.z)):
 			continue
 		if pos.distance_to(_player.global_position) < ZombiePopulation.MIN_SPAWN_DISTANCE + SPREAD:
 			continue
@@ -248,7 +256,7 @@ func _near(anchor: Vector3) -> Vector3:
 		var angle := _rng.randf() * TAU
 		var wanted := anchor + Vector3(cos(angle), 0.0, sin(angle)) * SPREAD * sqrt(_rng.randf())
 		var pos := NavigationServer3D.map_get_closest_point(outdoor_map, wanted)
-		if Vector2(pos.x - wanted.x, pos.z - wanted.z).length() < 2.0 and pos.y <= ZombiePopulation.MAX_SPAWN_HEIGHT \
+		if Vector2(pos.x - wanted.x, pos.z - wanted.z).length() < 2.0 and Ground.is_ground_level(pos) \
 				and pos.distance_to(_player.global_position) >= ZombiePopulation.MIN_SPAWN_DISTANCE:
 			return pos
 	return anchor # crowded in: they shove apart

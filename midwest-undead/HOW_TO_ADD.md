@@ -139,7 +139,7 @@ Every new zombie, at the start and arriving later, rolls a kind:
   - **Base Talk:** optional. What they say at the base before their work menu.
   - **Base Line:** what they say over their work menu.
 
-Then put two SpawnPoints in the town scene with **Person** set to their name
+Then put two SpawnPoints on the map (world/map/map.tscn) with **Person** set to their name
 (see `HOW_TO_BUILD.md`):
 - **survivor:** where you find them. Put it in a house.
 - **survivor_home:** their spot in the station yard.

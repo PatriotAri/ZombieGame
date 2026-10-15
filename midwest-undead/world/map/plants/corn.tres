@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="PlantData" format=3]
+
+[ext_resource type="Script" path="res://world/map/plant_data.gd" id="1_plant"]
+[ext_resource type="PackedScene" path="res://world/map/plants/models/corn.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_plant")
+display_name = "Corn"
+scene = ExtResource("2_scene")
+kind = "Crop"
+mesh_id = 7
+forest_share = 0.0
+scale_min = 0.9
+scale_max = 1.1
+spacing = 0.35
+max_slope = 25.0
+trunk_radius = 0.0
+hides = true
+view_distance = 160.0
+shadows = false

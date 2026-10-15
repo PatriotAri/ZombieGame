@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="RoadStyle" format=3]
+
+[ext_resource type="Script" path="res://world/map/road_style.gd" id="1_style"]
+
+[resource]
+script = ExtResource("1_style")
+display_name = "Dirt track"
+width = 3.0
+surface = "Painted"
+surface_color = Color(0.4, 0.3, 0.2, 1)
+surface_texture = 4
+ruts = true
+rut_width = 0.6
+rut_spacing = 1.7
+shoulder_width = 0.0
+shoulder_texture = 3
+center_line = "None"
+edge_lines = false
+cut_slope = 1.0
+fill_slope = 0.6
+smoothing = 8.0

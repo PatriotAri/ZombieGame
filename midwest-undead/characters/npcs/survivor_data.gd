@@ -2,7 +2,7 @@ class_name SurvivorData
 extends Resource
 ## One survivor holed up in town (see HOW_TO_ADD.md). Every file in
 ## characters/npcs/survivors/ is a survivor. Where they start and their spot in
-## the station's back yard are SpawnPoints in the town scene (roles "survivor"
+## the station's back yard are SpawnPoints in the map scene (roles "survivor"
 ## and "survivor_home", Person set to their name).
 
 ## Their name as the game shows it. Saves, SpawnPoints and quests go by it.

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="PlantData" format=3]
+
+[ext_resource type="Script" path="res://world/map/plant_data.gd" id="1_plant"]
+[ext_resource type="PackedScene" path="res://world/map/plants/models/poplar.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_plant")
+display_name = "Tulip poplar"
+scene = ExtResource("2_scene")
+kind = "Tree"
+mesh_id = 2
+forest_share = 20.0
+scale_min = 0.85
+scale_max = 1.25
+spacing = 5.0
+max_slope = 35.0
+trunk_radius = 0.35
+hides = false
+view_distance = 450.0
+shadows = true

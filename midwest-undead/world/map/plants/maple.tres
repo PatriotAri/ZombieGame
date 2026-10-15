@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="PlantData" format=3]
+
+[ext_resource type="Script" path="res://world/map/plant_data.gd" id="1_plant"]
+[ext_resource type="PackedScene" path="res://world/map/plants/models/maple.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_plant")
+display_name = "Maple"
+scene = ExtResource("2_scene")
+kind = "Tree"
+mesh_id = 1
+forest_share = 25.0
+scale_min = 0.8
+scale_max = 1.2
+spacing = 5.0
+max_slope = 35.0
+trunk_radius = 0.3
+hides = false
+view_distance = 450.0
+shadows = true

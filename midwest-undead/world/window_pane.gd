@@ -33,7 +33,7 @@ func outward() -> Vector3:
 	return -global_basis.x
 
 
-## Panes in the town scene come with their glass and collision already (made by
+## Panes in the map scene come with their glass and collision already (made by
 ## setup when the town was frozen); this picks them up.
 func _ready() -> void:
 	if _mesh != null:
@@ -42,7 +42,7 @@ func _ready() -> void:
 		if child is MeshInstance3D:
 			_mesh = child
 			# Shared with every other pane of its color until this one cracks
-			# (_crack). The town scene saved a copy with each pane: swap in the
+			# (_crack). The map scene saved a copy with each pane: swap in the
 			# shared one.
 			_material = _shared(_mesh.mesh.surface_get_material(0) as StandardMaterial3D)
 			_mesh.material_override = null

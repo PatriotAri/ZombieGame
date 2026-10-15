@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://world/map/plants/models/corn_mesh.tres" id="1_l8rfv"]
+
+[node name="Corn" type="MeshInstance3D" unique_id=1519198758]
+mesh = ExtResource("1_l8rfv")

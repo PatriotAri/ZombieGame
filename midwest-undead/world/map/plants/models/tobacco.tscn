@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://world/map/plants/models/tobacco_mesh.tres" id="1_clrct"]
+
+[node name="Tobacco" type="MeshInstance3D" unique_id=507220744]
+mesh = ExtResource("1_clrct")
