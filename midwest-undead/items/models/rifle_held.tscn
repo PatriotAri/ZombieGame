@@ -1,0 +1,82 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hai38"]
+albedo_color = Color(0.16, 0.16, 0.18, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_sbueg"]
+material = SubResource("StandardMaterial3D_hai38")
+size = Vector3(0.05, 0.05, 0.62)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_135ci"]
+albedo_color = Color(0.16, 0.16, 0.18, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_8ndwf"]
+material = SubResource("StandardMaterial3D_135ci")
+size = Vector3(0.07, 0.09, 0.32)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_phqhi"]
+albedo_color = Color(0.26, 0.2, 0.13, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_qmdpk"]
+material = SubResource("StandardMaterial3D_phqhi")
+size = Vector3(0.06, 0.1, 0.3)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6w0rw"]
+albedo_color = Color(0.16, 0.16, 0.18, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_preva"]
+material = SubResource("StandardMaterial3D_6w0rw")
+size = Vector3(0.05, 0.05, 0.24)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_g86ap"]
+albedo_color = Color(0.16, 0.16, 0.18, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_psrkw"]
+material = SubResource("StandardMaterial3D_g86ap")
+size = Vector3(0.02, 0.05, 0.02)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_qurn1"]
+albedo_color = Color(0.16, 0.16, 0.18, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_61x3t"]
+material = SubResource("StandardMaterial3D_qurn1")
+size = Vector3(0.02, 0.05, 0.02)
+
+[node name="Rifle" type="Node3D" unique_id=1762422867]
+
+[node name="Barrel" type="MeshInstance3D" parent="." unique_id=916137773]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -0.28)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_sbueg")
+
+[node name="Receiver" type="MeshInstance3D" parent="." unique_id=214568400]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.01, 0.05)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_8ndwf")
+
+[node name="Stock" type="MeshInstance3D" parent="." unique_id=695801287]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, 0.32)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_qmdpk")
+
+[node name="Scope" type="MeshInstance3D" parent="." unique_id=601149141]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -0.02)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_preva")
+
+[node name="MountFront" type="MeshInstance3D" parent="." unique_id=2004520781]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, -0.08)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_psrkw")
+
+[node name="MountBack" type="MeshInstance3D" parent="." unique_id=848367]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, 0.06)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_61x3t")
+
+[node name="MuzzleFlash" type="OmniLight3D" parent="." unique_id=840084220]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -0.62)
+visible = false
+light_color = Color(1, 0.8, 0.5, 1)
+light_energy = 5.6
+omni_range = 6.0

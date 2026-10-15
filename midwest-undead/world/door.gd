@@ -17,6 +17,8 @@ extends AnimatableBody3D
 ## script does swinging doors and sliding gate leaves.
 
 const Sound := preload("res://core/sound.gd")
+const ViewDistance := preload("res://core/view_distance.gd")
+const VIEW_METERS := 90.0 # past this the door isn't drawn (core/view_distance.gd)
 
 const OPEN_TIME := 0.6
 const BASH_WOBBLE := 0.04 # meters the leaf jumps per blow
@@ -92,17 +94,23 @@ func _ready() -> void:
 		if _mesh == null:
 			_build()
 		else:
-			# Its own copy: each door darkens on its own as it takes a beating.
-			_material = (_mesh.mesh.surface_get_material(0) as StandardMaterial3D).duplicate()
-			_mesh.material_override = _material
+			# Shared with the other doors of its color until this one takes a
+			# beating (_tint). The town scene saved a copy with each door: swap
+			# in the shared one.
+			_material = _shared(_mesh.mesh.surface_get_material(0) as StandardMaterial3D)
+			_mesh.set_surface_override_material(0, _material)
 	_base_color = _material.albedo_color
+	ViewDistance.limit(_mesh, VIEW_METERS)
 	if start_open and not Engine.is_editor_hint(): # the editor shows it shut
 		set_open(true, false)
 
 
 func _build() -> void:
-	_material = StandardMaterial3D.new()
-	_material.albedo_color = color
+	if not _colors.has(color):
+		var made := StandardMaterial3D.new()
+		made.albedo_color = color
+		_colors[color] = made
+	_material = _colors[color] # shared until it takes a beating (_tint)
 	var box := BoxMesh.new()
 	box.size = leaf_size
 	box.material = _material
@@ -162,7 +170,7 @@ func bash(damage: float) -> void:
 		_burst()
 		return
 	# Splinter and darken as it takes a beating.
-	_material.albedo_color = _base_color.darkened(0.5 * (1.0 - health / max_health))
+	_tint(_base_color.darkened(0.5 * (1.0 - health / max_health)))
 	var now := Time.get_ticks_msec()
 	if now < _next_bash_ms:
 		return
@@ -184,16 +192,35 @@ func load_state(data: Dictionary) -> void:
 	is_broken = bool(data.get("broken", false))
 	_set_open_one(bool(data.get("open", is_open)) or is_broken, false)
 	if is_broken:
-		_material.albedo_color = _base_color.darkened(0.6)
+		_tint(_base_color.darkened(0.6))
 	elif health < max_health:
-		_material.albedo_color = _base_color.darkened(0.5 * (1.0 - health / max_health))
+		_tint(_base_color.darkened(0.5 * (1.0 - health / max_health)))
+
+
+## One material per door color, shared until a door takes a beating.
+static var _colors := {}
+
+
+static func _shared(mat: StandardMaterial3D) -> StandardMaterial3D:
+	if not _colors.has(mat.albedo_color):
+		_colors[mat.albedo_color] = mat
+	return _colors[mat.albedo_color]
+
+
+## Splintered and darkened as it takes a beating. The first time gives it its
+## own material (until then it shares one with the other doors).
+func _tint(c: Color) -> void:
+	if _mesh.material_override == null:
+		_material = _material.duplicate()
+		_mesh.material_override = _material
+	_material.albedo_color = c
 
 
 ## Smashed: it flies open and hangs off its hinges for good.
 func _burst() -> void:
 	health = 0.0
 	is_broken = true
-	_material.albedo_color = _base_color.darkened(0.6)
+	_tint(_base_color.darkened(0.6))
 	_mesh.position = leaf_offset
 	_set_open_one(true, true, 0.15)
 	Sound.play_at(self, "door_break", global_position + Vector3.UP, 2.0, 35.0, 0.08)

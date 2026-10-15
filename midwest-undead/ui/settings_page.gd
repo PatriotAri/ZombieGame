@@ -1,7 +1,7 @@
 extends VBoxContainer
 ## The Settings page (pause menu and main menu): look sensitivity, invert look,
-## and volume. Changes apply as you drag; they're written to disk when you leave
-## the page. Emits `back` when you press Back (the menu showing it swaps pages).
+## volume and graphics. Changes apply as you drag; they're written to disk when
+## you leave the page. Emits `back` when you press Back (the menu showing it swaps pages).
 
 signal back
 
@@ -27,6 +27,10 @@ func _init() -> void:
 	MenuStyle.add_heading(self, "Audio")
 	_add_slider("Master volume", "master_volume", 0.0, 1.0, 0.01, _percent)
 	_add_slider("Effects volume", "sfx_volume", 0.0, 1.0, 0.01, _percent)
+	MenuStyle.add_heading(self, "Graphics")
+	_add_slider("Shadows", "shadows", 0.0, 2.0, 1.0, _shadow_name)
+	_add_slider("View distance", "view_distance", 0.5, 1.5, 0.05, _percent)
+	_add_slider("Resolution", "render_scale", 0.5, 1.0, 0.05, _percent)
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 12)
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -90,6 +94,10 @@ func _add_slider(text: String, key: String, min_value: float, max_value: float, 
 
 func _times(value: float) -> String:
 	return "%.2fx" % value
+
+
+func _shadow_name(value: float) -> String:
+	return ["Off", "Medium", "High"][clampi(roundi(value), 0, 2)]
 
 
 func _percent(value: float) -> String:

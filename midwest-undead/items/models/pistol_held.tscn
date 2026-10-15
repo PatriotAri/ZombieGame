@@ -1,0 +1,33 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mxsij"]
+albedo_color = Color(0.12, 0.12, 0.14, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_t04uc"]
+material = SubResource("StandardMaterial3D_mxsij")
+size = Vector3(0.05, 0.06, 0.24)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_w8dg8"]
+albedo_color = Color(0.12, 0.12, 0.14, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_pesyj"]
+material = SubResource("StandardMaterial3D_w8dg8")
+size = Vector3(0.045, 0.12, 0.06)
+
+[node name="Pistol" type="Node3D" unique_id=1597249436]
+
+[node name="Slide" type="MeshInstance3D" parent="." unique_id=1253713778]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_t04uc")
+
+[node name="Grip" type="MeshInstance3D" parent="." unique_id=240310263]
+transform = Transform3D(1, 0, 0, 0, 0.9659258, 0.25881904, 0, -0.25881904, 0.9659258, 0, -0.08, 0.07)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_pesyj")
+
+[node name="MuzzleFlash" type="OmniLight3D" parent="." unique_id=2011389452]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -0.18)
+visible = false
+light_color = Color(1, 0.8, 0.5, 1)
+light_energy = 4.0
+omni_range = 6.0

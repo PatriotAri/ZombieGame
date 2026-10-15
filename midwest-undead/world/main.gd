@@ -6,13 +6,16 @@ extends Node3D
 ##   world/town/          the town itself: buildings, containers, doors, items, props
 ##   world/kit/           the building kit the town is made of (see HOW_TO_BUILD.md)
 ##   world/markers/       markers in the town: where people and zombies start, places
-##   world/loot.gd        the containers' loot tables
+##   world/loot.gd        rolls the containers' loot tables (items/loot/)
+##   quests/              the main story and side quests (see QUESTS.md)
 ##   ui/hud.gd            everything on screen during play
+##   ui/perf_overlay.gd   the performance readout (F3)
 ##
 ## What's fixed and what's random: the town, its containers and the items lying
 ## around are exactly what the town scene has. What's in the containers (beyond
 ## their fixed items), which zombies turn up at the ZombieSpawn markers, the
-## extra zombies and the ones arriving over time are random every new game.
+## extra zombies, the ones arriving over time and the hordes (world/horde.gd)
+## are random every new game.
 ##
 ## TUNING: select the Main node in the Scene dock and use the Inspector. Every
 ## @export below shows up there, grouped. Values you change in the Inspector are
@@ -42,7 +45,8 @@ const Guard := preload("res://characters/npcs/guard.gd")
 const GuardScene := preload("res://characters/npcs/guard.tscn")
 const HumanNPCScene := preload("res://characters/npcs/human_npc.tscn")
 const DialogueBox := preload("res://ui/dialogue_box.gd")
-const MainQuest := preload("res://quests/main_quest.gd")
+const QuestManager := preload("res://quests/quest_manager.gd")
+const JournalMenu := preload("res://ui/journal_menu.gd")
 const SaveGame := preload("res://core/save_game.gd")
 const SavePoint := preload("res://world/save_point.gd")
 const SaveMenu := preload("res://ui/save_menu.gd")
@@ -56,6 +60,8 @@ const MapMenu := preload("res://ui/map_menu.gd")
 const BackpackMenu := preload("res://ui/backpack_menu.gd")
 const Discoveries := preload("res://world/discoveries.gd")
 const ZombiePopulation := preload("res://world/zombie_population.gd")
+const StaticMerge := preload("res://world/static_merge.gd")
+const Horde := preload("res://world/horde.gd")
 const TraderArrival := preload("res://world/trader_arrival.gd")
 const WoodworkerRescue := preload("res://world/woodworker_rescue.gd")
 const Survivors := preload("res://world/survivors.gd")
@@ -67,6 +73,7 @@ const ChoiceMenu := preload("res://ui/choice_menu.gd")
 const Survivor := preload("res://characters/npcs/survivor.gd")
 const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Hud := preload("res://ui/hud.gd")
+const PerfOverlay := preload("res://ui/perf_overlay.gd")
 const Loot := preload("res://world/loot.gd")
 const SkyShader := preload("res://world/sky_clouds.gdshader")
 const Fortifications := preload("res://world/fortifications.gd")
@@ -87,10 +94,6 @@ const Place := preload("res://world/markers/place.gd")
 ## How many zombies are up at once. When there are fewer, new ones turn up on the
 ## outskirts of town now and then (see world/zombie_population.gd).
 @export_range(0, 400) var zombie_population := 100
-## Every zombie (at the start and arriving later) has these chances of being a
-## crawler or a runner instead of an ordinary walker (characters/zombie/zombie.gd).
-@export_range(0.0, 1.0) var crawler_chance := 0.08
-@export_range(0.0, 1.0) var runner_chance := 0.03
 ## Seconds between new arrivals while there are fewer than zombie_population.
 @export var zombie_respawn_seconds_day := 30.0
 @export var zombie_respawn_seconds_night := 10.0
@@ -130,6 +133,7 @@ var map_menu: MapMenu
 var backpack_menu: BackpackMenu
 var discoveries: Discoveries
 var zombie_population_node: ZombiePopulation
+var horde: Horde # every couple of weeks, a horde crosses town
 var trader_arrival: TraderArrival # the wagon trader who comes once Zone 1 is cleared
 var woodworker_rescue: WoodworkerRescue # the woodworker held at the bandit camp
 var survivors: Survivors # the ones holed up in boarded-up houses
@@ -138,7 +142,8 @@ var salvage: Salvage # stripping cars and furniture for materials
 var craft_menu: CraftMenu
 var choice_menu: ChoiceMenu
 var dialogue: DialogueBox
-var quest: MainQuest
+var quests: QuestManager # the main story and side quests (quests/)
+var journal_menu: JournalMenu
 var chief: PoliceChief
 var trader: Shopkeeper
 var safe_house_point := Vector3.ZERO # the "Safe House" place (quest marker target)
@@ -176,6 +181,7 @@ func _ready() -> void:
 	survivors.setup(spawn_points)
 	hud = Hud.new()
 	add_child(hud)
+	add_child(PerfOverlay.new())
 	_spawn_player()
 	_spawn_zombies()
 	zones = Zones.new()
@@ -191,6 +197,9 @@ func _ready() -> void:
 	zombie_population_node.respawn_seconds_night = zombie_respawn_seconds_night
 	zombie_population_node.setup(self, nav_region, player, day_night, zones)
 	zombie_population_node.populate(extra_zombies, rng, player_spawn.origin)
+	horde = Horde.new()
+	add_child(horde)
+	horde.setup(self, zombie_population_node, nav_region, player, day_night)
 	survivors.move_zombies_out(zombies)
 	hud.setup(player, day_night)
 	add_child(PauseMenu.new())
@@ -237,43 +246,48 @@ func _ready() -> void:
 		elif obj is GateLeaf:
 			structures.toggle_gate((obj as GateLeaf).piece)
 		elif obj is StructurePiece:
-			var item := structures.take_down(obj as StructurePiece)
-			if item == "":
+			var back := structures.take_down(obj as StructurePiece)
+			if back.is_empty():
 				hud.show_toast("Take down what's on top of it first.")
-			else:
-				player.give_item(item))
+			for id: String in back:
+				player.give_item(id, back[id]))
 	# Getting hurt never closes a menu or a conversation: only Esc (each menu
 	# handles its own) or dying does.
 	for menu: Callable in [inventory_menu.close, shop_menu.close, dialogue.close, save_menu.close, map_menu.close,
 			backpack_menu.close, craft_menu.close, choice_menu.close]:
 		player.died.connect(menu)
 
-	quest = MainQuest.new()
-	add_child(quest)
-	quest.objective_changed.connect(hud.set_objective)
-	quest.story_beat.connect(hud.show_story)
+	quests = QuestManager.new()
+	add_child(quests)
+	quests.objective_changed.connect(hud.set_objective)
+	quests.story_beat.connect(hud.show_story)
+	quests.setup(self, player, dialogue, choice_menu, zones, day_night)
+	journal_menu = JournalMenu.new()
+	add_child(journal_menu)
+	journal_menu.setup(player, quests)
+	player.died.connect(journal_menu.close)
 	safe_house_point = _place_position("Safe House")
-	quest.setup(player, chief, safe_house_point, dialogue)
 	for trigger in get_tree().get_nodes_in_group("safe_house_trigger"):
 		# Walking into the safe house's yard (or the house) is what "reaching" it means.
 		(trigger as Area3D).body_entered.connect(func(body: Node3D) -> void:
-			if body.is_in_group("player"):
-				quest.reached_safe_house())
+			if body.is_in_group("player") and not quests.happened("safe_house_reached"):
+				# You stumbled in on them: everything inside comes to see what made that noise.
+				get_tree().call_group("noise_listeners", "hear_noise", safe_house_point, 30.0)
+				quests.event("safe_house_reached"))
 
 	trader_arrival = TraderArrival.new()
 	add_child(trader_arrival)
 	trader_arrival.setup(player, zones, day_night, _place_position("Police Station"),
 			_spawn_transform("wagon"), _spawn_transform("wagon_trader"))
-	trader_arrival.zone_cleared.connect(quest.zone_cleared)
-	trader_arrival.seen.connect(quest.trader_found)
+	trader_arrival.zone_cleared.connect(quests.event.bind("zone_cleared:" + TraderArrival.ZONE))
+	trader_arrival.seen.connect(quests.event.bind("trader_found"))
 
 	woodworker_rescue = WoodworkerRescue.new()
 	add_child(woodworker_rescue)
 	woodworker_rescue.setup(player, dialogue, _spawn_transform("woodworker_captive"),
 			_spawn_transform("woodworker_home"))
-	woodworker_rescue.freed.connect(quest.woodworker_untied)
-	woodworker_rescue.seen.connect(func() -> void: quest.woodworker_found(WoodworkerRescue.HOME_STORY))
-	quest.woodworker = woodworker_rescue.woodworker
+	woodworker_rescue.freed.connect(quests.event.bind("woodworker_untied"))
+	woodworker_rescue.seen.connect(quests.event.bind("woodworker_found"))
 	salvage = Salvage.new()
 	add_child(salvage)
 	salvage.setup(loot_spots, salvage_others)
@@ -282,7 +296,6 @@ func _ready() -> void:
 	base_camp.setup(get_tree().get_first_node_in_group("base_supply_crate") as Node3D, survivors,
 			woodworker_rescue, structures, day_night, player)
 	survivors.attach(player, dialogue, choice_menu, craft_menu, base_camp, woodworker_rescue)
-	quest.woodworker_home = woodworker_rescue.home_spot.origin
 
 	# Coming from "Load": the town is freshly loaded; now put the saved state on top.
 	if not SaveGame.pending_load.is_empty():
@@ -338,6 +351,7 @@ func _load_town() -> void:
 		door.transform = town.transform * xform
 		door_holder.add_child(door, true)
 	nav_region.add_child(town)
+	StaticMerge.merge(town) # buildings and kit pieces as a few big meshes (fewer draw calls)
 	var start := _spawn_point("player")
 	player_spawn = Transform3D(Basis(Vector3.UP, start.global_rotation.y), start.global_position) if start \
 			else Transform3D(Basis.IDENTITY, Vector3(0, 0.1, 0))
@@ -430,18 +444,40 @@ func _discoverable_places() -> Array[Dictionary]:
 	return result
 
 
-## Pressing interact on an NPC: open whatever that kind of NPC offers.
+## Pressing interact on an NPC. Anything a quest has for them (an offer, a step
+## to talk to them, a reminder) comes first; next to their own business
+## (trading, building...) it's a choice. With nothing about quests, they do
+## their own thing.
 func _on_npc_interacted(npc: HumanNPC) -> void:
 	if npc is Woodworker and (npc as Woodworker).state == Woodworker.State.CAPTIVE:
-		woodworker_rescue.untie()
-	elif npc is Woodworker and (npc as Woodworker).state == Woodworker.State.HOME:
-		craft_menu.open(player, npc.display_name, Recipes.WOODWORKER)
-	elif npc is Survivor:
-		survivors.talk(npc as Survivor)
-	elif npc is Shopkeeper:
-		shop_menu.open(player, npc as Shopkeeper)
-	elif npc is PoliceChief:
-		quest.talk_to_chief()
+		woodworker_rescue.untie() # (the rescue itself is the woodworker's own scene)
+		return
+	var options := quests.talk_options(npc)
+	var own := _own_business(npc)
+	if options.is_empty():
+		if own.is_empty():
+			quests.afterword(npc) # what they say once their quests are done
+		else:
+			own[1].call()
+		return
+	if own.is_empty() and options.size() == 1:
+		options[0][1].call()
+		return
+	if not own.is_empty():
+		options.append(own)
+	options.append(["Never mind", Callable()])
+	choice_menu.open(player, npc.display_name, "", options)
+
+
+## What an NPC does when it's not about quests: [label, callable], or [] if nothing.
+func _own_business(npc: HumanNPC) -> Array:
+	if npc is Woodworker and (npc as Woodworker).state == Woodworker.State.HOME:
+		return ["Build something", func() -> void: craft_menu.open(player, npc.display_name, Recipes.WOODWORKER)]
+	if npc is Survivor:
+		return ["Talk", func() -> void: survivors.talk(npc as Survivor)]
+	if npc is Shopkeeper:
+		return ["Trade", func() -> void: shop_menu.open(player, npc as Shopkeeper)]
+	return []
 
 
 func _process(_delta: float) -> void:
@@ -498,7 +534,8 @@ func _build_environment() -> void:
 	add_child(world_env)
 
 	var sun := DirectionalLight3D.new()
-	sun.shadow_enabled = true
+	# Its shadows (off, medium, high) are the Shadows setting: Settings.apply_graphics.
+	sun.add_to_group("sun")
 	add_child(sun)
 
 	var moon := DirectionalLight3D.new()
@@ -512,6 +549,7 @@ func _build_environment() -> void:
 	day_night.night_ambient = night_ambient
 	add_child(day_night)
 	day_night.setup(env, sky_mat, sun, moon)
+	Settings.apply_graphics() # shadows, view distance, resolution
 
 
 ## A navigation mesh is the "where can zombies walk" map. Godot generates it by
@@ -535,21 +573,20 @@ func _setup_navigation() -> void:
 
 # --- Saving and loading --------------------------------------------------------
 
-## Autosave the first time you get within AUTOSAVE_DISTANCE of the safe house
-## while it's your objective (not the Chief: he's safe in the station anyway).
+## Autosave the first time you get within AUTOSAVE_DISTANCE of the tracked
+## quest's waypoint, on steps that ask for it (the safe house, in the story).
 ## Not while something is hunting you: a save made mid-fight could lock you
 ## into a fight you can't win. It keeps checking, and saves as soon as you're
 ## clear (if you're still close).
 func _check_autosave() -> void:
-	if player.is_dead or quest.stage != MainQuest.Stage.REACH_SAFE_HOUSE \
-			or quest.stage in quest.autosaved_stages:
+	if player.is_dead:
 		return
-	var target := quest.objective_position()
+	var target := quests.autosave_target()
 	if target == Vector3.INF or player.global_position.distance_to(target) > AUTOSAVE_DISTANCE:
 		return
 	if _player_threatened():
 		return
-	quest.autosaved_stages.append(quest.stage)
+	quests.mark_autosaved()
 	if _save_game(SaveGame.AUTOSAVE):
 		hud.show_toast("Autosaved")
 
@@ -580,8 +617,11 @@ func _save_game(path: String) -> bool:
 	var zombie_data := [] # the ones still up
 	for zombie in zombies:
 		if is_instance_valid(zombie) and not zombie.is_dead:
-			zombie_data.append({"position": SaveGame.vec_to_array(zombie.global_position),
-					"yaw": zombie.rotation.y, "health": zombie.health, "kind": zombie.kind})
+			var entry := {"position": SaveGame.vec_to_array(zombie.global_position),
+					"yaw": zombie.rotation.y, "health": zombie.health, "kind": zombie.kind}
+			if zombie.march_to != Vector3.INF:
+				entry["march"] = SaveGame.vec_to_array(zombie.march_to)
+			zombie_data.append(entry)
 	var door_data := {}
 	for door in doors:
 		door_data[door.get_meta("town_id")] = door.save_state()
@@ -591,13 +631,14 @@ func _save_game(path: String) -> bool:
 				"yaw": bandit.rotation.y, "health": bandit.health, "dead": bandit.is_dead}
 	return SaveGame.write({
 		"clock": day_night.clock_text(),
-		"objective": quest.objective_text(),
+		"objective": quests.objective_text(),
 		"time": {"hour": day_night.hour, "day": day_night.day},
-		"quest": quest.save_state(),
+		"quest": quests.save_state(),
 		"player": player.save_state(),
 		"containers": containers,
 		"ground_items": ground,
 		"zombies": zombie_data,
+		"horde": horde.save_state(),
 		"bandits": bandit_data,
 		"doors": door_data,
 		"fortifications": fortifications.save_state(),
@@ -619,7 +660,8 @@ func _apply_save(data: Dictionary) -> void:
 	var time: Dictionary = data.get("time", {})
 	day_night.hour = float(time.get("hour", day_night.hour))
 	day_night.day = int(time.get("day", day_night.day))
-	quest.load_state(data.get("quest", {}))
+	quests.begin_load() # no story moments while the save goes back on
+	quests.load_state(data.get("quest", {}))
 
 	var containers: Dictionary = data.get("containers", {})
 	for spot in loot_spots:
@@ -645,7 +687,7 @@ func _apply_save(data: Dictionary) -> void:
 		item.remove_from_group("ground_items")
 		item.queue_free()
 	for entry: Dictionary in data.get("ground_items", []):
-		if GameData.ITEMS.has(entry.get("id", "")):
+		if GameData.has_item(str(entry.get("id", ""))):
 			add_ground_item(entry["id"], int(entry.get("amount", 1)),
 					SaveGame.array_to_vec(entry["position"]), float(entry.get("yaw", 0.0)))
 	for zombie in zombies:
@@ -656,6 +698,9 @@ func _apply_save(data: Dictionary) -> void:
 		var zombie := _add_zombie(SaveGame.array_to_vec(entry["position"]), null, str(entry.get("kind", "walker")))
 		zombie.rotation.y = float(entry.get("yaw", 0.0))
 		zombie.health = float(entry.get("health", zombie.max_health))
+		if entry.has("march"):
+			zombie.march_to = SaveGame.array_to_vec(entry["march"])
+	horde.load_state(data.get("horde", {}))
 
 	var bandit_data: Dictionary = data.get("bandits", {})
 	for bandit in bandits:
@@ -677,8 +722,16 @@ func _apply_save(data: Dictionary) -> void:
 	survivors.load_state(data.get("survivors", []))
 	base_camp.load_state(data.get("base", {}))
 	salvage.load_state(data.get("salvaged", []))
-	quest.sync_progress(trader_arrival.cleared, trader_arrival.was_seen,
-			woodworker_rescue.state() != Woodworker.State.CAPTIVE, woodworker_rescue.was_seen)
+	# What the world says has happened (for saves from before quests kept their own record).
+	if trader_arrival.cleared:
+		quests.event("zone_cleared:" + TraderArrival.ZONE)
+	if trader_arrival.was_seen:
+		quests.event("trader_found")
+	if woodworker_rescue.state() != Woodworker.State.CAPTIVE:
+		quests.event("woodworker_untied")
+	if woodworker_rescue.was_seen:
+		quests.event("woodworker_found")
+	quests.end_load()
 	player.load_state(data.get("player", {}))
 
 
@@ -771,14 +824,13 @@ func _near_container(pos: Vector3, min_dist: float) -> bool:
 
 
 ## dice: whose dice pick its facing and kind; the game's (rng) unless said
-## otherwise. kind: "walker", "runner" or "crawler"; "" rolls it (crawler_chance,
-## runner_chance).
+## otherwise. kind: a ZombieKind's id (characters/zombie/kinds/); "" rolls one
+## by their spawn chances.
 func _add_zombie(pos: Vector3, dice: RandomNumberGenerator = null, kind := "") -> Zombie:
 	if dice == null:
 		dice = rng
 	if kind == "":
-		var roll := dice.randf()
-		kind = "crawler" if roll < crawler_chance else "runner" if roll < crawler_chance + runner_chance else "walker"
+		kind = ZombieKind.roll(dice).id
 	var zombie := ZombieScene.instantiate() as Zombie
 	zombie.kind = kind
 	zombie.position = pos

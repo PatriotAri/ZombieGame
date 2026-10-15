@@ -27,6 +27,8 @@ const Door := preload("res://world/door.gd")
 const WindowPane := preload("res://world/window_pane.gd")
 const Fortification := preload("res://world/fortification.gd")
 const Sound := preload("res://core/sound.gd")
+const ViewDistance := preload("res://core/view_distance.gd")
+const VIEW_METERS := 80.0 # boards past this aren't drawn (core/view_distance.gd)
 
 const BARRICADE_SIZE := Vector3(2.4, 1.6, 0.2) # width, height, thickness
 const WOOD := Color(0.58, 0.45, 0.28)
@@ -288,17 +290,24 @@ func _make_planks(o: Dictionary) -> Fortification:
 	return body
 
 
+## One material per wood color, shared by every board.
+static var _wood := {}
+
+
 func _board_mesh(parent: Node3D, size: Vector3, pos: Vector3, tilt: float, color: Color) -> void:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
+	if not _wood.has(color):
+		var made := StandardMaterial3D.new()
+		made.albedo_color = color
+		_wood[color] = made
 	var box := BoxMesh.new()
 	box.size = size
-	box.material = mat
+	box.material = _wood[color]
 	var inst := MeshInstance3D.new()
 	inst.mesh = box
 	inst.position = pos
 	inst.rotation.x = tilt
 	parent.add_child(inst)
+	ViewDistance.limit(inst, VIEW_METERS)
 
 
 func _box_collision(parent: Node3D, size: Vector3, pos: Vector3) -> void:

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://items/item_data.gd" id="1_kd7fv"]
+
+[resource]
+script = ExtResource("1_kd7fv")
+id = "shotgun_shells"
+display_name = "Shotgun shells"
+order = 60
+color = Color(0.7, 0.12, 0.1, 1)
+size = Vector3(0.16, 0.1, 0.12)

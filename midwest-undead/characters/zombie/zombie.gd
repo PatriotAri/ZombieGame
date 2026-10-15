@@ -13,15 +13,21 @@ extends CharacterBody3D
 ## Sight needs a clear line (buildings and cars block it), mostly in front of it.
 ## Sound goes through walls. A closed door in its way gets bashed until it breaks
 ## (only while it's going somewhere: hunting or investigating, not idly wandering).
+## In a horde (world/horde.gd) it has somewhere to walk to across town
+## (march_to): while idle it heads there instead of shuffling or roaming, and
+## once it arrives it's an ordinary zombie. It finds its way on the horde's
+## outdoor map (march_map), so it goes around buildings rather than up against
+## their doors. Hunting and investigating come first (on the town's map, doors
+## and all); afterwards it picks the walk back up, unless it's ended up
+## somewhere it can't get across from (indoors).
 ## Its paths can also run through windows (world/fortifications.gd): it smashes the
 ## glass, then climbs over the sill. Boarded windows and doors stop it for good.
-## Three kinds (set `kind` before adding it to the tree; main.gd rolls it):
-##   walker  - the usual shambler.
-##   runner  - thin and red-skinned; sprints at you (runner_speed) once it's
-##             hunting, leaning into it. Same health as a walker.
-##   crawler - drags itself along the ground: slow, low (aim down to hit it; its
-##             head is at the front, near the ground), and weaker (crawler_health).
-## Each has its own groan pitch.
+## A fence or fence gate you built (unless it's plated) between it and someone
+## it's after, or a noise it heard, gets bashed the same way (_bash_blocker);
+## once it's down it walks through the gap (_through_gap).
+## Its kind (walker, runner, crawler...) is a file in characters/zombie/kinds/
+## (ZombieKind): health, speeds, shape, skin, voice. Set `kind` to its id before
+## adding it to the tree; main.gd rolls it.
 ## The node tree lives in zombie.tscn.
 ## TUNING: open zombie.tscn, select the Zombie node, and use the Inspector.
 
@@ -29,12 +35,19 @@ const Player := preload("res://characters/player/player.gd")
 const GameData := preload("res://core/game_data.gd")
 const WindowPane := preload("res://world/window_pane.gd")
 const Sound := preload("res://core/sound.gd")
+## Every zombie is one mesh with this one material; its colors and hit flash
+## are set per zombie (_combine_parts).
+const BODY_MATERIAL := preload("res://characters/zombie/zombie_body.tres")
+
+## posture -> its body, head and arms as one mesh, shared by every zombie that
+## stands (or crawls) that way.
+static var _combined := {}
 
 enum State { IDLE, INVESTIGATE, HUNT }
 
-@export_enum("walker", "runner", "crawler") var kind := "walker"
+## A ZombieKind's id (characters/zombie/kinds/).
+@export var kind := "walker"
 
-@export var max_health := 100.0
 @export_range(1.0, 100.0) var sight_range := 20.0 ## In daylight.
 ## Sight range multiplier at full night (0.45 = 9 m out of 20).
 @export_range(0.0, 1.0) var night_sight_factor := 0.45
@@ -42,9 +55,6 @@ enum State { IDLE, INVESTIGATE, HUNT }
 ## Damage to a door it's pushing against. Doors have 150 health, so one zombie
 ## gets through in about 8 seconds; a crowd much faster.
 @export var door_damage_per_second := 18.0
-## Each zombie picks a random walking speed in this range.
-@export var min_speed := 1.2
-@export var max_speed := 2.2
 ## Seconds it keeps searching a spot before losing interest.
 @export var linger_time := 4.0
 ## Each time it's idle and decides what to do next, the chance it sets off
@@ -52,20 +62,13 @@ enum State { IDLE, INVESTIGATE, HUNT }
 ## town, and back into places you've cleared, faster.
 @export_range(0.0, 1.0) var roam_chance_day := 0.05
 @export_range(0.0, 1.0) var roam_chance_night := 0.5
-@export_group("Runner")
-## While hunting. You walk at 4 and sprint at 7.
-@export var runner_speed := 7.0
-@export var runner_skin := Color(0.62, 0.36, 0.3)
-@export_group("Crawler")
-@export var crawler_health := 60.0
-@export var crawler_speed := 0.8
 
 const VIEW_DOT := 0.5 # cos(60 degrees): it sees a 120 degree cone in front of it
 const PROXIMITY_RANGE := 2.0 # this close, it notices you no matter what
 const EYE_HEIGHT := 1.6
 const CRAWLER_EYE_HEIGHT := 0.4
-const CRAWLER_HEAD := Vector3(0, 0.25, -0.8) # where a crawler's head is (its own space)
-const RUNNER_LEAN := 0.4 # radians forward while running flat out
+const CRAWLER_HEAD := Vector3(0, 0.25, -0.8) # where a crawling one's head is (its own space)
+const RUNNER_LEAN := 0.4 # radians forward while running flat out (kinds that lean)
 const ATTACK_RANGE := 1.3
 const ATTACK_HEIGHT := 1.5 # can't bite something more than this far above or below it
 const SENSE_INTERVAL := 0.2 # sight checks are raycasts; 5 per second is plenty
@@ -74,31 +77,57 @@ const CALM_REPATH_INTERVAL := 2.0 # otherwise (the destination stays put)
 # Roaming (see _next_wander).
 const ROAM_LEG := Vector2(15.0, 45.0) # meters per leg, min and max
 const ROAM_SPEED := 0.45 # times its walking speed
+const MARCH_SPEED := 1.2 # m/s in a horde (or its own speed, if slower), so the group keeps together
+const MARCH_ARRIVED := 6.0 # meters from march_to that counts as there
+const BLOCKER_REACH := 2.5 # meters: how close a fence in its way has to be for it to bash it
+## Seconds after breaking a fence that it walks straight through the gap (the
+## navigation mesh takes a few seconds to catch up with the wreck).
+const GAP_TIME := 8.0
+const UNSTICK_AFTER := 1.5 # seconds hardly moving (jammed in a crowd, against a wall) before it gives up getting closer
 const SHUFFLE_SPEED := 0.35
 const ROAM_TURN := 0.8 # radians: how far each leg can veer from the last
 const HERD_RADIUS := 15.0 # roamers this close pull its heading toward theirs
 const HERD_PULL := 0.7
-# Far from the camera and not after anyone, it only thinks and moves every
-# FAR_TICK physics frames (covering the same ground): a town's worth of
-# zombies costs much less, and nobody's close enough to see the difference.
+# Away from the camera and not after anyone, it only thinks and moves every
+# few physics frames (covering the same ground): every MID_TICK frames past
+# MID_DISTANCE, every FAR_TICK past FAR_DISTANCE, every VERY_FAR_TICK past
+# VERY_FAR_DISTANCE. A town's worth of zombies (or a horde) costs much less, and
+# nobody's close enough to see the difference.
+const MID_DISTANCE := 40.0
+const MID_TICK := 2
 const FAR_DISTANCE := 80.0
 const FAR_TICK := 3
+const VERY_FAR_DISTANCE := 130.0
+const VERY_FAR_TICK := 6
+## Working out a path is the costliest thing a zombie does (up to about a
+## millisecond on the town's map), so all zombies together start at most this
+## many per physics frame. Without a limit, a crowd that all wants a new path at
+## once makes the game stutter; the rest wait a frame or two (_walk_to).
+const PATHS_PER_FRAME := 4
 
 var state := State.IDLE
-var health := 100.0 # set to max_health (crawler_health) in _ready
+var max_health := 100.0 # its kind's
+var health := 100.0 # set to max_health in _ready
+var kind_data: ZombieKind # the file for `kind`
 var eye_height := EYE_HEIGHT
 var is_dead := false
 var speed := 1.6
 var target: Node3D = null # who it's hunting
 var day_night: Node
-var materials: Array[StandardMaterial3D] = []
-var base_colors: Array[Color] = []
+var _body: MeshInstance3D # all of it as one mesh (_combine_parts)
 
 var investigate_pos := Vector3.ZERO
 var last_seen_pos := Vector3.ZERO
 var wander_target := Vector3.ZERO
 var roam_heading := Vector3.FORWARD # the way it's been roaming (flat, unit length)
 var roaming := false # on a roaming leg right now (others read this to herd)
+var march_to := Vector3.INF # in a horde: where it's walking to (INF: not in one; main.gd saves it)
+var march_map := RID() # in a horde: the outdoor map it walks there on (horde.gd)
+var _march_time_left := INF # gives up on the walk when this runs out (set when it starts)
+var _stuck_time := 0.0
+static var _paths_frame := -1 # the physics frame _paths_left counts for
+static var _paths_left := 0 # path requests still allowed this physics frame (PATHS_PER_FRAME)
+var _gap_time := 0.0 # > 0: just broke a fence, so it heads straight through (_through_gap)
 var linger_timer := 0.0
 var wander_timer := 0.0
 var sense_timer := 0.0
@@ -111,7 +140,7 @@ var _window_entry := Vector3.ZERO
 var _window_exit := Vector3.ZERO
 var _vaulting := false
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-var _far_phase := 0 # which of the FAR_TICK frames is its turn (spread across zombies)
+var _far_phase := 0 # which of the frames is its turn when it skips some (spread across zombies)
 var _far_frame := 0
 var _far_delta := 0.0 # time saved up between its turns
 var _step_scale := 1.0 # how many frames' worth this physics step moves it
@@ -125,7 +154,10 @@ var _step_scale := 1.0 # how many frames' worth this physics step moves it
 func _ready() -> void:
 	add_to_group("zombies")
 	add_to_group("noise_listeners")
-	speed = randf_range(min_speed, maxf(max_speed, min_speed)) # some shuffle, some lurch
+	kind_data = ZombieKind.find(kind)
+	kind = kind_data.id
+	speed = randf_range(kind_data.min_speed, maxf(kind_data.max_speed, kind_data.min_speed)) # some shuffle, some lurch
+	max_health = kind_data.health
 	health = max_health
 	_apply_kind()
 	# Stagger timers so dozens of zombies don't all raycast and repath on the same frame.
@@ -135,77 +167,133 @@ func _ready() -> void:
 	groan_timer = randf_range(2.0, 12.0)
 	wander_target = global_position
 	roam_heading = Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU)
-	_far_phase = randi() % FAR_TICK
+	_far_phase = randi() % VERY_FAR_TICK # (a multiple of MID_TICK and FAR_TICK)
 	# Layer 1 is the ground; layer 2 is the links through windows (fortifications.gd).
 	agent.navigation_layers = 1 | 2
 	agent.link_reached.connect(_on_link_reached)
-	_unique_materials()
+	_combine_parts()
 
 
-## Shape, speed and health for its kind.
+## Its kind's shape.
 func _apply_kind() -> void:
-	match kind:
-		"runner":
-			visual.scale = Vector3(0.75, 1.0, 0.75) # thin
-		"crawler":
-			speed = crawler_speed
-			health = crawler_health
-			eye_height = CRAWLER_EYE_HEIGHT
-			# Lying face down, head forward (-z), dragging itself along.
-			visual.rotation.x = -PI / 2.0
-			visual.position = Vector3(0, 0.3, 0.8)
-			for arm: Node3D in [$Visual/ArmLeft, $Visual/ArmRight]:
-				arm.rotation.x = PI / 2.0 # flat on the ground, reaching ahead
-				arm.position.z -= 0.25
-			var shape := CapsuleShape3D.new()
-			shape.radius = 0.3
-			shape.height = 1.6
-			collision.shape = shape
-			collision.transform = Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(0, 0.3, 0.05))
+	visual.scale = kind_data.body_scale
+	if _crawls():
+		eye_height = CRAWLER_EYE_HEIGHT
+		# Lying face down, head forward (-z), dragging itself along.
+		visual.rotation.x = -PI / 2.0
+		visual.position = Vector3(0, 0.3, 0.8)
+		for arm: Node3D in [$Visual/ArmLeft, $Visual/ArmRight]:
+			arm.rotation.x = PI / 2.0 # flat on the ground, reaching ahead
+			arm.position.z -= 0.25
+		var shape := CapsuleShape3D.new()
+		shape.radius = 0.3
+		shape.height = 1.6
+		collision.shape = shape
+		collision.transform = Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(0, 0.3, 0.05))
 
 
 ## Where shots should aim: the middle of its body (guards use this).
 func aim_point() -> Vector3:
-	return global_position + (Vector3(0, 0.3, 0) if kind == "crawler" else Vector3(0, 1.2, 0))
+	return global_position + (Vector3(0, 0.3, 0) if _crawls() else Vector3(0, 1.2, 0))
 
 
 ## A hit here counts as a headshot.
 func is_headshot(hit_pos: Vector3) -> bool:
-	if kind == "crawler":
+	if _crawls():
 		return hit_pos.distance_to(global_transform * CRAWLER_HEAD) < 0.3
 	return hit_pos.y - global_position.y > 1.4 # heads sit at ~1.4-1.8 m
 
 
-## Its groans: higher for a runner, deeper for a crawler.
+## Its groans: its kind's pitch.
 func _voice_pitch() -> float:
-	return {"runner": 1.25, "crawler": 0.75}.get(kind, 1.0)
+	return kind_data.voice_pitch
 
 
-## Materials in a scene are shared by every instance, so flashing one zombie would
-## flash them all. Give this zombie its own copies, and its own shirt color.
-func _unique_materials() -> void:
+func _crawls() -> bool:
+	return kind_data.posture == "crawling"
+
+
+## How fast it goes after someone.
+func _hunt_speed() -> float:
+	return kind_data.hunt_speed if kind_data.hunt_speed > 0.0 else speed
+
+
+## Its body, head and arms (zombie.tscn, posed by _apply_kind) become one mesh,
+## so the graphics card draws a zombie in one go instead of four. The combined
+## mesh is made once per posture and shared; the vertex color's alpha marks the
+## shirt (1) from the skin (0), and the shared material (BODY_MATERIAL) colors
+## them per zombie: a random shirt, and its kind's skin (or the scene's usual).
+func _combine_parts() -> void:
+	var parts: Array[MeshInstance3D] = []
 	for child in visual.get_children():
-		var mesh_inst := child as MeshInstance3D
-		if mesh_inst == null:
-			continue
-		var mat := (mesh_inst.mesh.surface_get_material(0) as StandardMaterial3D).duplicate() as StandardMaterial3D
-		if mesh_inst == clothes:
-			mat.albedo_color = Color.from_hsv(randf(), 0.3, 0.35)
-		elif kind == "runner":
-			mat.albedo_color = runner_skin
-		mesh_inst.material_override = mat
-		materials.append(mat)
-		base_colors.append(mat.albedo_color)
+		if child is MeshInstance3D:
+			parts.append(child)
+	var skin := Color(0.45, 0.52, 0.4)
+	for part in parts:
+		if part != clothes: # the head and arms are skin (zombie.tscn's skin material)
+			skin = (part.mesh.surface_get_material(0) as StandardMaterial3D).albedo_color
+			break
+	if kind_data.skin_color.a > 0.0:
+		skin = kind_data.skin_color
+	var key := kind_data.posture
+	if not _combined.has(key):
+		_combined[key] = _combine(parts, clothes)
+	for part in parts:
+		visual.remove_child(part)
+		part.queue_free()
+	_body = MeshInstance3D.new()
+	_body.name = "Body"
+	_body.mesh = _combined[key]
+	_body.material_override = BODY_MATERIAL
+	visual.add_child(_body)
+	_body.set_instance_shader_parameter("skin", skin)
+	_body.set_instance_shader_parameter("shirt", Color.from_hsv(randf(), 0.3, 0.35))
+
+
+## parts (as posed) as one mesh; shirt's vertices get alpha 1, the rest 0.
+static func _combine(parts: Array[MeshInstance3D], shirt: MeshInstance3D) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	for part in parts:
+		var arrays := part.mesh.surface_get_arrays(0)
+		var xform := part.transform
+		var start := verts.size()
+		var part_verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var part_normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var alpha := 1.0 if part == shirt else 0.0
+		for i in part_verts.size():
+			verts.append(xform * part_verts[i])
+			normals.append((xform.basis * part_normals[i]).normalized())
+			colors.append(Color(1, 1, 1, alpha))
+		var part_indices = arrays[Mesh.ARRAY_INDEX]
+		if part_indices == null:
+			for i in part_verts.size():
+				indices.append(start + i)
+		else:
+			for i: int in part_indices:
+				indices.append(start + i)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 func _physics_process(delta: float) -> void:
 	if _vaulting:
 		return # a tween is carrying it over a windowsill
 	_step_scale = 1.0
-	if state == State.IDLE and stagger_timer <= 0.0 and _far_from_camera():
+	var every := _update_every()
+	if every > 1:
 		_far_delta += delta
-		_far_frame = (_far_frame + 1) % FAR_TICK
-		if _far_frame != _far_phase:
+		_far_frame += 1
+		if _far_frame % every != _far_phase % every:
 			return
 		_step_scale = _far_delta / delta
 		delta = _far_delta
@@ -230,8 +318,8 @@ func _physics_process(delta: float) -> void:
 	_update_groan(delta)
 
 	var moving := false
-	if kind == "runner": # leans into it when running flat out, upright otherwise
-		var lean := RUNNER_LEAN if _flat(velocity).length() > runner_speed * 0.6 else 0.0
+	if kind_data.leans_when_running: # leans into it when running flat out, upright otherwise
+		var lean := RUNNER_LEAN if _flat(velocity).length() > _hunt_speed() * 0.6 else 0.0
 		visual.rotation.x = move_toward(visual.rotation.x, -lean, 3.0 * delta)
 	match state:
 		State.HUNT:
@@ -240,7 +328,11 @@ func _physics_process(delta: float) -> void:
 			else:
 				var to_target := _flat(target.global_position - global_position)
 				if to_target.length() > ATTACK_RANGE * 0.8:
-					moving = _walk_to(target.global_position, runner_speed if kind == "runner" else speed, delta)
+					moving = _walk_to(target.global_position, _hunt_speed(), delta)
+					if not moving and to_target.length() > ATTACK_RANGE * 1.5:
+						# As close as it gets: a fence in the way? (Or one it just broke.)
+						if not _bash_blocker(target.global_position, delta):
+							moving = _through_gap(target.global_position, _hunt_speed())
 				else:
 					_face(to_target)
 				var height_gap := absf(target.global_position.y - global_position.y)
@@ -249,18 +341,36 @@ func _physics_process(delta: float) -> void:
 					target.call("take_damage", damage_per_second * delta)
 		State.INVESTIGATE:
 			moving = _walk_to(investigate_pos, speed, delta)
-			if not moving:
-				linger_timer -= delta
-				if linger_timer <= 0.0:
-					_set_idle()
+			# Jammed against a wall or a crowd short of the spot counts as there:
+			# as close as it's going to get. Unless a fence or gate is what's in
+			# the way: then it beats on that, and doesn't lose interest meanwhile.
+			if not moving or _stuck_time >= UNSTICK_AFTER:
+				if _bash_blocker(investigate_pos, delta):
+					pass
+				elif _through_gap(investigate_pos, speed):
+					moving = true
+				else:
+					linger_timer -= delta
+					if linger_timer <= 0.0:
+						_set_idle()
 		State.IDLE:
+			if march_to != Vector3.INF:
+				_march_time_left -= delta
+				if _march_time_left <= 0.0:
+					_end_march() # long overdue: stuck somewhere, so it gives up on the horde's walk
 			wander_timer -= delta
 			if wander_timer <= 0.0:
 				_next_wander()
-			moving = _walk_to(wander_target, speed * (ROAM_SPEED if roaming else SHUFFLE_SPEED), delta)
+			var walk_speed := minf(speed, MARCH_SPEED) if march_to != Vector3.INF \
+					else speed * (ROAM_SPEED if roaming else SHUFFLE_SPEED)
+			moving = _walk_to(wander_target, walk_speed, delta)
 			if roaming and not moving and _navigation_ready():
 				roaming = false # got there: stand around a while
-				wander_timer = randf_range(3.0, 12.0) * lerpf(1.0, 0.5, 1.0 - _light())
+				if march_to != Vector3.INF and _flat(march_to - global_position).length() > MARCH_ARRIVED:
+					wander_timer = 0.5 # not there yet (its path came up short): set off again
+				else:
+					_end_march()
+					wander_timer = randf_range(3.0, 12.0) * lerpf(1.0, 0.5, 1.0 - _light())
 
 	if not moving:
 		velocity.x = move_toward(velocity.x, 0.0, speed)
@@ -269,21 +379,79 @@ func _physics_process(delta: float) -> void:
 		# step. Most zombies are standing around most of the time.
 		if is_on_floor() and velocity.length_squared() < 0.0001:
 			return
+	var before := global_position
 	_move(_step_scale)
+	var bashing := false
 	if moving and state != State.IDLE:
-		_bash_doors(delta)
-		_handle_window(delta)
+		bashing = _bash_doors(delta)
+		bashing = _handle_window(delta) or bashing
+	if bashing: # held up by a door or window it's breaking: that's not stuck
+		_stuck_time = 0.0
+	elif moving and (state == State.INVESTIGATE or (state == State.IDLE and march_to != Vector3.INF)):
+		_check_stuck(before, delta)
+
+
+## Hunting or investigating and as close as its path gets, short of where it's
+## going: if something it can bash (a fence or gate you built, structure_piece.gd)
+## is right there between it and that spot (within BLOCKER_REACH, and no
+## further than the spot), it beats on it. (Fences are in the
+## navigation mesh, so paths go around them and never run into one the way they
+## run into doors.) True if it's bashing something.
+func _bash_blocker(toward: Vector3, delta: float) -> bool:
+	var from := global_position + Vector3(0, 0.6, 0)
+	var to := _flat(toward - global_position)
+	if to.length() < 0.1:
+		return false
+	var dir := to.normalized()
+	# No further than the spot itself: a fence beyond it isn't in the way.
+	var reach := minf(BLOCKER_REACH, to.length())
+	var query := PhysicsRayQueryParameters3D.create(from, from + dir * reach, GameData.LAYER_WORLD, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return false
+	var thing: Object = hit["collider"]
+	if not (thing.has_method("can_be_bashed") and thing.call("can_be_bashed")):
+		return false
+	_face(dir)
+	thing.call("bash", door_damage_per_second * delta)
+	if not thing.call("can_be_bashed"):
+		_gap_time = GAP_TIME # broke it
+	return true
+
+
+## Just broke a fence on its way to toward: walks straight at it while the
+## navigation mesh catches up, as long as nothing's in the way and it's on the
+## level. True if it's walking.
+func _through_gap(toward: Vector3, move_speed: float) -> bool:
+	if _gap_time <= 0.0:
+		return false
+	_gap_time -= get_physics_process_delta_time() * _step_scale
+	var to := _flat(toward - global_position)
+	if to.length() < 0.5 or absf(toward.y - global_position.y) > 0.5:
+		_gap_time = 0.0
+		return false
+	var from := global_position + Vector3(0, 0.6, 0)
+	var query := PhysicsRayQueryParameters3D.create(from, from + to.normalized() * minf(to.length(), BLOCKER_REACH),
+			GameData.LAYER_WORLD, [get_rid()])
+	if not get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+		return false
+	velocity.x = to.normalized().x * move_speed
+	velocity.z = to.normalized().z * move_speed
+	_face(to)
+	return true
 
 
 ## Its path runs through doorways (doors aren't in the navigation mesh), so a
 ## closed door shows up as something it bumped into while walking. (Anything
 ## with can_be_bashed() and bash(); planks and barricades have neither.)
-func _bash_doors(delta: float) -> void:
+## True if it's bashing one.
+func _bash_doors(delta: float) -> bool:
 	for i in get_slide_collision_count():
 		var thing := get_slide_collision(i).get_collider()
 		if thing and thing.has_method("can_be_bashed") and thing.call("can_be_bashed"):
 			thing.call("bash", door_damage_per_second * delta)
-			return
+			return true
+	return false
 
 
 # --- Windows -------------------------------------------------------------------
@@ -300,18 +468,21 @@ func _on_link_reached(details: Dictionary) -> void:
 ## At a window on its path: beat on the glass, or climb through once it's gone.
 ## (It can't reach the glass to bump it: the wall below the window sticks out
 ## further, so the blows are dealt here rather than by _bash_doors.)
-func _handle_window(delta: float) -> void:
+## True if it's beating on the glass.
+func _handle_window(delta: float) -> bool:
 	if _window_link == null:
-		return
+		return false
 	var pane: WindowPane = _window_link.get_meta("window")
 	if not is_instance_valid(pane) or _flat(global_position - _window_entry).length() > 2.0:
 		_window_link = null # moved on
 	elif pane.can_be_bashed():
 		pane.bash(door_damage_per_second * delta)
+		return true
 	elif pane.is_passable():
 		_vault()
 	else:
 		_window_link = null # boarded up: its next path won't use this window
+	return false
 
 
 ## Over the sill and in (or out): up to just above it, then down the other side.
@@ -422,6 +593,8 @@ func _can_reach(candidate: Node3D) -> bool:
 
 ## Idle and done with what it was doing: shuffle a few steps, or set off roaming.
 func _next_wander() -> void:
+	if march_to != Vector3.INF and _navigation_ready() and _start_march():
+		return
 	var night := 1.0 - _light()
 	if _navigation_ready() and randf() < lerpf(roam_chance_day, roam_chance_night, night):
 		_start_roam_leg()
@@ -458,6 +631,51 @@ func _start_roam_leg() -> void:
 	wander_timer = length / maxf(speed * ROAM_SPEED, 0.1) + 15.0
 
 
+## In a horde: straight for march_to. It counts as roaming, so others roaming
+## nearby get pulled along the same way (_start_roam_leg).
+## False if it can't get there from here: it's out of the horde.
+func _start_march() -> bool:
+	if march_map.is_valid() and NavigationServer3D.map_get_iteration_id(march_map) > 0:
+		var from := NavigationServer3D.map_get_closest_point(march_map, global_position)
+		var path := NavigationServer3D.map_get_path(march_map, from, march_to, true)
+		if from.distance_to(global_position) > 1.5 or path.is_empty() \
+				or _flat(path[path.size() - 1] - march_to).length() > MARCH_ARRIVED:
+			_end_march()
+			return false
+	var to := _flat(march_to - global_position)
+	if to.length_squared() > 0.0001:
+		roam_heading = to.normalized()
+	if _march_time_left == INF: # gives up if it isn't there well after it should be
+		_march_time_left = to.length() / minf(speed, MARCH_SPEED) * 2.0 + 60.0
+	wander_target = march_to
+	roaming = true
+	wander_timer = 60.0 # then finds the way again from wherever it's got to
+	return true
+
+
+func _end_march() -> void:
+	march_to = Vector3.INF
+	_march_time_left = INF
+	_stuck_time = 0.0
+
+
+## Hardly moving for a while: jammed in a crowd (two in a gap at once, walkers
+## behind a crawler, a crowd round the spot they all heard something at) or
+## pushing into a wall. Investigating, it then lingers where it is (see
+## _physics_process); marching in a horde, it steps aside, then carries on.
+func _check_stuck(before: Vector3, delta: float) -> void:
+	if _flat(global_position - before).length() > minf(speed, MARCH_SPEED) * delta * 0.25:
+		_stuck_time = 0.0
+		return
+	_stuck_time += delta
+	if state != State.IDLE or _stuck_time < UNSTICK_AFTER:
+		return
+	_stuck_time = 0.0
+	roaming = false
+	wander_target = global_position + Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU) * randf_range(2.0, 4.0)
+	wander_timer = randf_range(1.0, 2.5) # then _next_wander picks the walk back up
+
+
 ## 0 at darkest night, 1 in full day.
 func _light() -> float:
 	if day_night == null:
@@ -468,6 +686,7 @@ func _light() -> float:
 func _investigate(pos: Vector3) -> void:
 	state = State.INVESTIGATE
 	roaming = false
+	_stuck_time = 0.0
 	investigate_pos = pos
 	linger_timer = linger_time
 	repath_timer = 0.0
@@ -476,6 +695,7 @@ func _investigate(pos: Vector3) -> void:
 func _set_idle() -> void:
 	state = State.IDLE
 	roaming = false
+	_stuck_time = 0.0
 	target = null
 	wander_timer = randf_range(2.0, 5.0)
 	wander_target = global_position
@@ -516,7 +736,7 @@ func die(animate := true) -> void:
 	remove_from_group("zombies") # stops hearing, being hit, and being targeted
 	collision.set_deferred("disabled", true) # deferred: physics may be mid-step
 	set_physics_process(false)
-	if kind == "crawler": # already down: it just goes still
+	if _crawls(): # already down: it just goes still
 		if animate:
 			Sound.play_at(self, "zombie_death", global_position + Vector3.UP, -2.0, 25.0, 0.12, _voice_pitch())
 		return
@@ -549,24 +769,40 @@ func _alert_sound() -> void:
 	Sound.play_at(self, "zombie_alert", global_position + Vector3(0, eye_height, 0), 0.0, 28.0, 0.15, _voice_pitch())
 
 
+func _set_flash(amount: float) -> void:
+	_body.set_instance_shader_parameter("flash", amount)
+
+
 func _flash() -> void:
 	var tween := create_tween().set_parallel(true)
-	for i in materials.size():
-		materials[i].albedo_color = Color(1.0, 0.85, 0.85)
-		tween.tween_property(materials[i], "albedo_color", base_colors[i], 0.25)
+	tween.tween_method(_set_flash, 1.0, 0.0, 0.25)
 
 
 # --- Movement ----------------------------------------------------------------
 
 ## Steps along a navigation path toward a point. Returns false once arrived (or no path).
 func _walk_to(point: Vector3, move_speed: float, delta: float) -> bool:
+	var map := march_map if state == State.IDLE and march_to != Vector3.INF and march_map.is_valid() \
+			else get_world_3d().navigation_map
+	if agent.get_navigation_map() != map: # in a horde: the outdoor map while marching
+		agent.set_navigation_map(map)
+		repath_timer = 0.0
 	if not _navigation_ready():
 		return false
 	repath_timer -= delta
-	if repath_timer <= 0.0 or point.distance_squared_to(agent.target_position) > 1.0:
-		agent.target_position = point
-		repath_timer = REPATH_INTERVAL if state == State.HUNT else CALM_REPATH_INTERVAL
+	var new_point := point.distance_squared_to(agent.target_position) > 1.0
+	var waiting := false # wants a path to a new point, but this frame's are used up
+	if repath_timer <= 0.0 or new_point:
+		if _take_path_request():
+			agent.target_position = point
+			repath_timer = REPATH_INTERVAL if state == State.HUNT else CALM_REPATH_INTERVAL
+		else:
+			waiting = new_point
 	if agent.is_navigation_finished():
+		if waiting: # its old path is done: stand still a frame rather than look arrived
+			velocity.x = 0.0
+			velocity.z = 0.0
+			return true
 		return false
 	var dir := _flat(agent.get_next_path_position() - global_position)
 	if dir.length() < 0.05:
@@ -575,6 +811,18 @@ func _walk_to(point: Vector3, move_speed: float, delta: float) -> bool:
 	velocity.x = dir.x * move_speed
 	velocity.z = dir.z * move_speed
 	_face(dir)
+	return true
+
+
+## One of this physics frame's PATHS_PER_FRAME path requests, if any are left.
+static func _take_path_request() -> bool:
+	var frame := Engine.get_physics_frames()
+	if frame != _paths_frame:
+		_paths_frame = frame
+		_paths_left = PATHS_PER_FRAME
+	if _paths_left <= 0:
+		return false
+	_paths_left -= 1
 	return true
 
 
@@ -589,9 +837,22 @@ func _move(frames: float) -> void:
 	velocity /= frames
 
 
-func _far_from_camera() -> bool:
+## How often it thinks and moves: every physics frame up close or while after
+## someone (or reeling from a hit), every MID_TICK frames from MID_DISTANCE,
+## every FAR_TICK frames from FAR_DISTANCE and every VERY_FAR_TICK frames from
+## VERY_FAR_DISTANCE.
+func _update_every() -> int:
+	if state == State.HUNT or stagger_timer > 0.0:
+		return 1
 	var camera := get_viewport().get_camera_3d()
-	return camera != null and global_position.distance_squared_to(camera.global_position) > FAR_DISTANCE * FAR_DISTANCE
+	if camera == null:
+		return 1
+	var dist_sq := global_position.distance_squared_to(camera.global_position)
+	if dist_sq > VERY_FAR_DISTANCE * VERY_FAR_DISTANCE:
+		return VERY_FAR_TICK
+	if dist_sq > FAR_DISTANCE * FAR_DISTANCE:
+		return FAR_TICK
+	return MID_TICK if dist_sq > MID_DISTANCE * MID_DISTANCE else 1
 
 
 func _face(dir: Vector3) -> void:

@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="SurvivorData" format=3]
+
+[ext_resource type="Script" path="res://quests/quest_dialogue_node.gd" id="1_jgsqo"]
+[ext_resource type="Script" path="res://quests/quest_reply.gd" id="2_kxp51"]
+[ext_resource type="Script" path="res://quests/quest_dialogue.gd" id="3_q5pq0"]
+[ext_resource type="Script" path="res://characters/npcs/survivor_data.gd" id="4_csp0n"]
+
+[sub_resource type="Resource" id="Resource_gx31g"]
+script = ExtResource("1_jgsqo")
+lines = Array[String](["Easy on those planks. Took me all afternoon to put them up.", "Gus. I fix engines. Fixed, anyway. Not much driving these days.", "The police station, huh? Tell the Chief I'll keep that generator running."])
+
+[sub_resource type="Resource" id="Resource_jx6ww"]
+script = ExtResource("3_q5pq0")
+nodes = Array[ExtResource("1_jgsqo")]([SubResource("Resource_gx31g")])
+
+[resource]
+script = ExtResource("4_csp0n")
+display_name = "Gus Lindqvist"
+outfit_color = Color(0.25, 0.3, 0.38, 1)
+skin_color = Color(0.78, 0.63, 0.52, 1)
+join_talk = SubResource("Resource_jx6ww")
+base_line = "Generator's running rough. I'll get to it."

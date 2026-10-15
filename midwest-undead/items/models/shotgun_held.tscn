@@ -1,0 +1,58 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_oohli"]
+albedo_color = Color(0.16, 0.16, 0.18, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_i2i7x"]
+material = SubResource("StandardMaterial3D_oohli")
+size = Vector3(0.05, 0.05, 0.62)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_m7cb1"]
+albedo_color = Color(0.16, 0.16, 0.18, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_nt574"]
+material = SubResource("StandardMaterial3D_m7cb1")
+size = Vector3(0.07, 0.09, 0.32)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_p0w6v"]
+albedo_color = Color(0.36, 0.24, 0.14, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_0j0tk"]
+material = SubResource("StandardMaterial3D_p0w6v")
+size = Vector3(0.06, 0.1, 0.3)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v0d23"]
+albedo_color = Color(0.36, 0.24, 0.14, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_5hc3s"]
+material = SubResource("StandardMaterial3D_v0d23")
+size = Vector3(0.07, 0.06, 0.2)
+
+[node name="Shotgun" type="Node3D" unique_id=1874097274]
+
+[node name="Barrel" type="MeshInstance3D" parent="." unique_id=847587345]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -0.28)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_i2i7x")
+
+[node name="Receiver" type="MeshInstance3D" parent="." unique_id=1162205250]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.01, 0.05)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_nt574")
+
+[node name="Stock" type="MeshInstance3D" parent="." unique_id=853035634]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, 0.32)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_0j0tk")
+
+[node name="Pump" type="MeshInstance3D" parent="." unique_id=1602802164]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, -0.25)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_5hc3s")
+
+[node name="MuzzleFlash" type="OmniLight3D" parent="." unique_id=651424744]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, -0.62)
+visible = false
+light_color = Color(1, 0.8, 0.5, 1)
+light_energy = 5.6
+omni_range = 6.0

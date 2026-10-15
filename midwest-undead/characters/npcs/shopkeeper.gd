@@ -11,7 +11,7 @@ extends HumanNPC
 const Inventory := preload("res://items/inventory.gd")
 
 @export_group("Shop")
-## What the trader starts with. Keys must be item ids from game_data.gd.
+## What the trader starts with. Keys must be item ids (the files in items/data/).
 @export var starting_stock: Dictionary[String, int] = {
 	"pistol_ammo": 60, "shotgun_shells": 10, "rifle_rounds": 5, "health_pack": 3, "crowbar": 1, "canned_food": 4,
 	"batteries": 4, "planks": 8, "barricade": 3, "plywood": 4, "scrap_metal": 4,
@@ -97,7 +97,7 @@ func interact_prompt() -> String:
 
 func _drop_unknown(dict: Dictionary, what: String) -> void:
 	for id in dict.keys():
-		if not GameData.ITEMS.has(id):
+		if not GameData.has_item(id):
 			push_warning("%s %s: unknown item id '%s' ignored. Valid ids: %s"
-					% [display_name, what, id, GameData.ITEMS.keys()])
+					% [display_name, what, id, GameData.item_ids()])
 			dict.erase(id)

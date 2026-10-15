@@ -1,0 +1,27 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_85rso"]
+albedo_color = Color(0.45, 0.12, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_c0b68"]
+material = SubResource("StandardMaterial3D_85rso")
+size = Vector3(0.035, 0.035, 0.75)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flg3i"]
+albedo_color = Color(0.45, 0.12, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_u6slj"]
+material = SubResource("StandardMaterial3D_flg3i")
+size = Vector3(0.035, 0.12, 0.035)
+
+[node name="Crowbar" type="Node3D" unique_id=1988822345]
+
+[node name="Bar" type="MeshInstance3D" parent="." unique_id=500390071]
+transform = Transform3D(1, 0, 0, 0, 0.9396926, -0.34202012, 0, 0.34202012, 0.9396926, 0, 0.05, -0.25)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_c0b68")
+
+[node name="Hook" type="MeshInstance3D" parent="Bar" unique_id=356690457]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -0.36)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_u6slj")

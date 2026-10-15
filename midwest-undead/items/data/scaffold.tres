@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://items/item_data.gd" id="1_fn7bm"]
+
+[resource]
+script = ExtResource("1_fn7bm")
+id = "scaffold"
+display_name = "Scaffolding"
+use = "build"
+order = 160
+color = Color(0.42, 0.43, 0.45, 1)
+size = Vector3(0.3, 0.06, 0.3)

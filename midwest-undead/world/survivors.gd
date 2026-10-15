@@ -1,20 +1,23 @@
 extends Node
-## Survivors holed up in boarded-up houses around town: four, plus Walt the
-## machinist (who makes ammo benches once the woodworker is at the station). Every door and
-## window of their house is planked shut from outside (set "boarded at start" in
-## the town scene): pull the planks off the door to get in. Each is in the
+## Survivors holed up in boarded-up houses around town. Each is a file in
+## characters/npcs/survivors/ (SurvivorData: who they are and what they say):
+## four, plus Walt the machinist (who makes sheet metal, and ammo benches once
+## the woodworker is at the station). Every door and window of their house is
+## planked shut from outside (set "boarded at start" in the town scene): pull
+## the planks off the door to get in. Each is in the
 ## bedroom, by the bed, with a couple of cans of food and two health packs on the
 ## floor beside them (ground items in the town scene).
 ## Where each one starts, and their spot in the station's back yard, are
 ## SpawnPoints in the town scene (roles "survivor" and "survivor_home", with the
 ## person's name).
 ## Talk to one and they join you, if the base has room (base_camp.gd; if not,
-## they stay put and say so). They make their own way to the police station
+## they stay put and say so), the way their join talk says (a "join" reply, or
+## hearing it out; quests/conversation.gd plays it). They make their own way to the police station
 ## (once you're out of sight of them and of the station), and live in the back
 ## yard, each with a bedroll. Talk to them there to put them on a garden plot or
 ## ammo bench, or (the machinist) to have something made.
 ## main.gd creates it once the town is built and sends conversations here.
-## Saved: where each one has got to. (Their planks and supplies are saved with
+## Saved: where each one has got to, by name. (Their planks and supplies are saved with
 ## the rest of the fortifications and ground items.)
 
 const Building := preload("res://world/building.gd")
@@ -23,6 +26,11 @@ const Survivor := preload("res://characters/npcs/survivor.gd")
 const SurvivorScene := preload("res://characters/npcs/survivor.tscn")
 const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Recipes := preload("res://core/recipes.gd")
+const Conversation := preload("res://quests/conversation.gd")
+
+const DIR := "res://characters/npcs/survivors/"
+## Saves from before survivors were files list them in this order.
+const OLD_SAVE_ORDER := ["Marisol Vega", "Dale Hutchins", "Priya Raman", "Gus Lindqvist", "Walt Brenner"]
 
 const OUT_OF_SIGHT := 40.0
 const CHECK_INTERVAL := 0.5
@@ -33,48 +41,17 @@ const FULL_LINES: Array[String] = [
 ]
 const STATION_NAMES := {"garden_plot": "garden", "ammo_bench": "ammo bench", "shell_bench": "shell bench",
 		"rifle_bench": "rifle bench"}
-const MACHINIST_NEEDS_WOODWORKER := "I can make you ammo benches, but not the frames for them. Get a woodworker set up at the station and I'll get to work."
-## Who they are. "job": what they do at the base besides working a station.
-const PEOPLE := [
-	{"name": "Marisol Vega",
-			"outfit": Color(0.35, 0.55, 0.6), "skin": Color(0.62, 0.46, 0.36),
-			"join": ["Don't shoot! ...Okay. Okay, you're real. That's a first in a while.",
-				"I'm Marisol. I was a nurse at County General, back when there was a County General.",
-				"The police station's still holding? Then I'm going. Somebody there will need patching up."],
-			"home_lines": ["Quiet back here, behind the station. I'd almost forgotten what quiet sounds like."]},
-	{"name": "Dale Hutchins",
-			"outfit": Color(0.42, 0.38, 0.25), "skin": Color(0.74, 0.58, 0.47),
-			"join": ["Who's there? ...You're not one of them. Thank God.",
-				"Dale Hutchins. Had a farm out past the grain elevator. Boarded myself in here when the town went.",
-				"Station's got walls and people? I'll take it. I can still swing a shovel."],
-			"home_lines": ["Never thought I'd miss the smell of a feedlot."]},
-	{"name": "Priya Raman",
-			"outfit": Color(0.5, 0.28, 0.35), "skin": Color(0.55, 0.4, 0.3),
-			"join": ["Is it... is it over out there? No. Of course it isn't.",
-				"Priya. I was home from college for the summer. My parents went out for supplies the first day.",
-				"If there are people at the police station, I want to be with people. I'll go."],
-			"home_lines": ["I'm keeping a list of everyone who makes it through the gate. Someone should remember."]},
-	{"name": "Gus Lindqvist",
-			"outfit": Color(0.25, 0.3, 0.38), "skin": Color(0.78, 0.63, 0.52),
-			"join": ["Easy on those planks. Took me all afternoon to put them up.",
-				"Gus. I fix engines. Fixed, anyway. Not much driving these days.",
-				"The police station, huh? Tell the Chief I'll keep that generator running."],
-			"home_lines": ["Generator's running rough. I'll get to it."]},
-	{"name": "Walt Brenner", "job": "machinist",
-			"outfit": Color(0.3, 0.32, 0.3), "skin": Color(0.7, 0.55, 0.45),
-			"join": ["Hands where I can see 'em. ...Fine. You're no bandit.",
-				"Walt Brenner. Ran the machine shop on Route 9 for thirty years. Lathes, presses, reloading gear.",
-				"Got people at the police station? Then I'll come. Somebody's got to keep you in bullets."],
-			"home_lines": []},
-]
+const MACHINIST_NEEDS_WOODWORKER := "I can press scrap into sheet metal for you. Ammo benches need frames, though: get a woodworker set up at the station and I'll make those too."
+
 
 var survivors: Array[Survivor] = []
 var houses: Array[Building] = [] # the house each one is holed up in (null if their spot isn't in one)
-var _people: Array[Dictionary] = [] # each survivor's entry in PEOPLE
+var _people: Array[SurvivorData] = [] # each survivor's file
 var _homes: Array[Vector3] = [] # each survivor's spot in the station yard
 var _player: Node3D
 var _dialogue: Node
 var _choices: Node # ui/choice_menu.gd
+var _conversation: Conversation
 var _crafting: Node # ui/craft_menu.gd
 var _base: Node # base_camp.gd
 var _woodworker: Node # woodworker_rescue.gd
@@ -82,19 +59,19 @@ var _bedrolls := {} # survivor -> its bedroll in the yard
 var _timer := 0.0
 
 
-## spots: the town's SpawnPoints. Puts everyone in place, in PEOPLE order.
+## spots: the town's SpawnPoints. Puts everyone in place.
 func setup(spots: Array) -> void:
-	for person: Dictionary in PEOPLE:
-		var start := _spot(spots, "survivor", person["name"])
-		var home := _spot(spots, "survivor_home", person["name"])
+	for person in _load_people():
+		var start := _spot(spots, "survivor", person.display_name)
+		var home := _spot(spots, "survivor_home", person.display_name)
 		if start == null or home == null:
-			push_warning("%s has no \"survivor\" or \"survivor_home\" SpawnPoint in the town scene." % person["name"])
+			push_warning("%s has no \"survivor\" or \"survivor_home\" SpawnPoint in the town scene." % person.display_name)
 			continue
 		var survivor := SurvivorScene.instantiate() as Survivor
-		survivor.display_name = person["name"]
-		survivor.outfit_color = person["outfit"]
-		survivor.skin_color = person["skin"]
-		survivor.job = person.get("job", "")
+		survivor.display_name = person.display_name
+		survivor.outfit_color = person.outfit_color
+		survivor.skin_color = person.skin_color
+		survivor.job = "" if person.job == "none" else person.job
 		survivor.position = start.global_position
 		survivor.rotation.y = start.global_rotation.y
 		get_parent().add_child(survivor)
@@ -105,6 +82,23 @@ func setup(spots: Array) -> void:
 		while house != null and not house is Building:
 			house = house.get_parent()
 		houses.append(house as Building)
+
+
+## Every survivor file, by file name.
+func _load_people() -> Array[SurvivorData]:
+	var people: Array[SurvivorData] = []
+	var files := Array(DirAccess.get_files_at(DIR))
+	files.sort()
+	for file: String in files:
+		file = file.trim_suffix(".remap") # exported games list "x.tres.remap"
+		if not file.ends_with(".tres"):
+			continue
+		var person := load(DIR + file) as SurvivorData
+		if person == null or person.display_name == "":
+			push_warning("%s isn't a survivor with a name: skipped." % (DIR + file))
+			continue
+		people.append(person)
+	return people
 
 
 func _spot(spots: Array, role: String, person_name: String) -> SpawnPoint:
@@ -120,6 +114,7 @@ func attach(player: Node3D, dialogue: Node, choices: Node, crafting: Node, base:
 	_player = player
 	_dialogue = dialogue
 	_choices = choices
+	_conversation = Conversation.new(player, dialogue, choices)
 	_crafting = crafting
 	_base = base
 	_woodworker = woodworker
@@ -144,27 +139,40 @@ func talk(survivor: Survivor) -> void:
 	var i := survivors.find(survivor)
 	if i < 0:
 		return
-	var person: Dictionary = _people[i]
+	var person := _people[i]
 	match survivor.state:
 		Survivor.State.WAITING:
 			if _base.call("is_full"):
 				_dialogue.call("start", survivor.display_name, FULL_LINES, _player)
 				return
-			var lines: Array[String] = []
-			lines.assign(person["join"])
-			_dialogue.call("start", survivor.display_name, lines, _player, _recruited.bind(survivor))
+			# With a "join" reply, that's what brings them; without one, hearing them out.
+			var by_reply := Conversation.has_action(person.join_talk, "join")
+			_conversation.play(person.join_talk, survivor.display_name,
+					Callable() if by_reply else _recruited.bind(survivor),
+					func(action: String) -> void:
+						if action == "join":
+							_recruited(survivor))
 		Survivor.State.HOME:
-			if survivor.job == "machinist":
-				var home: bool = _woodworker.call("state") == Woodworker.State.HOME
-				_crafting.call("open", _player, survivor.display_name, Recipes.MACHINIST if home else [],
-						"" if home else MACHINIST_NEEDS_WOODWORKER)
+			if person.base_talk:
+				_conversation.play(person.base_talk, survivor.display_name, _work_menu.bind(survivor, person))
 			else:
-				_offer_jobs(survivor, person)
+				_work_menu(survivor, person)
+
+
+## At the base: the machinist's crafting, or everyone else's stations.
+func _work_menu(survivor: Survivor, person: SurvivorData) -> void:
+	if survivor.job == "machinist":
+		var home: bool = _woodworker.call("state") == Woodworker.State.HOME
+		_crafting.call("open", _player, survivor.display_name,
+				Recipes.MACHINIST_ANYTIME + (Recipes.MACHINIST if home else []),
+				"" if home else MACHINIST_NEEDS_WOODWORKER)
+	else:
+		_offer_jobs(survivor, person)
 
 
 ## A survivor at the base: what are they doing, and do you want them on a station?
-func _offer_jobs(survivor: Survivor, person: Dictionary) -> void:
-	var line: String = person["home_lines"][0]
+func _offer_jobs(survivor: Survivor, person: SurvivorData) -> void:
+	var line := person.base_line
 	var piece := survivor.work_piece if survivor.working and is_instance_valid(survivor.work_piece) else null
 	if piece != null:
 		line = "I'm on the %s. %s" % [STATION_NAMES[piece.get("kind")], line]
@@ -180,6 +188,8 @@ func _offer_jobs(survivor: Survivor, person: Dictionary) -> void:
 
 
 func _recruited(survivor: Survivor) -> void:
+	if survivor.state != Survivor.State.WAITING or _base.call("is_full"):
+		return
 	survivor.state = Survivor.State.TRAVELLING
 	_player.emit_signal("notify", "%s is heading to the police station." % survivor.display_name)
 
@@ -202,13 +212,26 @@ func recruited_count() -> int:
 	return survivors.filter(func(s: Survivor) -> bool: return s.state != Survivor.State.WAITING).size()
 
 
-func save_state() -> Array:
-	return survivors.map(func(s: Survivor) -> int: return s.state)
+## name -> state.
+func save_state() -> Dictionary:
+	var data := {}
+	for survivor in survivors:
+		data[survivor.display_name] = survivor.state
+	return data
 
 
-func load_state(data: Array) -> void:
-	for i in mini(data.size(), survivors.size()):
-		var saved := int(data[i])
+## data: name -> state (or, from older saves, a list in OLD_SAVE_ORDER).
+func load_state(data: Variant) -> void:
+	var by_name := {}
+	if data is Array:
+		for i in mini((data as Array).size(), OLD_SAVE_ORDER.size()):
+			by_name[OLD_SAVE_ORDER[i]] = data[i]
+	elif data is Dictionary:
+		by_name = data
+	for i in survivors.size():
+		if not by_name.has(survivors[i].display_name):
+			continue
+		var saved := int(by_name[survivors[i].display_name])
 		if saved == Survivor.State.HOME:
 			_send_home(i)
 		elif saved == Survivor.State.TRAVELLING:

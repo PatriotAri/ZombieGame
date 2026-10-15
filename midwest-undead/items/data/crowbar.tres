@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="PackedScene" path="res://items/models/crowbar_held.tscn" id="1_ath27"]
+[ext_resource type="Script" path="res://items/weapon_data.gd" id="2_xokkp"]
+
+[resource]
+script = ExtResource("2_xokkp")
+weapon_kind = "melee"
+held_model = ExtResource("1_ath27")
+held_position = Vector3(0.35, -0.35, -0.55)
+damage = 45.0
+reach = 2.3
+cooldown = 0.7
+knockback = 4.0
+noise = 9.0
+salvages = true
+id = "crowbar"
+display_name = "Crowbar"
+order = 40
+color = Color(0.45, 0.12, 0.1, 1)
+size = Vector3(0.05, 0.05, 0.75)

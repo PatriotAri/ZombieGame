@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="PackedScene" path="res://items/models/shotgun_held.tscn" id="1_aharv"]
+[ext_resource type="Script" path="res://items/weapon_data.gd" id="2_w2rhw"]
+
+[resource]
+script = ExtResource("2_w2rhw")
+held_model = ExtResource("1_aharv")
+damage = 20.0
+reach = 28.0
+cooldown = 0.95
+knockback = 2.5
+noise = 52.0
+ammo = "shotgun_shells"
+magazine = 5
+pellets = 9
+spread = 5.0
+aimed_spread = 3.5
+reload_time = 2.6
+aim_fov = 62.0
+kick = 24.0
+sound = "shotgun_shot"
+id = "shotgun"
+display_name = "Shotgun"
+order = 20
+color = Color(0.3, 0.2, 0.13, 1)
+size = Vector3(0.1, 0.1, 0.9)

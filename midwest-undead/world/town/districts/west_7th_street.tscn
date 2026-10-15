@@ -785,12 +785,16 @@ size = Vector3(0.06, 0.01, 0.144)
 size = Vector3(0.5, 0.3, 0.5)
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_n5fb7"]
+radial_segments = 16
+rings = 1
 material = ExtResource("21_kv2ou")
 top_radius = 4.0
 bottom_radius = 4.0
 height = 5.0
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_5qshy"]
+radial_segments = 16
+rings = 1
 material = ExtResource("20_cxari")
 top_radius = 0.2
 bottom_radius = 4.2

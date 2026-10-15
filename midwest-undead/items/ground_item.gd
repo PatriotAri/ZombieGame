@@ -5,6 +5,8 @@ extends Area3D
 ## detect areas on the items layer.
 
 const GameData := preload("res://core/game_data.gd")
+const ViewDistance := preload("res://core/view_distance.gd")
+const VIEW_METERS := 30.0 # past this it isn't drawn (core/view_distance.gd)
 
 @export var item_id := ""
 @export var amount := 1
@@ -17,24 +19,40 @@ func setup(id: String, count := 1) -> void:
 
 
 ## Items in the town scene come with their meshes and pickup zone already (made
-## when the town was frozen); one placed with just an item_id gets them here.
+## when the town was frozen); one placed with just an item_id gets them here. An
+## item with a model (items/data/) shows that instead of the saved boxes.
 func _ready() -> void:
 	add_to_group("ground_items")
 	collision_layer = GameData.LAYER_ITEMS
 	collision_mask = 0
-	if get_child_count() == 0 and GameData.ITEMS.has(item_id):
-		_build()
+	var item := GameData.item(item_id)
+	if item == null:
+		return
+	_limit_view.call_deferred() # once its meshes are in
+	if get_child_count() == 0:
+		_build(item)
+	elif not item.model:
+		# The town scene saved a material with each box: share one per color.
+		for child in get_children():
+			var mesh := child as MeshInstance3D
+			if mesh and mesh.mesh and mesh.mesh.get_surface_count() > 0:
+				var mat := mesh.mesh.surface_get_material(0) as StandardMaterial3D
+				if mat:
+					mesh.set_surface_override_material(0, _shared(mat.albedo_color))
+	elif item.model:
+		for child in get_children():
+			if child is MeshInstance3D:
+				remove_child(child)
+				child.queue_free()
+		add_child(item.model.instantiate())
 
 
-func _build() -> void:
-	var id := item_id
-	var def: Dictionary = GameData.ITEMS[id]
-	var size: Vector3 = def["size"]
-	_add_box(size, Vector3(0, size.y / 2.0, 0), def["color"])
-	if id == "health_pack":
-		var red := Color(0.8, 0.1, 0.1)
-		_add_box(Vector3(size.x * 0.6, 0.01, 0.06), Vector3(0, size.y + 0.005, 0), red)
-		_add_box(Vector3(0.06, 0.01, size.z * 0.6), Vector3(0, size.y + 0.005, 0), red)
+func _build(item: ItemData) -> void:
+	var size := item.size
+	if item.model:
+		add_child(item.model.instantiate())
+	else:
+		_add_box(size, Vector3(0, size.y / 2.0, 0), item.color)
 
 	# The pickup zone is bigger than the item so small things are easy to aim at.
 	var zone := Vector3(maxf(size.x, 0.5), maxf(size.y, 0.3), maxf(size.z, 0.5))
@@ -47,18 +65,33 @@ func _build() -> void:
 	add_child(col)
 
 
+func _limit_view() -> void:
+	for geom: GeometryInstance3D in find_children("*", "GeometryInstance3D", true, false):
+		ViewDistance.limit(geom, VIEW_METERS)
+
+
 func get_label() -> String:
 	if amount > 1:
 		return "%s (%d)" % [GameData.item_name(item_id), amount]
 	return GameData.item_name(item_id)
 
 
+## One material per color, shared by every item of that color.
+static var _colors := {}
+
+
+static func _shared(color: Color) -> StandardMaterial3D:
+	if not _colors.has(color):
+		var made := StandardMaterial3D.new()
+		made.albedo_color = color
+		_colors[color] = made
+	return _colors[color]
+
+
 func _add_box(size: Vector3, pos: Vector3, color: Color) -> void:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
 	var box := BoxMesh.new()
 	box.size = size
-	box.material = mat
+	box.material = _shared(color)
 	var inst := MeshInstance3D.new()
 	inst.mesh = box
 	inst.position = pos

@@ -10,6 +10,10 @@ const WOODWORKER := [
 	{"id": "fence_gate", "needs": {"planks": 3, "plywood": 1, "scrap_metal": 1}},
 	{"id": "garden_plot", "needs": {"planks": 4}},
 ]
+## The machinist makes these any time.
+const MACHINIST_ANYTIME := [
+	{"id": "sheet_metal", "needs": {"scrap_metal": 10}},
+]
 ## The machinist needs the woodworker at the station to make these (for the frames).
 const MACHINIST := [
 	{"id": "ammo_bench", "needs": {"planks": 2, "plywood": 2, "scrap_metal": 4}},

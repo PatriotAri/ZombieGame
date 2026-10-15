@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="SurvivorData" format=3]
+
+[ext_resource type="Script" path="res://quests/quest_dialogue_node.gd" id="1_u4hs4"]
+[ext_resource type="Script" path="res://quests/quest_reply.gd" id="2_a65nm"]
+[ext_resource type="Script" path="res://quests/quest_dialogue.gd" id="3_bohxj"]
+[ext_resource type="Script" path="res://characters/npcs/survivor_data.gd" id="4_t7w3o"]
+
+[sub_resource type="Resource" id="Resource_vw68w"]
+script = ExtResource("1_u4hs4")
+lines = Array[String](["Don't shoot! ...Okay. Okay, you're real. That's a first in a while.", "I'm Marisol. I was a nurse at County General, back when there was a County General.", "The police station's still holding? Then I'm going. Somebody there will need patching up."])
+
+[sub_resource type="Resource" id="Resource_yntg3"]
+script = ExtResource("3_bohxj")
+nodes = Array[ExtResource("1_u4hs4")]([SubResource("Resource_vw68w")])
+
+[resource]
+script = ExtResource("4_t7w3o")
+display_name = "Marisol Vega"
+outfit_color = Color(0.35, 0.55, 0.6, 1)
+skin_color = Color(0.62, 0.46, 0.36, 1)
+join_talk = SubResource("Resource_yntg3")
+base_line = "Quiet back here, behind the station. I'd almost forgotten what quiet sounds like."

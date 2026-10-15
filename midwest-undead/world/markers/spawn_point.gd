@@ -13,7 +13,8 @@ extends Marker3D
 	set(value):
 		role = value
 		_update_label()
-## survivor and survivor_home: whose spot it is (a name in world/survivors.gd's PEOPLE).
+## survivor and survivor_home: whose spot it is (a survivor's name, from their file
+## in characters/npcs/survivors/).
 @export var person := "":
 	set(value):
 		person = value

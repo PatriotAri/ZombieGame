@@ -47,14 +47,14 @@ func to_dict() -> Dictionary:
 func from_dict(data: Dictionary) -> void:
 	_counts.clear()
 	for id in data:
-		if GameData.ITEMS.has(id):
+		if GameData.has_item(id):
 			add(id, int(data[id]))
 
 
 ## Item ids currently held, in display order.
 func ids() -> Array[String]:
 	var result: Array[String] = []
-	for id: String in GameData.ITEM_ORDER:
+	for id: String in GameData.item_ids():
 		if has(id):
 			result.append(id)
 	return result
