@@ -42,6 +42,20 @@ albedo_color = Color(0.16, 0.16, 0.18, 1)
 material = SubResource("StandardMaterial3D_qurn1")
 size = Vector3(0.02, 0.05, 0.02)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bolt"]
+albedo_color = Color(0.3, 0.3, 0.32, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_bolt"]
+material = SubResource("StandardMaterial3D_bolt")
+size = Vector3(0.06, 0.015, 0.015)
+
+[sub_resource type="SphereMesh" id="SphereMesh_knob"]
+material = SubResource("StandardMaterial3D_bolt")
+radius = 0.014
+height = 0.028
+radial_segments = 8
+rings = 4
+
 [node name="Rifle" type="Node3D" unique_id=1762422867]
 
 [node name="Barrel" type="MeshInstance3D" parent="." unique_id=916137773]
@@ -80,3 +94,19 @@ visible = false
 light_color = Color(1, 0.8, 0.5, 1)
 light_energy = 5.6
 omni_range = 6.0
+
+[node name="Bolt" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0.13)
+
+[node name="Handle" type="MeshInstance3D" parent="Bolt"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.055, 0, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_bolt")
+
+[node name="Knob" type="MeshInstance3D" parent="Bolt/Handle"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.03, 0, 0)
+cast_shadow = 0
+mesh = SubResource("SphereMesh_knob")
+
+[node name="LoadingPort" type="Marker3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, -1, 0, 0, 0, 1, 0, 0.04, 0.08)

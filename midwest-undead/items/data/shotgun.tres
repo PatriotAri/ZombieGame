@@ -6,6 +6,7 @@
 [resource]
 script = ExtResource("2_w2rhw")
 held_model = ExtResource("1_aharv")
+draw_time = 0.45
 damage = 20.0
 reach = 28.0
 cooldown = 0.95

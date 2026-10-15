@@ -56,11 +56,13 @@ A weapon is an item (everything above) plus how it fights. **Weapon Kind** is
 
 - **In your hands:**
   - **Held Model:** the scene in front of the camera. Copy
-    `items/models/pistol_held.tscn` to start. A gun's model can have an
-    OmniLight3D named `MuzzleFlash`, which flashes on each shot. No model: a
-    box like on the ground.
+    `items/models/pistol_held.tscn` to start. No model: a box like on the
+    ground. A model can have parts the game animates (a slide, a pump, a
+    magazine...) and its own animations: see `HOW_TO_MODEL.md`.
   - **Held Position:** where it sits (x right, y up, -z ahead of the camera).
     Guns use (0.25, -0.22, -0.45); the crowbar uses (0.35, -0.35, -0.55).
+  - **Draw Time:** seconds to bring it up when you switch to it. You can't use
+    it until it's up. The pistol takes 0.3; the rifle takes 0.5.
 - **Hitting (both kinds):**
   - **Damage:** per hit; for a gun, per pellet. Headshots do 2.5x.
   - **Reach:** how far a shot goes, or how far a swing reaches (meters).

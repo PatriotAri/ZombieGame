@@ -29,6 +29,7 @@ const Fortifications := preload("res://world/fortifications.gd")
 const Water := preload("res://world/water.gd")
 const Cover := preload("res://world/cover.gd")
 const Ground := preload("res://world/ground.gd")
+const Hands := preload("res://characters/player/hands.gd")
 
 @export_group("Movement")
 @export var walk_speed := 4.0
@@ -165,22 +166,15 @@ var prompt_text := "" # read by the HUD
 # Nodes from player.tscn. @onready fills these in just before _ready runs.
 @onready var camera: Camera3D = $Camera3D
 @onready var flashlight: SpotLight3D = $Camera3D/Flashlight
-@onready var weapon_pivot: Node3D = $Camera3D/WeaponPivot
-@onready var fist_mesh: MeshInstance3D = $Camera3D/WeaponPivot/Fists
-var gun_pivots := {} # gun id -> its model in your hands (made in _ready from its file)
-var melee_models := {} # melee weapon id -> its model, under weapon_pivot
-var _fists_rest := Vector3.ZERO # where weapon_pivot sits for empty hands
+## What's in your hands and how it moves: weapon models and their animations.
+@onready var hands: Hands = $Camera3D/Hands
 var _base_fov := 75.0
-@onready var item_pivot: Node3D = $Camera3D/ItemPivot # health packs, food: anything you use up
-@onready var held_item_mesh: MeshInstance3D = $Camera3D/ItemPivot/HeldItem
 
 var attack_cooldown := 0.0
 var reload_timer := 0.0
-var reload_tween: Tween
 var _use_left := 0.0 # time left bandaging / eating
-var _use_tween: Tween
-var _item_pivot_rest := Vector3.ZERO
 var stamina_regen_wait := 0.0
+var is_sprinting := false
 var step_timer := 0.0
 # Controller: sprint and crouch toggle with a press (holding a stick click or B
 # while also steering both sticks isn't practical). Keyboard keys are held instead.
@@ -233,11 +227,9 @@ func _ready() -> void:
 	inventory.add("planks", starting_planks)
 	inventory.add("barricade", starting_barricades)
 	_flashlight_energy = flashlight.light_energy
-	_item_pivot_rest = item_pivot.position
 	_base_fov = camera.fov
-	_fists_rest = weapon_pivot.position
-	_make_weapon_models()
-	_refresh_weapon_visuals()
+	hands.setup(self)
+	_refresh_weapon_visuals(false)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -389,6 +381,7 @@ func _physics_process(delta: float) -> void:
 	var direction := transform.basis * Vector3(input_dir.x, 0, input_dir.y)
 	var sprinting := (Input.is_action_pressed("sprint") or sprint_latched) and not is_crouching \
 			and stamina > 0.0 and direction != Vector3.ZERO and not aiming and not swimming
+	is_sprinting = sprinting
 	var speed := walk_speed
 	if swimming:
 		speed = swim_speed
@@ -478,10 +471,7 @@ func _die(cause: String) -> void:
 	_update_build_view() # hides the building preview
 	_ladders.clear()
 	flashlight.visible = false
-	weapon_pivot.visible = false
-	for pivot: Node3D in gun_pivots.values():
-		pivot.visible = false
-	item_pivot.visible = false
+	hands.visible = false
 	aiming = false
 	camera.fov = _base_fov
 	camera.position.y = 0.3 # collapse to the ground
@@ -541,7 +531,8 @@ func select(id: String) -> void:
 	held = id
 	_cancel_reload()
 	_cancel_use()
-	attack_cooldown = 0.25 # short delay to raise the new item
+	# Not usable until it's up (hands.gd puts the old one away and draws this).
+	attack_cooldown = hands.show_held(held) if is_node_ready() and not is_dead else 0.0
 	_refresh_weapon_visuals()
 
 
@@ -589,7 +580,7 @@ func load_state(data: Dictionary) -> void:
 	_hunger_stage = _stage_for(hunger)
 	var saved_held: String = data.get("held", "hands")
 	held = saved_held if saved_held == "hands" or inventory.has(saved_held) else "hands"
-	_refresh_weapon_visuals()
+	_refresh_weapon_visuals(false)
 
 
 # --- Inventory ---------------------------------------------------------------
@@ -673,13 +664,12 @@ func _start_use(duration: float) -> void:
 		return
 	_use_left = duration
 	Sound.play_ui(self, "eat" if GameData.item_use(held) == "eat" else "bandage", -4.0)
-	_use_tween = create_tween()
-	_use_tween.tween_property(item_pivot, "position", Vector3(0.0, -0.15, -0.35), 0.2)
+	hands.raise_item()
 
 
 func _finish_use() -> void:
 	_use_left = 0.0
-	_reset_item_pivot()
+	_lower_item()
 	if not inventory.has(held):
 		return
 	inventory.remove(held)
@@ -699,14 +689,12 @@ func _finish_use() -> void:
 
 func _cancel_use() -> void:
 	_use_left = 0.0
-	_reset_item_pivot()
+	_lower_item()
 
 
-func _reset_item_pivot() -> void:
-	if _use_tween:
-		_use_tween.kill()
+func _lower_item() -> void:
 	if is_node_ready():
-		item_pivot.position = _item_pivot_rest
+		hands.lower_item()
 
 
 # --- Interaction (pick up / open / trade) ------------------------------------
@@ -1055,12 +1043,8 @@ func _try_melee() -> void:
 	stamina -= cost
 	stamina_regen_wait = STAMINA_REGEN_DELAY
 	Sound.play_ui(self, "melee_swing", -6.0, 0.15)
-
 	# Quick strike, damage lands at the end of it, then a slower return.
-	var tween := create_tween()
-	tween.tween_property(weapon_pivot, "rotation_degrees", Vector3(-70, 25, 0), 0.08)
-	tween.tween_callback(_apply_melee_hit.bind(weapon))
-	tween.tween_property(weapon_pivot, "rotation_degrees", Vector3.ZERO, 0.25)
+	hands.swing(held, _apply_melee_hit.bind(weapon))
 
 
 ## Hits every zombie or person in range, roughly in front of you, and not behind a
@@ -1115,11 +1099,7 @@ func _update_aim(delta: float) -> void:
 	aiming = is_gun(held) and Input.is_action_pressed("aim") and not menu_open and reload_timer <= 0.0 and not swimming
 	var goal_fov: float = GameData.weapon(held).aim_fov if aiming else _base_fov
 	camera.fov = lerpf(camera.fov, goal_fov, minf(AIM_SPEED * delta, 1.0))
-	if is_gun(held):
-		var pivot: Node3D = gun_pivots[held]
-		var goal := Vector3(0.0, -0.16, -0.4) if aiming else GameData.weapon(held).held_position
-		pivot.position = pivot.position.lerp(goal, minf(AIM_SPEED * delta, 1.0))
-		pivot.visible = not is_scoped() # through the scope, the scope is all you see
+	# (hands.gd brings the gun up to the middle, and hides it through a scope.)
 
 
 ## Zoomed in, the same mouse movement turns you less (so aiming stays steady).
@@ -1140,7 +1120,7 @@ func _try_shoot() -> void:
 		return
 	mags[held] -= 1
 	attack_cooldown = gun.cooldown
-	_gun_kick(gun.kick)
+	hands.fire(held, mags[held] == 0)
 	make_noise(gun.noise)
 	Sound.play_ui(self, gun.sound, gun.sound_volume, 0.05, gun.sound_pitch)
 
@@ -1179,14 +1159,10 @@ func _start_reload() -> void:
 	if not inventory.has(gun.ammo):
 		notify.emit("No %s." % GameData.item_name(gun.ammo).to_lower())
 		return
-	var pivot: Node3D = gun_pivots[held]
 	var time := gun.reload_time
 	reload_timer = time
 	Sound.play_ui(self, "reload", -4.0, 0.0)
-	reload_tween = create_tween()
-	reload_tween.tween_property(pivot, "rotation_degrees", Vector3(-40, 0, 20), 0.25)
-	reload_tween.tween_interval(maxf(time - 0.5, 0.0))
-	reload_tween.tween_property(pivot, "rotation_degrees", Vector3.ZERO, 0.25)
+	hands.reload(held, time, mini(gun.magazine - int(mags[held]), inventory.count(gun.ammo)))
 
 
 func _finish_reload() -> void:
@@ -1194,99 +1170,24 @@ func _finish_reload() -> void:
 		return
 	var gun := GameData.weapon(held)
 	mags[held] += inventory.remove(gun.ammo, gun.magazine - int(mags[held]))
+	hands.cancel_reload() # everything back in place
+	hands.set_empty(held, mags[held] == 0)
 
 
 func _cancel_reload() -> void:
 	reload_timer = 0.0
-	if reload_tween:
-		reload_tween.kill()
-	for pivot: Node3D in gun_pivots.values():
-		pivot.rotation_degrees = Vector3.ZERO
+	if is_node_ready():
+		hands.cancel_reload()
 
 
-func _gun_kick(degrees: float) -> void:
-	var pivot: Node3D = gun_pivots[held]
-	pivot.rotation_degrees = Vector3(degrees, 0, 0)
-	var tween := create_tween()
-	tween.tween_property(pivot, "rotation_degrees", Vector3.ZERO, 0.15 + degrees / 100.0)
-	var flash := pivot.get_node_or_null("MuzzleFlash") as Node3D
-	if flash:
-		flash.visible = true
-		get_tree().create_timer(0.05).timeout.connect(func() -> void: flash.visible = false)
-
-
-## Every weapon's model in your hands, from its file (held_model, or a box like
-## on the ground), hidden until you hold it. Guns hang off the camera; melee
-## weapons off weapon_pivot, which swings.
-func _make_weapon_models() -> void:
-	for id: String in GameData.item_ids():
-		var weapon := GameData.weapon(id)
-		if weapon == null:
-			continue
-		var model: Node3D = weapon.held_model.instantiate() if weapon.held_model else _box_model(weapon)
-		_no_shadows(model)
-		model.visible = false
-		if weapon.is_gun():
-			model.position = weapon.held_position
-			camera.add_child(model)
-			gun_pivots[id] = model
-		else:
-			weapon_pivot.add_child(model)
-			melee_models[id] = model
-
-
-## A weapon or item with no model: a box of its size and color.
-func _box_model(item: ItemData, scale := 1.0) -> Node3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = item.color
-	var box := BoxMesh.new()
-	box.size = item.size * scale
-	box.material = mat
-	var inst := MeshInstance3D.new()
-	inst.mesh = box
-	return inst
-
-
-## Things in your hands don't cast shadows (they'd fall across the view oddly).
-func _no_shadows(node: Node) -> void:
-	if node is GeometryInstance3D:
-		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	for child in node.get_children():
-		_no_shadows(child)
-
-
-## Show the model for whatever's in your hands.
-func _refresh_weapon_visuals() -> void:
+## Show what's in your hands. animate: put away the old and draw the new if it
+## changed (false when loading).
+func _refresh_weapon_visuals(animate := true) -> void:
 	if is_dead or not is_node_ready():
 		return
-	var use := GameData.item_use(held)
-	for id: String in gun_pivots:
-		var pivot: Node3D = gun_pivots[id]
-		pivot.visible = id == held
-		pivot.position = GameData.weapon(id).held_position
-	for id: String in melee_models:
-		(melee_models[id] as Node3D).visible = id == held
-	weapon_pivot.visible = held == "hands" or melee_models.has(held)
-	weapon_pivot.position = GameData.weapon(held).held_position if melee_models.has(held) else _fists_rest
-	fist_mesh.visible = held == "hands"
-	# (Building pieces show nothing in your hands: the see-through preview of
-	# where it'll go is what you look at.)
-	item_pivot.visible = use in ["heal", "eat", "board", "barricade"]
-	for child in held_item_mesh.get_children():
-		child.queue_free()
-	held_item_mesh.mesh = null
-	if item_pivot.visible:
-		# Things you use up look like they do on the ground (their model, or a box
-		# of their size and color), a bit bigger since it's right in front of you.
-		var item := GameData.item(held)
-		if item.model:
-			var model: Node3D = item.model.instantiate()
-			model.scale = Vector3.ONE * 1.2
-			model.position.y = -item.size.y * 1.2 / 2.0 # models sit on the ground: center it like the box
-			_no_shadows(model)
-			held_item_mesh.add_child(model)
-		else:
-			held_item_mesh.mesh = (_box_model(item, 1.2) as MeshInstance3D).mesh
+	hands.show_held(held, animate)
+	if is_gun(held):
+		hands.set_empty(held, mags[held] == 0)
 
 
 # --- Stamina & footsteps -----------------------------------------------------
