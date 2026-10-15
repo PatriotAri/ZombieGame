@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://world/map/plants/models/poplar_mesh.tres" id="1_a2hd3"]
+
+[node name="Poplar" type="MeshInstance3D" unique_id=520693414]
+mesh = ExtResource("1_a2hd3")

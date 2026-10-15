@@ -9,7 +9,7 @@ extends Node
 ## Coming back near it the first time is the "a trader is here" moment.
 ## main.gd creates it and listens to the signals; the quest follows along.
 ##
-## Where the wagon and the trader stand are SpawnPoints in the town scene (roles
+## Where the wagon and the trader stand are SpawnPoints in the map scene (roles
 ## "wagon" and "wagon_trader").
 ##
 ## Saved: whether the zone has been cleared, whether the trader has come and

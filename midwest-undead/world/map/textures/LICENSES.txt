@@ -1,0 +1,6 @@
+grass_* and rock_* are from ambientCG (Ground037 and Rock023), under the
+Creative Commons CC0 1.0 Universal license: https://docs.ambientcg.com/license/
+(They came with the Terrain3D plugin's demo.)
+
+Every other texture here is a generated placeholder made for this game.
+Replace them with real ones: see HOW_TO_MAP.md.

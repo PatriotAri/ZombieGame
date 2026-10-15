@@ -3,7 +3,7 @@ extends StaticBody3D
 ## open the save / load menu. Anything with an interact_prompt() method like this
 ## shows an "E: ..." prompt; main.gd decides what happens when you use it.
 
-## In the town scene it comes with its book and collision already; only one
+## In the map scene it comes with its book and collision already; only one
 ## made in code builds them.
 func _ready() -> void:
 	if get_child_count() > 0:

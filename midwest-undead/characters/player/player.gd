@@ -26,6 +26,9 @@ const StructurePiece := preload("res://world/structure_piece.gd")
 const Sound := preload("res://core/sound.gd")
 const Settings := preload("res://core/settings.gd")
 const Fortifications := preload("res://world/fortifications.gd")
+const Water := preload("res://world/water.gd")
+const Cover := preload("res://world/cover.gd")
+const Ground := preload("res://world/ground.gd")
 
 @export_group("Movement")
 @export var walk_speed := 4.0
@@ -38,6 +41,15 @@ const Fortifications := preload("res://world/fortifications.gd")
 @export var jump_gravity_scale := 2.0
 ## Meters per second up or down a ladder.
 @export var climb_speed := 2.5
+## Walking uphill: speed drops by this much per unit of slope (rise over run)
+## along the way you're going, so a 45 degree climb is half speed. Downhill and
+## across a slope aren't slowed. Past 45 degrees you can't climb at all: you
+## slide back down (CharacterBody3D's floor_max_angle).
+@export_range(0.0, 1.0, 0.05) var slope_slowdown := 0.5
+## Wading through shallow water (world/water.gd): speed times this.
+@export_range(0.1, 1.0, 0.05) var wade_speed_factor := 0.6
+## Swimming in deep water: meters per second. No sprinting, jumping or guns.
+@export var swim_speed := 1.6
 
 @export_group("Look")
 ## Baselines: the pause menu's sensitivity sliders multiply these (1.0x = as set here).
@@ -134,6 +146,16 @@ var is_dead := false
 var death_cause := ""
 var is_crouching := false
 var _jumping := false # in the air from a jump (heavier gravity, jump_gravity_scale)
+var swimming := false # in deep water (world/water.gd): floating chest-deep
+var water_depth := 0.0 # meters of water at your feet (0 when dry)
+var _water_surface := NAN
+var in_cover := false # crouched in tall crops or bushes (world/cover.gd): zombies can't see you
+var _cover_timer := 0.0
+## The map's edge has no ground past it. Falling out below the lowest ground
+## (FELL_BELOW meters) puts you back where you last stood.
+const FELL_BELOW := 30.0
+var _safe_spot := Vector3.INF
+var _safe_timer := 0.0
 var hunger := 20.0 # 0 = just ate, 100 = starving; set to starting_hunger in _ready
 var flashlight_charge := 1.0 # what's left in the batteries in the flashlight, 0-1
 var menu_open := false # set by the inventory/shop screens; freezes your controls
@@ -188,6 +210,9 @@ var _ghost_material: StandardMaterial3D
 func _ready() -> void:
 	add_to_group("player")
 	add_to_group("zombie_targets")
+	# The same speed along the ground on a slope as on the flat, so slope_slowdown
+	# alone decides how much a hill slows you.
+	floor_constant_speed = true
 	health = max_health
 	stamina = max_stamina
 	hunger = starting_hunger
@@ -287,9 +312,15 @@ func _physics_process(delta: float) -> void:
 		return
 	_ladders = _ladders.filter(func(l: Area3D) -> bool: return is_instance_valid(l))
 	var climbing := not _ladders.is_empty()
+	_update_water()
+	_check_fell_out(delta)
 	if climbing:
 		velocity.y = 0.0 # holding on: no falling (_climb moves you up and down)
 		_jumping = false
+	elif swimming:
+		# Float chest-deep: drift up or down to SWIM_DEPTH below the surface.
+		_jumping = false
+		velocity.y = clampf((_water_surface - Water.SWIM_DEPTH - global_position.y) * 4.0, -2.0, 2.0)
 	elif not is_on_floor():
 		velocity.y -= gravity * (jump_gravity_scale if _jumping else 1.0) * delta
 	else:
@@ -339,10 +370,14 @@ func _physics_process(delta: float) -> void:
 			_finish_use()
 
 	is_crouching = Input.is_action_pressed("crouch") or crouch_latched
+	_cover_timer -= delta
+	if _cover_timer <= 0.0:
+		_cover_timer = 0.2
+		in_cover = is_crouching and Cover.hides(get_tree(), global_position)
 	var eye := CROUCH_EYE_HEIGHT if is_crouching else EYE_HEIGHT
 	camera.position.y = move_toward(camera.position.y, eye, 4.0 * delta)
 
-	if Input.is_action_just_pressed("jump") and not just_resumed and is_on_floor() and not is_crouching:
+	if Input.is_action_just_pressed("jump") and not just_resumed and is_on_floor() and not is_crouching and not swimming:
 		velocity.y = jump_velocity
 		_jumping = true
 
@@ -353,14 +388,20 @@ func _physics_process(delta: float) -> void:
 	# Not normalized, so a half-tilted stick walks at half speed.
 	var direction := transform.basis * Vector3(input_dir.x, 0, input_dir.y)
 	var sprinting := (Input.is_action_pressed("sprint") or sprint_latched) and not is_crouching \
-			and stamina > 0.0 and direction != Vector3.ZERO and not aiming
+			and stamina > 0.0 and direction != Vector3.ZERO and not aiming and not swimming
 	var speed := walk_speed
-	if is_crouching:
+	if swimming:
+		speed = swim_speed
+	elif is_crouching:
 		speed = crouch_speed
 	elif sprinting:
 		speed = sprint_speed
 	if aiming:
 		speed *= aim_move_factor
+	if not swimming:
+		if water_depth > Water.WADE_DEPTH:
+			speed *= wade_speed_factor
+		speed *= _slope_factor(direction, slope_slowdown)
 	if direction != Vector3.ZERO:
 		velocity.x = direction.x * speed
 		velocity.z = direction.z * speed
@@ -380,6 +421,36 @@ func _physics_process(delta: float) -> void:
 	_update_prompt()
 	_update_barricade_ghost()
 	_hurt_sound_wait = maxf(_hurt_sound_wait - delta, 0.0)
+
+
+## Remembers solid ground now and then; fell out of the map: back to it.
+func _check_fell_out(delta: float) -> void:
+	_safe_timer -= delta
+	if is_on_floor() and _safe_timer <= 0.0:
+		_safe_timer = 1.0
+		_safe_spot = global_position
+	if global_position.y < Ground.height_range().x - FELL_BELOW and _safe_spot != Vector3.INF:
+		global_position = _safe_spot + Vector3(0, 0.5, 0)
+		velocity = Vector3.ZERO
+
+
+## Water at your feet (world/water.gd): how deep, and whether that's swimming.
+## A little give either way, so you don't flicker in and out of swimming at the edge.
+func _update_water() -> void:
+	_water_surface = Water.surface_at(get_tree(), global_position)
+	water_depth = 0.0 if is_nan(_water_surface) else maxf(_water_surface - global_position.y, 0.0)
+	swimming = water_depth >= (Water.SWIM_DEPTH - 0.15 if swimming else Water.SWIM_DEPTH)
+
+
+## Speed multiplier for the ground you're on: 1 on the flat, downhill or across
+## a slope; less going uphill (slowdown per unit of rise over run).
+func _slope_factor(direction: Vector3, slowdown: float) -> float:
+	if not is_on_floor() or direction == Vector3.ZERO:
+		return 1.0
+	var normal := get_floor_normal()
+	var downhill := Vector3(normal.x, 0.0, normal.z) # points down the slope
+	var uphill_rise := maxf(-Vector3(direction.x, 0.0, direction.z).normalized().dot(downhill), 0.0) / maxf(normal.y, 0.1)
+	return clampf(1.0 - slowdown * uphill_rise, 0.2, 1.0)
 
 
 ## cause is what the death message blames if this kills you: zombies bite
@@ -572,6 +643,9 @@ func _quick_heal() -> void:
 func _use_held() -> void:
 	match "melee" if held == "hands" else GameData.item_use(held):
 		"shoot":
+			if swimming:
+				notify.emit("You can't shoot while swimming.")
+				return
 			_try_shoot()
 		"melee":
 			_try_melee()
@@ -1038,7 +1112,7 @@ func is_scoped() -> bool:
 ## Hold aim (right mouse / LT) with a gun: the view zooms in, the gun comes up to
 ## the middle of the screen, and you turn slower to match. Not while reloading.
 func _update_aim(delta: float) -> void:
-	aiming = is_gun(held) and Input.is_action_pressed("aim") and not menu_open and reload_timer <= 0.0
+	aiming = is_gun(held) and Input.is_action_pressed("aim") and not menu_open and reload_timer <= 0.0 and not swimming
 	var goal_fov: float = GameData.weapon(held).aim_fov if aiming else _base_fov
 	camera.fov = lerpf(camera.fov, goal_fov, minf(AIM_SPEED * delta, 1.0))
 	if is_gun(held):

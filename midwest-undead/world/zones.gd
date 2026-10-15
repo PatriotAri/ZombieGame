@@ -16,20 +16,19 @@ extends Node
 ## The map screen (ui/map_menu.gd) draws the grid and the zones; the HUD shows
 ## the square you're in and, inside a zone, how it stands.
 ##
-## The grid also sets the area the map screen shows. When the world grows, widen
-## ORIGIN / COLUMNS / ROWS to cover it.
+## The grid also sets the area the map screen shows. It covers the 1 km map
+## (world/map/map.tscn); if the map grows, widen ORIGIN / CELL_SIZE / COLUMNS /
+## ROWS to cover it.
 
 signal status_changed(zone_name: String, status: Status)
 
 enum Status { SAFE, HOSTILE, DANGER }
 
 ## +x is east and -z is north (Godot's convention; the map is drawn that way up).
-## 26 x 26 squares (A-Z, 1-26), about 780 m across, with the town in the middle.
-## Offset by half a square so Main Street (x = 0) runs down the middle of column M
-## and the cross street (z = 0) along the middle of row 13, instead of along grid
-## lines that would split them between two zones.
-const ORIGIN := Vector2(-375.0, -375.0) # the grid's north-west corner (x, z), in meters
-const CELL_SIZE := 30.0 # meters per side
+## 26 x 26 squares (A-Z, 1-26) of 40 m, 1040 m across: the 1024 m map with a
+## little to spare, centered on the middle of the map.
+const ORIGIN := Vector2(-520.0, -520.0) # the grid's north-west corner (x, z), in meters
+const CELL_SIZE := 40.0 # meters per side
 const COLUMNS := 26 # A to Z
 const ROWS := 26 # 1 to 26
 const CHECK_INTERVAL := 0.5 # seconds; counting everyone every frame is wasted work
@@ -37,9 +36,12 @@ const CHECK_INTERVAL := 0.5 # seconds; counting everyone every frame is wasted w
 ## The zones. To add one, add an entry: its name, a title for the map and HUD,
 ## and its squares. A square belongs to at most one zone (a warning in the Output
 ## panel names any that are claimed twice).
+## (Zone 1 is the 3 x 3 squares in the middle of the map, where you start, until
+## the police station is built somewhere: then move it there. The story, the
+## wagon trader and building fences all go by Zone 1.)
 const ZONES := [
-	{"name": "Zone 1", "title": "Police Station", # the station (O14) and the squares around it
-			"squares": ["N13", "O13", "P13", "N14", "O14", "P14", "N15", "O15", "P15"]},
+	{"name": "Zone 1", "title": "Police Station",
+			"squares": ["M13", "N13", "O13", "M14", "N14", "O14", "M15", "N15", "O15"]},
 ]
 
 var bandits: Array = [] # set by main.gd; zombies are found through the "zombies" group

@@ -1,22 +1,22 @@
-# How to build the town
+# How to build buildings and towns
 
-The town is a set of scenes you edit in the Godot editor. Everything you place
+Buildings, furniture, containers and markers go on the map,
+`world/map/map.tscn`, which you edit in the Godot editor. Everything you place
 is exactly where the game puts it. Only what's in the containers (on top of
 their fixed items), which zombies turn up, and the trader's restocks are random.
 
-- `world/town/town.tscn` is the whole town. It's made of districts.
-- `world/town/districts/*.tscn` holds one area each (Main Street, the police
-  station, ...). Open a district to work on that area. It's smaller and
-  quicker than the whole town.
+- `world/map/map.tscn` is the whole world: the terrain and everything on it.
+  `HOW_TO_MAP.md` covers the land itself: hills, roads, creeks, forests,
+  fields.
 - `world/kit/` is the building kit: pieces, furniture, materials.
 
 Save with Ctrl+S, then press F5 and start a new game to try it.
 
 ## Adding a building
 
-1. Open a district. In the FileSystem dock, drag
+1. Open the map. In the FileSystem dock, drag
    `world/kit/pieces/building.tscn` (a shop) or `two_storey_house.tscn` into
-   the 3D view, onto the district's root node.
+   the 3D view, onto the map's **Buildings** node.
 2. Move it with the move gizmo (W) and turn it with the rotate gizmo (E). The
    **front** is the side with the door: the building's local -X side. Turn it
    so the front faces the street. Turn on snapping (the magnet in the toolbar)
@@ -32,6 +32,9 @@ Save with Ctrl+S, then press F5 and start a new game to try it.
   shows next to the building in the Scene dock. Hover over it to read why.
 - **Floor Y:** use 0.1 when the building stands on a sidewalk, so you step
   straight in. Use 0.02 on bare ground.
+- **Foundation:** on a hillside, put the building's node at the height of the
+  highest ground under it; it stands on a foundation down to the ground all
+  round: Concrete block, Stone, or Wooden posts (`HOW_TO_MAP.md`, section 10).
 - **Upper Height:** a solid block over the top floor that you can't enter,
   with painted-on windows. This is how the Main Street shops look taller than
   they are. Leave it at 0 for a flat roof.
@@ -141,7 +144,9 @@ tiles at any size. Custom 3D models come later.
 ## Markers
 
 Drag these from `world/markers/` (or add them as nodes: KitSpawnPoint,
-KitZombieSpawn, KitPlace). In the editor each one shows a floating label.
+KitZombieSpawn, KitPlace) onto the map's **Markers** node (or under the
+building or camp they belong to). In the editor each one shows a floating
+label. `HOW_TO_MAP.md` (section 12) lists which ones the story needs.
 
 - **SpawnPoint:** where someone starts, facing the marker's forward (-Z).
   **Role** picks who:
@@ -166,16 +171,16 @@ KitZombieSpawn, KitPlace). In the editor each one shows a floating label.
 
 ## Things the game relies on
 
-- **Zombies can only walk inside the navigation area:** x from -180 to 125
-  and z from -90 to 90. Build outside it and zombies can't reach it. To make
-  it bigger, change `filter_baking_aabb` in `world/main.gd`
-  (`_setup_navigation`).
+- **Zombies can walk anywhere on the map** that's not too steep (past 45
+  degrees), not under deep water, and not blocked by something solid. Where
+  they can walk (the navigation mesh) is worked out when the game starts
+  (`world/nav_tiles.gd`), so there's nothing to bake by hand.
 - **Groups mark a few special things** (Node dock > Groups):
   - `map_road`: drawn as road on the map screen.
   - `map_fence`: drawn as the compound fence.
   - `base_supply_crate`: the container the base fills each morning.
   - `safe_house_trigger`: walking into it counts as reaching the safe house.
-- **Saves find things by their path in the town scene** (district / building
+- **Saves find things by their path in the map scene** (folder / building
   / name). Renaming or moving something to another parent means an older save
   won't find it.
 - **Buildings and modular pieces are merged when a game starts.** To keep the

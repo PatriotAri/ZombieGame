@@ -1,5 +1,5 @@
 extends RefCounted
-## Fewer things for the graphics card to draw: when a game starts, the town's
+## Fewer things for the graphics card to draw: when a game starts, the map's
 ## buildings and kit pieces (walls, floors, stairs, boxes: things that never
 ## change while you play) are combined into a few big meshes, one per material
 ## for each 48 m patch of town, instead of hundreds. Their own meshes are then
@@ -71,7 +71,7 @@ static func _material(mesh_inst: MeshInstance3D, surface: int) -> Material:
 
 
 ## One merged surface being built: vertices, normals, UVs and tangents, moved
-## into the town's space.
+## into the map's space.
 class Bucket:
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()

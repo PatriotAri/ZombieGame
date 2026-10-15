@@ -5,7 +5,7 @@ extends AnimatableBody3D
 ## blows and it bursts open for good. Unbreakable ones (the police compound
 ## gate) just hold.
 ##
-## In the town scene a building's door sits under the building, but main.gd
+## In the map scene a building's door sits under the building, but main.gd
 ## moves every door out of nav_region when the game starts, so the navigation
 ## bake ignores them: zombie paths run straight through doorways, and a closed door is
 ## something they run into and break down. The compound gate is the exception:
@@ -82,7 +82,7 @@ func setup(leaf: Vector3, offset: Vector3, leaf_color: Color, closed: Transform3
 	_build()
 
 
-## Doors in the town scene come with their panel and collision already (made by
+## Doors in the map scene come with their panel and collision already (made by
 ## _build when the town was frozen); ones made in code get them from setup().
 func _ready() -> void:
 	_closed = transform
@@ -95,7 +95,7 @@ func _ready() -> void:
 			_build()
 		else:
 			# Shared with the other doors of its color until this one takes a
-			# beating (_tint). The town scene saved a copy with each door: swap
+			# beating (_tint). The map scene saved a copy with each door: swap
 			# in the shared one.
 			_material = _shared(_mesh.mesh.surface_get_material(0) as StandardMaterial3D)
 			_mesh.set_surface_override_material(0, _material)

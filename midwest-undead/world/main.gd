@@ -1,18 +1,20 @@
 extends Node3D
-## The game scene's root. Loads the town (world/town/town.tscn: open it, or one
-## of its districts in world/town/districts/, to change the town in the editor),
-## then adds the loot, the player, the zombies, the NPCs, the HUD and the menus,
-## and handles saving and loading. The pieces live in their own scripts:
-##   world/town/          the town itself: buildings, containers, doors, items, props
-##   world/kit/           the building kit the town is made of (see HOW_TO_BUILD.md)
-##   world/markers/       markers in the town: where people and zombies start, places
+## The game scene's root. Loads the map (world/map/map.tscn: open it to change
+## the map in the editor; see HOW_TO_MAP.md), then adds the loot, the player,
+## the zombies, the NPCs, the HUD and the menus, and handles saving and loading.
+## The pieces live in their own scripts:
+##   world/map/           the map: the terrain (Terrain3D) and everything placed on it
+##   world/kit/           the building kit buildings are made of (see HOW_TO_BUILD.md)
+##   world/markers/       markers on the map: where people and zombies start, places
+##   world/nav_tiles.gd   where zombies can walk (the navigation mesh, in tiles)
+##   world/ground.gd      how high the ground is anywhere
 ##   world/loot.gd        rolls the containers' loot tables (items/loot/)
 ##   quests/              the main story and side quests (see QUESTS.md)
 ##   ui/hud.gd            everything on screen during play
 ##   ui/perf_overlay.gd   the performance readout (F3)
 ##
-## What's fixed and what's random: the town, its containers and the items lying
-## around are exactly what the town scene has. What's in the containers (beyond
+## What's fixed and what's random: the map, its containers and the items lying
+## around are exactly what the map scene has. What's in the containers (beyond
 ## their fixed items), which zombies turn up at the ZombieSpawn markers, the
 ## extra zombies, the ones arriving over time and the hordes (world/horde.gd)
 ## are random every new game.
@@ -84,15 +86,19 @@ const GateLeaf := preload("res://world/gate_leaf.gd")
 const SpawnPoint := preload("res://world/markers/spawn_point.gd")
 const ZombieSpawn := preload("res://world/markers/zombie_spawn.gd")
 const Place := preload("res://world/markers/place.gd")
+const Ground := preload("res://world/ground.gd")
+const NavTiles := preload("res://world/nav_tiles.gd")
+const Cover := preload("res://world/cover.gd")
+const Plants := preload("res://world/map/plants.gd")
 
 @export_group("World")
-## The town to play in. Edit world/town/town.tscn (or its districts) to change it.
-@export var town_scene: PackedScene = preload("res://world/town/town.tscn")
-## More zombies scattered around town at the start (never inside a zone), on top
-## of the ones at the town's ZombieSpawn markers.
+## The map to play on. Edit world/map/map.tscn to change it (HOW_TO_MAP.md).
+@export var map_scene: PackedScene = preload("res://world/map/map.tscn")
+## More zombies scattered around the map at the start (never inside a zone), on
+## top of the ones at the map's ZombieSpawn markers.
 @export_range(0, 300) var extra_zombies := 60
 ## How many zombies are up at once. When there are fewer, new ones turn up on the
-## outskirts of town now and then (see world/zombie_population.gd).
+## outskirts of the map now and then (see world/zombie_population.gd).
 @export_range(0, 400) var zombie_population := 100
 ## Seconds between new arrivals while there are fewer than zombie_population.
 @export var zombie_respawn_seconds_day := 30.0
@@ -113,15 +119,17 @@ const AUTOSAVE_DISTANCE := 20.0
 const ZOMBIE_CONTAINER_CLEARANCE := 2.5
 
 var player: Player
-## Where you start: the town's "player" SpawnPoint.
+## Where you start: the map's "player" SpawnPoint.
 var player_spawn := Transform3D.IDENTITY
-var nav_region: NavigationRegion3D # all town geometry lives under this node
-var town: Node3D # the town scene, under nav_region
+var nav_region: NavTiles # all map geometry lives under this node (the navigation bake reads it)
+var town: Node3D # the map scene, under nav_region
+var terrain: Node # the map's Terrain3D node, or null
+var _trunks: Array[RID] = [] # painted trees' solid trunks (world/map/plants.gd)
 var day_night: DayNight
-# What's in the town, found when it's loaded. Everything that's saved carries a
-# "town_id" (its path in the town scene), so saves find it again.
+# What's on the map, found when it's loaded. Everything that's saved carries a
+# "town_id" (its path in the map scene), so saves find it again.
 var loot_spots: Array[LootSpot] = []
-var doors: Array[Door] = [] # moved out of the town, under main (see _load_town)
+var doors: Array[Door] = [] # moved out of the map, under main (see _load_town)
 var windows: Array[WindowPane] = []
 var spawn_points: Array[SpawnPoint] = []
 var zombie_spawns: Array[ZombieSpawn] = []
@@ -133,7 +141,7 @@ var map_menu: MapMenu
 var backpack_menu: BackpackMenu
 var discoveries: Discoveries
 var zombie_population_node: ZombiePopulation
-var horde: Horde # every couple of weeks, a horde crosses town
+var horde: Horde # every couple of weeks, a horde crosses the map
 var trader_arrival: TraderArrival # the wagon trader who comes once Zone 1 is cleared
 var woodworker_rescue: WoodworkerRescue # the woodworker held at the bandit camp
 var survivors: Survivors # the ones holed up in boarded-up houses
@@ -163,15 +171,26 @@ func _ready() -> void:
 	Settings.load_settings() # before anything can play a sound: it creates the Effects bus
 	rng.randomize()
 	_build_environment()
-	_setup_navigation()
+	nav_region = NavTiles.new()
+	nav_region.name = "Navigation"
+	add_child(nav_region)
 	_load_town()
+	_setup_navigation()
+	if terrain:
+		# Painted trees get solid trunks (not in the navigation: zombies just
+		# bump around them), and plants that hide you are known to world/cover.gd.
+		var trees := Node3D.new()
+		trees.name = "TreeTrunks" # what a bullet or a look reports hitting
+		add_child(trees)
+		_trunks = Plants.build_trunks(terrain, get_world_3d().space, trees)
+		Cover.mesh_ids = Plants.hiding_ids()
 	Loot.fill(loot_spots, rng)
 	fortifications = Fortifications.new()
 	add_child(fortifications)
 	fortifications.setup(nav_region, windows, doors) # planks on what's boarded at start, before the bake
-	# Bake the walkable area from the town's collision shapes. Runs once at startup
-	# and blocks briefly; fine for one small town.
-	nav_region.bake_navigation_mesh(false)
+	# Bake the walkable area from the map's terrain and collision shapes: every
+	# tile at once, on all the processor's cores (world/nav_tiles.gd).
+	nav_region.bake_all()
 	structures = Structures.new()
 	add_child(structures)
 	structures.setup(nav_region, fortifications)
@@ -189,7 +208,7 @@ func _ready() -> void:
 	add_child(zones)
 	zones.status_changed.connect(_on_zone_status_changed)
 	structures.zones = zones
-	# More zombies around town, and new ones over time.
+	# More zombies around the map, and new ones over time.
 	zombie_population_node = ZombiePopulation.new()
 	add_child(zombie_population_node)
 	zombie_population_node.population = zombie_population
@@ -297,21 +316,27 @@ func _ready() -> void:
 			woodworker_rescue, structures, day_night, player)
 	survivors.attach(player, dialogue, choice_menu, craft_menu, base_camp, woodworker_rescue)
 
-	# Coming from "Load": the town is freshly loaded; now put the saved state on top.
+	# Coming from "Load": the map is freshly loaded; now put the saved state on top.
 	if not SaveGame.pending_load.is_empty():
 		_apply_save(SaveGame.pending_load)
 		SaveGame.pending_load = {}
 		hud.show_toast("Game loaded.")
 
 
-# --- The town --------------------------------------------------------------------
+# --- The map ---------------------------------------------------------------------
 
-## Puts the town scene under nav_region and finds what the game needs in it.
+## Puts the map scene under nav_region and finds what the game needs in it.
 ## Doors move out first, under main, so the navigation bake ignores them (zombie
 ## paths run through doorways; see door.gd). Everything that's saved gets its
-## "town_id" before that, while it still has its place in the town.
+## "town_id" before that, while it still has its place in the map.
 func _load_town() -> void:
-	town = town_scene.instantiate() as Node3D
+	town = map_scene.instantiate() as Node3D
+	for node in town.find_children("*", "", true, false):
+		if node.is_class("Terrain3D"):
+			terrain = node
+			break
+	Ground.terrain = terrain
+	Cover.terrain = terrain
 	# Buildings and kit pieces make their walls, glass and doors from their
 	# settings; have them do it now, so the doors and windows are there to find.
 	for node in town.find_children("*", "", true, false):
@@ -339,7 +364,7 @@ func _load_town() -> void:
 		if node.has_meta("salvage_label") and not node is LootSpot:
 			salvage_others.append(node)
 	for door in doors:
-		# Where it is in the town (the town's own nodes aren't in the tree yet).
+		# Where it is in the map (the map's own nodes aren't in the tree yet).
 		var xform := door.transform
 		var parent := door.get_parent()
 		while parent != town:
@@ -347,17 +372,17 @@ func _load_town() -> void:
 				xform = (parent as Node3D).transform * xform
 			parent = parent.get_parent()
 		door.get_parent().remove_child(door)
-		door.owner = null # no longer part of the town scene
+		door.owner = null # no longer part of the map scene
 		door.transform = town.transform * xform
 		door_holder.add_child(door, true)
 	nav_region.add_child(town)
 	StaticMerge.merge(town) # buildings and kit pieces as a few big meshes (fewer draw calls)
 	var start := _spawn_point("player")
 	player_spawn = Transform3D(Basis(Vector3.UP, start.global_rotation.y), start.global_position) if start \
-			else Transform3D(Basis.IDENTITY, Vector3(0, 0.1, 0))
+			else Transform3D(Basis.IDENTITY, Ground.snap(Vector3.ZERO, 0.1))
 
 
-## A node's path in the town scene, from the town's root ("MainStreet/Shop3/FrontDoor").
+## A node's path in the map scene, from its root ("Buildings/Shop3/FrontDoor").
 func _town_path(node: Node) -> String:
 	var parts := PackedStringArray()
 	while node != town:
@@ -371,7 +396,7 @@ func _spawn_point(role: String) -> SpawnPoint:
 	for spot in spawn_points:
 		if spot.role == role:
 			return spot
-	push_warning("The town scene has no SpawnPoint with the role \"%s\"." % role)
+	push_warning("The map scene has no SpawnPoint with the role \"%s\"." % role)
 	return null
 
 
@@ -379,7 +404,7 @@ func _spawn_point(role: String) -> SpawnPoint:
 func _spawn_transform(role: String) -> Transform3D:
 	var spot := _spawn_point(role)
 	if spot == null:
-		return Transform3D.IDENTITY
+		return Transform3D(Basis.IDENTITY, Ground.snap(Vector3.ZERO))
 	return Transform3D(Basis(Vector3.UP, spot.global_rotation.y), spot.global_position)
 
 
@@ -387,7 +412,7 @@ func _place_position(place_name: String) -> Vector3:
 	for place in places:
 		if place.place_name == place_name:
 			return place.global_position
-	push_warning("The town scene has no Place called \"%s\"." % place_name)
+	push_warning("The map scene has no Place called \"%s\"." % place_name)
 	return Vector3.ZERO
 
 
@@ -484,6 +509,11 @@ func _process(_delta: float) -> void:
 	_check_autosave()
 
 
+func _exit_tree() -> void:
+	Plants.free_trunks(_trunks)
+	_trunks.clear()
+
+
 ## _input sees every event before anything else handles it, so it's the place to
 ## notice which device you're using and switch the on-screen button hints.
 func _input(event: InputEvent) -> void:
@@ -524,7 +554,9 @@ func _build_environment() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.fog_enabled = true
-	env.fog_density = 0.02
+	# Hill-country haze: about 70% clear at 100 m, 17% at 500 m, so ridges across
+	# the map fade into the distance (and the hills past its edge, world/map/).
+	env.fog_density = 0.0035
 	# Fog would otherwise cover the sky completely, hiding the clouds. At this
 	# strength it still blends the horizon into the haze.
 	env.fog_sky_affect = 0.35
@@ -552,23 +584,16 @@ func _build_environment() -> void:
 	Settings.apply_graphics() # shadows, view distance, resolution
 
 
-## A navigation mesh is the "where can zombies walk" map. Godot generates it by
-## scanning the geometry under nav_region and subtracting anything too tall,
-## too steep, or too close to a wall for an agent of the given size.
+## Where zombies can walk covers the whole map: the terrain's regions across,
+## and from below its lowest ground to well above its highest (roofs and towers
+## included). Without a terrain, a 512 m square around the middle.
 func _setup_navigation() -> void:
-	var nav_mesh := NavigationMesh.new()
-	# Use collision shapes, not visuals, so decorations like windows are ignored.
-	nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
-	# Agent size: multiples of the default 0.25 m cell size avoid rounding warnings.
-	nav_mesh.agent_radius = 0.5
-	nav_mesh.agent_height = 1.75
-	# Only bake where there's town (Main Street, the station's neighborhood, out to
-	# the safe house), not the whole field (much faster). Build somewhere new
-	# outside this box and zombies won't be able to walk there.
-	nav_mesh.filter_baking_aabb = AABB(Vector3(-180, -1, -90), Vector3(305, 30, 180))
-	nav_region = NavigationRegion3D.new()
-	nav_region.navigation_mesh = nav_mesh
-	add_child(nav_region)
+	var rect := Ground.map_rect()
+	if rect.size == Vector2.ZERO:
+		rect = Rect2(-256, -256, 512, 512)
+	var heights := Ground.height_range()
+	nav_region.setup(AABB(Vector3(rect.position.x, heights.x - 5.0, rect.position.y),
+			Vector3(rect.size.x, heights.y - heights.x + 45.0, rect.size.y)), terrain)
 
 
 # --- Saving and loading --------------------------------------------------------
@@ -644,8 +669,8 @@ func _save_game(path: String) -> bool:
 		"fortifications": fortifications.save_state(),
 		"structures": structures.save_state(),
 		"discovered": discoveries.save_state(),
-		"shop_stock": trader.stock.to_dict(),
-		"shop_restocked_day": trader.restocked_day,
+		"shop_stock": trader.stock.to_dict() if trader else {},
+		"shop_restocked_day": trader.restocked_day if trader else 0,
 		"wagon_trader": trader_arrival.save_state(),
 		"woodworker": woodworker_rescue.save_state(),
 		"survivors": survivors.save_state(),
@@ -667,7 +692,7 @@ func _apply_save(data: Dictionary) -> void:
 	for spot in loot_spots:
 		var saved: Dictionary = containers.get(spot.get_meta("town_id"), {})
 		if saved.is_empty():
-			continue # new to the town since the save: keeps its fresh contents
+			continue # new to the map since the save: keeps its fresh contents
 		spot.inventory.from_dict(saved.get("inventory", {}))
 		if saved.get("opened", false):
 			spot.open() # darkens it like when you searched it
@@ -715,8 +740,9 @@ func _apply_save(data: Dictionary) -> void:
 		else:
 			bandit.health = float(entry.get("health", bandit.max_health))
 
-	trader.stock.from_dict(data.get("shop_stock", trader.stock.to_dict()))
-	trader.restocked_day = int(data.get("shop_restocked_day", day_night.day))
+	if trader: # (a map without a "trader" SpawnPoint has none)
+		trader.stock.from_dict(data.get("shop_stock", trader.stock.to_dict()))
+		trader.restocked_day = int(data.get("shop_restocked_day", day_night.day))
 	trader_arrival.load_state(data.get("wagon_trader", {}))
 	woodworker_rescue.load_state(data.get("woodworker", {}))
 	survivors.load_state(data.get("survivors", []))
@@ -755,7 +781,7 @@ func _spawn_player() -> void:
 	player.notify.connect(hud.show_toast)
 
 
-## The town's NPCs, at their SpawnPoints: the Quartermaster and the Chief in the
+## The map's NPCs, at their SpawnPoints: the Quartermaster and the Chief in the
 ## station, the guards on their towers, the bandits at their camp, and the
 ## people who didn't make it at the safe house. After the navigation bake, so
 ## they can find their way around.
@@ -800,7 +826,8 @@ func _spawn_npcs() -> void:
 				body.die()
 
 
-## Zombies at the town's ZombieSpawn markers: each one turns up with its marker's chance.
+## Zombies at the map's ZombieSpawn markers: each one turns up with its marker's
+## chance. A marker on the ground spreads them over the ground (hills and all).
 func _spawn_zombies() -> void:
 	for spawn in zombie_spawns:
 		for i in spawn.count:
@@ -811,6 +838,8 @@ func _spawn_zombies() -> void:
 				for attempt in 20: # not inside a car
 					pos = spawn.global_transform * Vector3(rng.randf_range(-spawn.spread.x, spawn.spread.x), 0.0,
 							rng.randf_range(-spawn.spread.y, spawn.spread.y))
+					if Ground.is_ground_level(spawn.global_position):
+						pos = Ground.snap(pos, 0.1)
 					if not _near_container(pos, ZOMBIE_CONTAINER_CLEARANCE):
 						break
 			_add_zombie(pos)

@@ -1,0 +1,516 @@
+# How to make the map
+
+The game's world is one scene: `world/map/map.tscn`. It's a 1 km square of
+ground (the **terrain**) that you shape, paint and fill in the Godot editor.
+Everything you make there is exactly what the game uses.
+
+This guide goes in the order you'd usually work in. You don't have to finish
+one step before starting the next; come back and change anything at any time.
+
+1. [Before you start](#1-before-you-start)
+2. [Shaping the land](#2-shaping-the-land)
+3. [Painting the ground](#3-painting-the-ground)
+4. [Roads](#4-roads)
+5. [Creeks, waterfalls and ponds](#5-creeks-waterfalls-and-ponds)
+6. [Forests and plants](#6-forests-and-plants)
+7. [Crop fields](#7-crop-fields)
+8. [Cliffs and rocks](#8-cliffs-and-rocks)
+9. [Mine entrances](#9-mine-entrances)
+10. [Buildings on hills](#10-buildings-on-hills)
+11. [The edge of the map](#11-the-edge-of-the-map)
+12. [Putting the story back: markers](#12-putting-the-story-back-markers)
+13. [How the land plays](#13-how-the-land-plays)
+14. [Real textures instead of the placeholders](#14-real-textures-instead-of-the-placeholders)
+15. [Keeping it fast](#15-keeping-it-fast)
+16. [When something goes wrong](#16-when-something-goes-wrong)
+
+---
+
+## 1. Before you start
+
+**Open the map.** In the FileSystem dock (bottom left), go to `world/map/` and
+double-click `map.tscn`. In the Scene dock (top left) you'll see:
+
+- **Terrain**: the ground itself (a Terrain3D node; Terrain3D is the plugin
+  that does the ground).
+- **Buildings**, **Markers**: folders for things you place. More folders
+  (Roads, Water, Plants, Fields, Rocks, Mines) appear by themselves when you
+  add those things.
+
+**Moving around the 3D view.** Hold the right mouse button and use W A S D to
+fly, Q and E to go down and up, and the mouse to look. The mouse wheel while
+holding right-click changes how fast you fly. Select something and press F
+to jump to it.
+
+**Two tool sets:**
+
+- The **Terrain3D toolbar** (a column of buttons down the left of the 3D view)
+  appears when you select the **Terrain** node. It sculpts and paints the
+  ground.
+- The **Map Tools** panel is a tab along the bottom of the editor, next to
+  Output. It adds roads, creeks, ponds, plants, fields, rocks and mine
+  entrances. If you can't see it, click **Map Tools** in the bottom bar.
+
+**Saving.** Ctrl+S saves the scene *and* the terrain (heights, paint and
+plants are kept in `world/map/terrain/`, one file per 256 m tile). Save
+often.
+
+**Undo.** Ctrl+Z undoes almost anything: sculpting, painting, Apply, a plant
+brush stroke. The **History** tab (next to the Inspector tab) lists every
+step.
+
+**Trying it out.** Press F5 and start a new game. Old saves from the old
+town won't load (the map changed).
+
+**The map is in tiles.** The 1 km is 4 x 4 squares of 256 m (press **1**
+with the mouse over the 3D view and the Terrain selected to see their
+outlines). This doesn't change anything you do; it's there so the game can
+load parts of the map separately later if it ever needs to.
+
+**The map starts flat.** Every hill is yours to make.
+
+---
+
+## 2. Shaping the land
+
+Select the **Terrain** node. The Terrain3D toolbar appears on the left of the
+3D view, and its settings (brush size, strength...) along the bottom.
+
+The sculpting tools:
+
+| Tool (key) | What it does |
+|---|---|
+| **Raise** (R) | Click and drag to push the ground up. Hold **Ctrl** to push it down. Hold **Shift** to smooth instead. |
+| **Height** (H) | Sets the ground to an exact height (set in the bottom bar). Good for flat valley floors and building pads. **Ctrl+click** picks up the height under the mouse first. |
+| **Slope** (S) | Drag from one point to another to make an even slope between them. Good for road grades and ramps. |
+| **Smooth** | Hold **Shift** with any sculpting tool. Softens bumps and sharp edges. |
+
+In the bottom bar: **Size** is the brush's width in meters, **Strength** how
+hard it works. Big soft brushes (size 60 to 150 m, low strength) make
+natural hills; small strong ones make details.
+
+**Kentucky / Tennessee hill country, step by step** (about 150 m from valley
+floor to ridgetop):
+
+1. With **Height**, set a valley floor height of 0 m. Leave the valleys there.
+2. With **Raise**, big brush (100 m+), build long **ridges** across the map.
+   Ridges in this country are long and wavy, not round mountains.
+3. Between ridges, leave narrow **hollows** (hollers): steep-sided valleys
+   with a little flat ground at the bottom for a creek, a road and a few
+   houses.
+4. Shift-drag (smooth) over everything to soften the shapes.
+5. Make a few slopes really steep (past 45 degrees). Nobody can climb those,
+   so they become the edges of your hollows and the barriers at the map's
+   edge (see section 11). Steep ground shows as rock by itself.
+6. Keep some wider flat bottomland for the town, the farms and the station.
+
+Tips:
+- **Alt + click** with Raise lifts only the low ground (fills valleys without
+  touching ridges); **Ctrl + Alt + click** lowers only the high ground.
+- Press **3** (mouse over the 3D view) to show contour lines: handy for
+  seeing how steep a slope is.
+- Zombies and people slow down going uphill, and can't climb past 45
+  degrees: a ridge is a real obstacle for a horde (section 13).
+
+---
+
+## 3. Painting the ground
+
+The ground's look comes from a list of ground textures (the **asset dock**,
+which appears when the Terrain is selected, usually along the bottom; switch
+it to **Textures**):
+
+| # | Texture | Notes |
+|---|---|---|
+| 0 | Grass | Real texture. Flat ground is grass by itself. |
+| 1 | Rock | Real texture. Steep ground is rock by itself. |
+| 2 | Forest floor | Leaves: paint it under woods. |
+| 3 | Dirt | Creek banks, yards. |
+| 4 | Worn path | Footpaths, dirt tracks. |
+| 5 | Gravel | Gravel roads, shoulders, driveways. |
+| 6 | Mud | Looks only (it doesn't slow you). |
+| 7 | Plowed field | Crop fields paint it themselves. |
+| 8 | Red clay | Road cuts, bare hillsides. |
+| 9 | Creek stones | Creeks paint it themselves. |
+
+2 to 9 are placeholders made for the game: see section 14 to swap in real
+ones.
+
+**Grass on the flat, rock on steep slopes happens by itself** (the
+*autoshader*). You only paint what's different.
+
+- **Paint** (B): click a texture in the asset dock, then paint. Hard edges.
+- **Spray** (V): blends a texture softly over what's there. Good for patches
+  of dirt in grass, leaves at a forest's edge.
+- **Autoshader** (A): paints the automatic grass/rock back on. **Ctrl+click**
+  with it turns it off where you paint.
+- **Color** (C) and **Wetness** (W): tint the ground, or make it look wet
+  (darker, shinier). Good along creeks.
+
+Roads, creeks and crop fields paint the ground under themselves when you
+Apply them, so you don't need to.
+
+---
+
+## 4. Roads
+
+1. In **Map Tools**, under **Roads**, choose a kind of road from the list:
+   *Paved two-lane*, *Gravel road* or *Dirt track*.
+2. Click **New road**. A short road appears where you're looking.
+3. Under **Selected**, turn on **Draw points**. Click on the ground along
+   where the road goes: each click adds a point at the end. Right-click
+   removes the last point.
+4. Drag the points to adjust (the handles on the path). The road's height
+   doesn't come from the points: it follows the ground.
+5. Press **Apply**. The ground under the road is levelled side to side, cut
+   away above it on a hillside (steep cuts turn to rock), built up below it,
+   and painted. Paved roads also get their surface, center line and edge
+   lines.
+6. Change anything and press **Apply** again. Ctrl+Z undoes an Apply.
+
+**Bridges.** Where a road crosses a creek or a hollow:
+
+1. Select the road and click **Add bridge span**.
+2. Move the span marker to the crossing, and up or down to the height the
+   deck should be (use the move gizmo, W).
+3. In the Inspector set **Length** (meters of deck).
+4. Press **Apply** on the road. Over the span the road is a flat deck with
+   collision, and the ground under it is left alone. The road ramps up to
+   the deck on each side.
+5. Put your own support models (or kit boxes from `world/kit/pieces/`) under
+   the deck.
+
+**Making a new kind of road.** Road kinds are files in `world/map/roads/`.
+Right-click one in the FileSystem dock, **Duplicate**, then double-click the
+copy and change it in the Inspector:
+
+- **Width:** the driving surface, meters.
+- **Surface:** *Paved* (a surface of its own, in Surface Color) or *Painted*
+  (the ground painted with Surface Texture).
+- **Ruts:** painted roads only: just two wheel tracks with grass between.
+- **Shoulder Width / Shoulder Texture:** the strip either side.
+- **Markings:** center line (none, dashed, solid, double) and edge lines.
+- **Cut Slope / Fill Slope:** how steep the bank above and the fill below
+  are (1 = 45 degrees).
+- **Smoothing:** how far bumps are smoothed out along the road.
+
+Click **Update plant list** in Map Tools (it refreshes the road kinds too) and
+the new kind shows up in the Roads list.
+
+---
+
+## 5. Creeks, waterfalls and ponds
+
+**Creeks**
+
+1. Click **New creek**, turn on **Draw points**, and click along the creek
+   **from upstream (where it starts) to downstream (where it ends)**. Follow
+   the bottoms of your hollows.
+2. In the Inspector: **Width Start / Width End** (it widens downstream),
+   **Depth** (water in the middle; deeper than 1.3 m is swimming), **Bank**
+   (how far the banks slope back up).
+3. Press **Apply**: a channel is carved and lined with stones, and the water
+   runs along it, always downhill. Where it drops steeply it turns to white
+   rapids by itself.
+4. **Waterfalls:** select the creek, click **Add waterfall**, move the marker
+   to where the ledge should be, then **Apply** the creek again. Above the
+   falls the water runs level for **Pool** meters, then drops all at once.
+
+Applying a creek again doesn't dig it any deeper: it remembers the ground it
+started from.
+
+**Ponds and lakes**
+
+1. Dig the basin first with the Terrain3D tools (Raise with Ctrl, or Height).
+2. Click **New pond**. Move it over the basin and up or down to the water
+   level you want. Set **Size** in the Inspector (big enough to cover the
+   basin: water only shows where the ground is lower, so it doesn't have to
+   fit the shoreline).
+
+**How water plays:** shallower than 25 cm doesn't slow you. Deeper you wade
+(slower; zombies slower still). From 1.3 m you swim: slowly, no guns.
+Zombies can't swim: they drown in deep water, and walk around it if they can.
+
+---
+
+## 6. Forests and plants
+
+Plants are painted with brushes. Under **Plants** in Map Tools:
+
+1. Choose a brush from the list. The map's **Plants** node gets selected and
+   the 3D view becomes a brush (a yellow circle follows the mouse).
+2. Set **Size** (meters across) and **Density**.
+3. Click and drag on the ground. Ctrl+Z undoes a whole stroke.
+4. Choose **Off** (or select something else) to stop painting.
+
+| Brush | What it does |
+|---|---|
+| **Forest** | A natural mix: oak, maple, tulip poplar and pine of different sizes, with bushes, ferns and fallen logs between them. Thinner toward the edge of the brush, so woods fade into fields. Density 1 = open woods, 2-3 = forest, 4+ = thick. |
+| **Paint plant** | Only the plant chosen in the second list (a pine grove, a hedge of bushes, a patch of corn). |
+| **Place one** | One plant exactly where you click. |
+| **Erase** | Removes trees and undergrowth (not crops) in the circle. |
+
+No brush puts plants on slopes steeper than each plant allows (most trees: 35
+degrees, so cliffs stay bare), under deep water, or closer together than
+their spacing.
+
+In the game, **trees have solid trunks** (they stop you, zombies and
+bullets, and block sight). **Bushes and crops hide you when you crouch** in
+them (zombies can still hear you).
+
+**Adding a plant of your own** (when you have models):
+
+1. Make a scene with your model: a MeshInstance3D at the top (or import a
+   .glb and make a scene from it). The bottom of the trunk at the scene's
+   origin.
+2. In `world/map/plants/`, duplicate a plant file (oak.tres for a tree,
+   bush.tres for undergrowth, corn.tres for a crop), and in the Inspector:
+   - **Display Name**, **Scene** (your model), **Kind**.
+   - **Mesh Id:** set it to **-1** (the copy still has the original's number).
+   - **Forest Share:** how often the Forest brush picks it (0: never).
+   - **Scale Min/Max, Spacing, Max Slope:** sizes and how it's placed.
+   - **Trunk Radius** (trees: solid trunk), **Hides** (cover), **View
+     Distance** (not drawn further than this), **Shadows**.
+3. In Map Tools click **Update plant list**. It gets its own number and
+   appears in the plant list.
+
+Replacing a placeholder with your own model: open its plant file and change
+**Scene**, then **Update plant list**. Everything already painted changes
+with it.
+
+(Terrain3D has its own plant brush too: select the Terrain, press I, and pick
+a plant in the asset dock under **Meshes**. It paints one kind at a time.)
+
+---
+
+## 7. Crop fields
+
+1. Click **New crop field** (under **Fields and features**). A field appears
+   where you're looking.
+2. Select it, turn on **Draw points** and click its corners in order (it
+   closes itself). Or drag the four corners it starts with.
+3. In the Inspector: **Crop** (corn.tres or tobacco.tres), **Row Angle**
+   (which way the rows run), **Row Spacing**, **Plant Spacing**.
+4. Press **Apply** to plow the ground under it.
+
+The crop stands in straight rows following the slope. Crouch in it to hide.
+For crops in odd shapes, paint them with the **Paint plant** brush instead.
+
+---
+
+## 8. Cliffs and rocks
+
+**Cliffs** are just very steep ground: sculpt it (Raise with a small strong
+brush, or Slope) past about 50 degrees and the rock texture appears by
+itself. Nobody can climb it.
+
+**Rocks and outcrops:**
+
+1. Click **New rock**. A boulder appears where you're looking.
+2. Move (W), turn (E) and scale (R) it: flat and wide for a ledge, tall for a
+   crag, half sunk into a hillside for an outcrop.
+3. **Shape** in the Inspector changes its shape (any number); **Roughness**
+   how jagged it is.
+4. Ctrl+D copies it. A few copies with different shapes make a rock pile.
+
+Rocks are solid, and zombies path around them.
+
+---
+
+## 9. Mine entrances
+
+1. Make a steep hillside (section 2).
+2. Click **New mine entrance**. It appears where you're looking, facing away
+   from you.
+3. Move it to the **foot** of the hillside, with its floor at the ground, and
+   turn it so the tunnel (the side away from the timber frame) runs into the
+   hill.
+4. Press **Apply**. The hillside is opened where the tunnel comes through it;
+   deeper in, the hill stays closed over the tunnel.
+5. **Length**, **Width** and **Height** in the Inspector; Apply again after
+   changing them or moving it.
+
+For now the tunnel ends in a cave-in a few meters in. Mines to explore are a
+separate job, still to come.
+
+---
+
+## 10. Buildings on hills
+
+Buildings are made the same way as before (see `HOW_TO_BUILD.md`): drag a
+building from `world/kit/pieces/` onto the map's **Buildings** node.
+
+On a slope:
+
+1. Put the building's node at the height of the **highest** ground under it
+   (move it up until no part of its floor is underground).
+2. Choose its **Foundation** in the Inspector: *Concrete block* (most
+   houses), *Stone* (old farmhouses, churches) or *Wooden posts* (cabins,
+   porches, trailers).
+3. The foundation fills down to the ground all round by itself, and follows
+   the building when you move it.
+
+Or flatten a pad first with the **Height** tool and skip the foundation.
+
+---
+
+## 11. The edge of the map
+
+There are no invisible walls. The edge is up to you:
+
+- **Steep ridges** (past 45 degrees) nobody can climb.
+- **Thick forest** with fallen logs and rocks.
+- **Rivers** (deep creeks) zombies can't cross, and you can only swim.
+- **Blocked roads:** wrecked cars, a collapsed bridge (a road span with the
+  deck missing...), barricades.
+
+Past the edge, the land carries on as low-detail hills to the horizon (you
+can't go there). They're set on the **Terrain** node's material, in the
+Inspector under **Material > Shader Parameters**: **World Noise Height** (how
+tall: times 10 meters, so 18 is about 180 m) and **World Noise Scale** (how
+big the hills are).
+
+If someone does slip past the edge they fall, and are put back on the last
+solid ground they stood on. Zombies that fall out just die.
+
+---
+
+## 12. Putting the story back: markers
+
+The old town's story places, people and spawn points went with it. Place
+markers on the new map (drag them from `world/markers/` onto the
+**Markers** node) and each system starts working again. `HOW_TO_BUILD.md`
+(Markers) explains each marker's settings.
+
+| What | Marker or setting | Without it |
+|---|---|---|
+| Where you start | SpawnPoint, role **player** (there's one at the middle of the map) | you start in the middle |
+| The Quartermaster (trader) | SpawnPoint, role **trader** | no shop |
+| The Police Chief | SpawnPoint, role **chief** | the story stops at "Talk to the Police Chief" |
+| Guards on towers | SpawnPoint, role **guard** (under its tower) | none |
+| Bandits | SpawnPoint, role **bandit** (under the camp node) | none |
+| The woodworker | SpawnPoints **woodworker_captive** and **woodworker_home** | he stands in the middle of the map |
+| The wagon trader | SpawnPoints **wagon** and **wagon_trader** | the wagon turns up in the middle |
+| Survivors | SpawnPoints **survivor** (in their house) and **survivor_home**, with Person set | they're missing |
+| Bodies at the safe house | SpawnPoint, role **corpse** | none |
+| Zombies at the start | ZombieSpawn markers | only the ones scattered around |
+| Story places | Place markers named **Police Station**, **Safe House**, **Gas Station**, **Grocery Store** | quest steps there can't be reached |
+| Reaching the safe house | an Area3D in the group **safe_house_trigger** | that story step never happens |
+| The base's supply crate | a container in the group **base_supply_crate** | no morning supplies |
+| Zone 1 (the base area) | its squares in `world/zones.gd` (ZONES) | it's the 3 x 3 squares in the middle |
+
+The map screen's grid is 26 x 26 squares of 40 m (A1 in the north-west
+corner). To move Zone 1 to wherever you build the police station, change its
+square names in `world/zones.gd`. Building fences and the wagon trader both
+go by Zone 1.
+
+---
+
+## 13. How the land plays
+
+| | You | Zombies |
+|---|---|---|
+| Uphill | slower: half speed on a 45 degree slope | slower still: 30% speed at 45 degrees |
+| Steeper than 45 degrees | can't climb (you slide back) | can't climb |
+| Shallow water (25 cm to 1.3 m) | wade at 60% speed | 40% speed |
+| Deep water (1.3 m or more) | swim slowly, no guns | sink, and drown after 4 seconds |
+| Crops and bushes | crouch in them to hide | can't see you unless right next to you |
+| Trees | solid trunks block you and bullets, and block sight | the same |
+| Hills | block sight | the same |
+
+Where to change the numbers:
+- You: `characters/player/player.tscn`, root node, Inspector, **Movement**
+  (Slope Slowdown, Wade Speed Factor, Swim Speed).
+- Zombies: the constants at the top of `characters/zombie/zombie.gd`
+  (SLOPE_SLOWDOWN, WADE_FACTOR, DEEP_FACTOR, DROWN_SECONDS).
+- Water depths: `world/water.gd` (WADE_DEPTH, SWIM_DEPTH).
+
+Zombies find their way with the **navigation mesh**: a map of where they can
+walk, worked out from the ground and everything solid on it. The game works
+it out by itself every time it starts (tile by tile, on all the processor's
+cores), so you never need to bake it. Deep water and slopes past 45 degrees
+are left out of it.
+
+---
+
+## 14. Real textures instead of the placeholders
+
+Free, good textures (the license is CC0: use them for anything):
+[ambientCG](https://ambientcg.com) and [Poly Haven](https://polyhaven.com/textures).
+Search for "forest floor", "gravel", "mud", "plowed", "dirt", "clay",
+"riverbed". Download the **1K** or **2K** PNG version.
+
+Terrain3D wants each texture as **two files**: one with the color and the
+height together, one with the normal map and the roughness together. It
+packs them for you:
+
+1. Unzip the download somewhere inside the project, e.g. a new folder
+   `world/map/textures/downloads/`.
+2. Select the **Terrain**. At the top of the 3D view, open the **Terrain3D**
+   menu > **Pack Textures**.
+3. Pick the **Color** (or Albedo / Diffuse) image and the **Height** (or
+   Displacement) image. Then the **Normal** image (choose the *GL* one if
+   there are two; or tick *Convert DirectX to OpenGL* for a *DX* one) and
+   the **Roughness** image.
+4. **Pack Textures As...** and save into `world/map/textures/`, e.g.
+   `gravel_real`.
+5. In the FileSystem dock, select each new PNG, open the **Import** tab (next
+   to Scene, top left) and set: **Mode: VRAM Compressed**, **High Quality:
+   On**, **Normal Map: Disabled**, **Mipmaps > Generate: On**. Click
+   **Reimport**.
+6. Select the Terrain. In the asset dock (**Textures**), right-click the
+   placeholder you're replacing (or click its pencil), and in the Inspector
+   drag your two files onto **Albedo Texture** and **Normal Texture**.
+
+**All the textures must be the same size** (the ones here are 1024 x 1024)
+and the same import settings, or the ground turns white. Resize big
+downloads in any image editor, or download the 1K version.
+
+**Mipmaps** are what make textures stay sharp up close but cheap and smooth
+far away (the graphics card uses smaller copies at a distance): that's the
+"Mipmaps > Generate" setting, and it's why distant ground doesn't shimmer.
+
+**UV Scale** (in each texture's settings) is how big it's drawn: smaller
+numbers make it bigger. **Albedo Color** tints it (the grass and rock are
+tinted a little greener and greyer than the originals).
+
+---
+
+## 15. Keeping it fast
+
+Your laptop (GTX 1050 Ti) handles this map comfortably as it is: a heavily
+forested map (about 65,000 plants) draws about 1 million triangles in about
+800 batches from inside the woods. Press **F3** in the game to see the
+numbers yourself (frames per second, and which part is slowest).
+
+If it slows down:
+- **Plant view distance** (each plant file's View Distance): ferns and bushes
+  far away cost a lot and nobody sees them. Lower it first.
+- **Forest density:** 2 to 3 looks like forest; 5+ costs much more for
+  little difference.
+- **Crop fields:** a big field is thousands of plants. Fewer, smaller fields,
+  or wider Plant Spacing.
+- **Settings > Graphics** in the game: shadows, view distance, resolution.
+- Real tree models later need *levels of detail* (simpler versions for far
+  away): that comes with the models work.
+
+---
+
+## 16. When something goes wrong
+
+- **The ground is all white:** a texture in the list has a different size or
+  import settings than the others (section 14, step 5 and the size rule).
+- **A road or creek floats or is buried:** press **Apply** on it again
+  (after re-sculpting the ground under it, it needs re-applying).
+- **I sculpted over a road:** Apply the road again; it re-cuts the ground.
+- **Zombies walk through a wall / can't get somewhere:** walls need collision
+  (kit pieces have it). Slopes past 45 degrees and deep water are deliberately
+  off-limits.
+- **Map Tools doesn't react in the 3D view:** select the road/creek/field you
+  want to draw (Draw points), or pick a brush (plants). If the panel is
+  missing: Project > Project Settings > Plugins, and make sure **Map Tools**
+  and **Terrain3D** are enabled.
+- **The terrain didn't save:** it saves with Ctrl+S on the map scene. Saved
+  tiles are listed in the Output panel.
+- **The first time the project opens** Godot sets up the Terrain3D plugin; if
+  it asks to restart the editor, let it.

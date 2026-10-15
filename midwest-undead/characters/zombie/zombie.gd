@@ -35,6 +35,8 @@ const Player := preload("res://characters/player/player.gd")
 const GameData := preload("res://core/game_data.gd")
 const WindowPane := preload("res://world/window_pane.gd")
 const Sound := preload("res://core/sound.gd")
+const Water := preload("res://world/water.gd")
+const Ground := preload("res://world/ground.gd")
 ## Every zombie is one mesh with this one material; its colors and hit flash
 ## are set per zombie (_combine_parts).
 const BODY_MATERIAL := preload("res://characters/zombie/zombie_body.tres")
@@ -80,6 +82,15 @@ const ROAM_SPEED := 0.45 # times its walking speed
 const MARCH_SPEED := 1.2 # m/s in a horde (or its own speed, if slower), so the group keeps together
 const MARCH_ARRIVED := 6.0 # meters from march_to that counts as there
 const BLOCKER_REACH := 2.5 # meters: how close a fence in its way has to be for it to bash it
+## Hills and water slow zombies more than you (player.gd has the player's):
+## uphill, speed drops by SLOPE_SLOWDOWN per unit of rise over run (a 45 degree
+## climb is 30% speed); wading, speed times WADE_FACTOR. In deep water they
+## sink and stumble along the bottom (DEEP_FACTOR), and drown after DROWN_SECONDS.
+const SLOPE_SLOWDOWN := 0.7
+const WADE_FACTOR := 0.4
+const DEEP_FACTOR := 0.3
+const DROWN_SECONDS := 4.0
+const WATER_CHECK := 0.25 # seconds between looking for water underfoot
 ## Seconds after breaking a fence that it walks straight through the gap (the
 ## navigation mesh takes a few seconds to catch up with the wreck).
 const GAP_TIME := 8.0
@@ -128,6 +139,9 @@ var _stuck_time := 0.0
 static var _paths_frame := -1 # the physics frame _paths_left counts for
 static var _paths_left := 0 # path requests still allowed this physics frame (PATHS_PER_FRAME)
 var _gap_time := 0.0 # > 0: just broke a fence, so it heads straight through (_through_gap)
+var _water_depth := 0.0 # water at its feet (world/water.gd), checked every WATER_CHECK
+var _water_timer := 0.0
+var _drowning := 0.0 # seconds in deep water so far
 var linger_timer := 0.0
 var wander_timer := 0.0
 var sense_timer := 0.0
@@ -154,6 +168,7 @@ var _step_scale := 1.0 # how many frames' worth this physics step moves it
 func _ready() -> void:
 	add_to_group("zombies")
 	add_to_group("noise_listeners")
+	floor_constant_speed = true # hills slow it by SLOPE_SLOWDOWN only
 	kind_data = ZombieKind.find(kind)
 	kind = kind_data.id
 	speed = randf_range(kind_data.min_speed, maxf(kind_data.max_speed, kind_data.min_speed)) # some shuffle, some lurch
@@ -302,6 +317,11 @@ func _physics_process(delta: float) -> void:
 		_far_delta = 0.0
 	if not is_on_floor():
 		velocity.y -= gravity * delta
+	if _update_water(delta):
+		return # drowned
+	if global_position.y < Ground.height_range().x - 30.0:
+		die(false) # fell out of the map (past its edge)
+		return
 
 	# Reeling from a hit: just slide with the knockback.
 	if stagger_timer > 0.0:
@@ -549,6 +569,9 @@ func _can_see(candidate: Node3D, dist: float) -> bool:
 	# Up close it notices you whichever way it's facing, but still not through walls.
 	if dist < PROXIMITY_RANGE:
 		return _clear_line(eye, aim, candidate)
+	# Crouched in tall crops or bushes: hidden (world/cover.gd). It can still hear you.
+	if candidate.get("in_cover"):
+		return false
 
 	# Darkness shrinks how far it can see. The player can also crouch to be harder
 	# to spot, and a lit flashlight is visible from far away day or night.
@@ -808,9 +831,42 @@ func _walk_to(point: Vector3, move_speed: float, delta: float) -> bool:
 	if dir.length() < 0.05:
 		return false
 	dir = dir.normalized()
-	velocity.x = dir.x * move_speed
-	velocity.z = dir.z * move_speed
+	var ground := _ground_factor(dir)
+	velocity.x = dir.x * move_speed * ground
+	velocity.z = dir.z * move_speed * ground
 	_face(dir)
+	return true
+
+
+## Speed multiplier for the ground: uphill (SLOPE_SLOWDOWN), shallow water
+## (WADE_FACTOR) or deep (DEEP_FACTOR).
+func _ground_factor(dir: Vector3) -> float:
+	var factor := 1.0
+	if _water_depth >= Water.SWIM_DEPTH:
+		factor = DEEP_FACTOR
+	elif _water_depth > Water.WADE_DEPTH:
+		factor = WADE_FACTOR
+	if is_on_floor():
+		var normal := get_floor_normal()
+		var uphill_rise := maxf(-dir.dot(Vector3(normal.x, 0.0, normal.z)), 0.0) / maxf(normal.y, 0.1)
+		factor *= clampf(1.0 - SLOPE_SLOWDOWN * uphill_rise, 0.15, 1.0)
+	return factor
+
+
+## Looks for water underfoot now and then. In deep water it drowns after
+## DROWN_SECONDS. True if it just drowned.
+func _update_water(delta: float) -> bool:
+	_water_timer -= delta
+	if _water_timer <= 0.0:
+		_water_timer = WATER_CHECK
+		_water_depth = Water.depth_at(get_tree(), global_position)
+	if _water_depth < Water.SWIM_DEPTH:
+		_drowning = 0.0
+		return false
+	_drowning += delta
+	if _drowning < DROWN_SECONDS:
+		return false
+	die()
 	return true
 
 

@@ -10,7 +10,7 @@ extends Node
 ##                garden plots (core/recipes.gd).
 ## Finding him there the first time is announced. main.gd creates it, sends the
 ## interaction here, and the quest follows along through the signals.
-## Where he's tied up and where he works are SpawnPoints in the town scene
+## Where he's tied up and where he works are SpawnPoints in the map scene
 ## (roles "woodworker_captive" and "woodworker_home").
 ## Saved: where he's got to, and whether you've found him at home.
 

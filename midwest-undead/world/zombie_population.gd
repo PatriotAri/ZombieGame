@@ -1,12 +1,13 @@
 extends Node
 ## How many zombies there are, and where new ones come from.
 ##
-## At the start: extra zombies scattered around town (outside the zones, away
-## from where you begin), on top of the ones main.gd places at the town scene's
-## ZombieSpawn markers. Placed at random spots on the navigation mesh.
+## At the start: extra zombies scattered around the map (outside the zones, away
+## from where you begin), on top of the ones main.gd places at the map scene's
+## ZombieSpawn markers. Placed at random spots on the navigation mesh, on the
+## ground (not on roofs: world/ground.gd).
 ##
 ## While you play: whenever fewer than `population` are still up, another one
-## turns up now and then on the outskirts of town, far from you and away from
+## turns up now and then on the outskirts of the map, far from you and away from
 ## the zones, more often at night. Nothing sends them anywhere: they roam like
 ## the rest (zombie.gd), so over time some drift back into places you cleared.
 ## A horde (world/horde.gd) can push the count over `population`; nobody new
@@ -18,6 +19,8 @@ extends Node
 
 const Zones := preload("res://world/zones.gd")
 const Zombie := preload("res://characters/zombie/zombie.gd")
+const Ground := preload("res://world/ground.gd")
+const NavTiles := preload("res://world/nav_tiles.gd")
 
 const CHECK_INTERVAL := 1.0
 const MIN_SPAWN_DISTANCE := 110.0 # from you: far enough that you never see one appear
@@ -26,7 +29,6 @@ const ZONE_MARGIN := 40.0 # new ones turn up at least this far from any zone
 const OUTSKIRTS := 35.0 # ...and within this of the edge of the walkable area
 const BODY_CLEANUP_DISTANCE := 70.0
 const BODY_CLEANUP_DELAY := 60.0 # seconds dead before a body can be cleared away
-const MAX_SPAWN_HEIGHT := 1.0 # ground floors only: the navigation mesh also covers flat roofs
 
 var population := 100 # zombies up at once that it tops back up to
 var respawn_seconds_day := 30.0
@@ -36,7 +38,7 @@ var _main: Node # main.gd: owns the zombies list and _add_zombie
 var _player: Node3D
 var _day_night: Node
 var _zones: Zones
-var bounds := Rect2() # the walkable area, (x, z) (the navigation bake's box)
+var bounds := Rect2() # the walkable area, (x, z): the whole map
 var _triangles: Array[PackedVector3Array] = [] # the navigation mesh, for picking random spots
 var _cumulative_area: PackedFloat32Array = []
 var _check_timer := 0.0
@@ -45,14 +47,15 @@ var _died_at := {} # zombie -> seconds since it died
 var _rng := RandomNumberGenerator.new() # during play: its own dice
 
 
-func setup(main: Node, nav_region: NavigationRegion3D, player: Node3D, day_night: Node, zones: Zones) -> void:
+func setup(main: Node, nav_region: NavTiles, player: Node3D, day_night: Node, zones: Zones) -> void:
 	_main = main
 	_player = player
 	_day_night = day_night
 	_zones = zones
-	var box := nav_region.navigation_mesh.filter_baking_aabb
+	var box := nav_region.bounds
 	bounds = Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
-	_index_triangles(nav_region.navigation_mesh, nav_region.global_transform)
+	for mesh in nav_region.meshes():
+		_index_triangles(mesh, nav_region.global_transform)
 
 
 ## The extra zombies at the start. Call once, after main.gd has placed its own.
@@ -62,7 +65,7 @@ func populate(count: int, rng: RandomNumberGenerator, start: Vector3) -> void:
 		if placed >= count:
 			break
 		var pos := random_point(rng)
-		if pos.y > MAX_SPAWN_HEIGHT or _zones.zone_at(pos) != "" or pos.distance_to(start) < START_MIN_DISTANCE:
+		if not Ground.is_ground_level(pos) or _zones.zone_at(pos) != "" or pos.distance_to(start) < START_MIN_DISTANCE:
 			continue
 		_main.call("_add_zombie", pos + Vector3(0, 0.1, 0), rng)
 		placed += 1
@@ -89,13 +92,13 @@ func _alive() -> int:
 	return get_tree().get_nodes_in_group("zombies").size() # the dead leave the group
 
 
-## A random spot near the edge of town, far from you and from every zone, or
+## A random spot near the edge of the map, far from you and from every zone, or
 ## Vector3.INF if none turned up this time (it tries again next spawn).
 func _outskirts_point() -> Vector3:
 	var inner := bounds.grow(-OUTSKIRTS)
 	for attempt in 30:
 		var pos := random_point(null)
-		if pos.y > MAX_SPAWN_HEIGHT:
+		if not Ground.is_ground_level(pos):
 			continue
 		if inner.has_point(Vector2(pos.x, pos.z)):
 			continue # not on the outskirts

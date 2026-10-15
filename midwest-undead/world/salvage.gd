@@ -3,7 +3,7 @@ extends Node
 ## wrecked car for scrap metal, or on furniture (dressers, kitchen cabinets,
 ## counters, shelves, beds) for plywood. Each thing can only be stripped once.
 ## It's loud work. player.gd does the holding; this knows what gives what.
-## Saved: which things have been stripped (by their place in the town scene, the
+## Saved: which things have been stripped (by their place in the map scene, the
 ## "town_id" main.gd gives them).
 
 const YIELDS := {
@@ -26,7 +26,7 @@ func _ready() -> void:
 	add_to_group("salvage")
 
 
-## loot_spots: the town's containers; others: anything else in the town that has
+## loot_spots: the map's containers; others: anything else on the map that has
 ## a "salvage_label" (a bed, so far): set it in the Inspector's Metadata section.
 func setup(loot_spots: Array, others: Array) -> void:
 	for spot: Node3D in loot_spots:

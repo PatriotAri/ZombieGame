@@ -4,7 +4,7 @@ extends Marker3D
 ## Where zombies can be when a new game starts. Each of `count` zombies turns up
 ## with `chance`, somewhere in the box `spread` around the marker (half its size
 ## in meters, along the marker's own X and Z; zero = right on the marker).
-## main.gd reads every ZombieSpawn in the town scene. Which ones turn up is
+## main.gd reads every ZombieSpawn in the map scene. Which ones turn up is
 ## random every new game; the extra zombies and the ones arriving over time come
 ## from world/zombie_population.gd instead.
 

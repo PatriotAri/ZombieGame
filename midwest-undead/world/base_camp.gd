@@ -10,7 +10,8 @@ extends Node
 ##     (survivors.gd); they stand at it. Take it down and they go back to the yard.
 ##   - Every morning each worked plot puts food, and each worked bench its ammo,
 ##     in the supply crate in the station yard: fewer of the bigger rounds.
-## The crate is the container in the town scene in the "base_supply_crate" group.
+## The crate is the container on the map in the "base_supply_crate" group
+## (without one, nothing is delivered).
 ## main.gd creates it. Saved: who works what, and when the crate was last filled.
 
 const Survivor := preload("res://characters/npcs/survivor.gd")
@@ -135,6 +136,8 @@ func _resupply() -> void:
 	if day <= supplied_day or float(_day_night.get("hour")) < SUPPLY_HOUR:
 		return
 	supplied_day = day
+	if crate == null or not is_instance_valid(crate):
+		return # the map has no supply crate (yet)
 	var food := FOOD_PER_PLOT * worked("garden_plot")
 	var total := food
 	var inventory: RefCounted = crate.get("inventory")

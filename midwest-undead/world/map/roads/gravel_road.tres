@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="RoadStyle" format=3]
+
+[ext_resource type="Script" path="res://world/map/road_style.gd" id="1_style"]
+
+[resource]
+script = ExtResource("1_style")
+display_name = "Gravel road"
+width = 4.5
+surface = "Painted"
+surface_color = Color(0.45, 0.43, 0.4, 1)
+surface_texture = 5
+shoulder_width = 0.5
+shoulder_texture = 3
+center_line = "None"
+edge_lines = false
+cut_slope = 1.2
+fill_slope = 0.6
+smoothing = 15.0

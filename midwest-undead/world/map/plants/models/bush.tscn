@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://world/map/plants/models/bush_mesh.tres" id="1_4qhf1"]
+
+[node name="Bush" type="MeshInstance3D" unique_id=1751277724]
+mesh = ExtResource("1_4qhf1")

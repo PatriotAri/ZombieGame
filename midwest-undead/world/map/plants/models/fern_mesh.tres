@@ -1,0 +1,15 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Material" path="res://world/map/plants/models/plant_material.tres" id="1_g7f2e"]
+
+[resource]
+_surfaces = [{
+"aabb": AABB(-0.9, 0.05, -0.7794228, 1.8, 0.45, 1.5588456),
+"attribute_data": PackedByteArray("OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/OGsm/zhrJv84ayb/"),
+"format": 34359738383,
+"material": ExtResource("1_g7f2e"),
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 36,
+"vertex_data": PackedByteArray("AAAAAM3MTD0AAAAAZmbmPgAAAD/sUTg+ZmZmP2Zm5j4AAAAAAAAAAM3MTD0AAAAAZmZmP2Zm5j4AAAAAZmbmPgAAAD/sUTi+AAAAAM3MTD0AAAAAYoyNPQAAAD+8nPU+ZmbmPmZm5j5BiEc/AAAAAM3MTD0AAAAAZmbmPmZm5j5BiEc/TgPDPgAAAD/Gc5k+AAAAAM3MTD0AAAAATgPDvgAAAD/Gc5k+ZmbmvmZm5j5BiEc/AAAAAM3MTD0AAAAAZmbmvmZm5j5BiEc/YoyNvQAAAD+8nPU+AAAAAM3MTD0AAAAAZmbmvgAAAD/sUTi+ZmZmv2Zm5j5aJf4kAAAAAM3MTD0AAAAAZmZmv2Zm5j5aJf4kZmbmvgAAAD/sUTg+AAAAAM3MTD0AAAAAYoyNvQAAAD+8nPW+ZmbmvmZm5j5BiEe/AAAAAM3MTD0AAAAAZmbmvmZm5j5BiEe/TgPDvgAAAD/Gc5m+AAAAAM3MTD0AAAAATgPDPgAAAD/Gc5m+ZmbmPmZm5j5BiEe/AAAAAM3MTD0AAAAAZmbmPmZm5j5BiEe/YoyNPQAAAD+8nPW+/38AAAAA/78TlNJSnzr4k2GnYicLMqyu/38AAAAA/79hp2InCzKsrtLSExS3dASd/38AAAAA/7/6VipWir5cirKRWjB2Gsem/38AAAAA/7+ykVowdhrHpjDRs0LQb/mp/38AAAAA/7/OLrNC51uk0ExuWjApB8vT/38AAAAA/79MblowKQfL0wSpKlaLP3qe/38AAAAA/78sLRMU11O7q51YYicLMlHR/38AAAAA/7+dWGInCzJR0etr0lIgPgGI/38AAAAA/78q1gQpwoGmn6RPshHSKPjC/38AAAAA/7+kT7IR0ij4wks9MFEtbJHX/38AAAAA/7+zwjBRnFg2q1qwshHpOzWy/38AAAAA/79asLIR6Ts1stQpBCl+Qj69")
+}]

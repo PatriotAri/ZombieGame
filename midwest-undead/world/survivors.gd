@@ -3,12 +3,12 @@ extends Node
 ## characters/npcs/survivors/ (SurvivorData: who they are and what they say):
 ## four, plus Walt the machinist (who makes sheet metal, and ammo benches once
 ## the woodworker is at the station). Every door and window of their house is
-## planked shut from outside (set "boarded at start" in the town scene): pull
+## planked shut from outside (set "boarded at start" in the map scene): pull
 ## the planks off the door to get in. Each is in the
 ## bedroom, by the bed, with a couple of cans of food and two health packs on the
-## floor beside them (ground items in the town scene).
+## floor beside them (ground items in the map scene).
 ## Where each one starts, and their spot in the station's back yard, are
-## SpawnPoints in the town scene (roles "survivor" and "survivor_home", with the
+## SpawnPoints in the map scene (roles "survivor" and "survivor_home", with the
 ## person's name).
 ## Talk to one and they join you, if the base has room (base_camp.gd; if not,
 ## they stay put and say so), the way their join talk says (a "join" reply, or
@@ -16,7 +16,7 @@ extends Node
 ## (once you're out of sight of them and of the station), and live in the back
 ## yard, each with a bedroll. Talk to them there to put them on a garden plot or
 ## ammo bench, or (the machinist) to have something made.
-## main.gd creates it once the town is built and sends conversations here.
+## main.gd creates it once the map is loaded and sends conversations here.
 ## Saved: where each one has got to, by name. (Their planks and supplies are saved with
 ## the rest of the fortifications and ground items.)
 
@@ -59,13 +59,13 @@ var _bedrolls := {} # survivor -> its bedroll in the yard
 var _timer := 0.0
 
 
-## spots: the town's SpawnPoints. Puts everyone in place.
+## spots: the map's SpawnPoints. Puts everyone in place.
 func setup(spots: Array) -> void:
 	for person in _load_people():
 		var start := _spot(spots, "survivor", person.display_name)
 		var home := _spot(spots, "survivor_home", person.display_name)
 		if start == null or home == null:
-			push_warning("%s has no \"survivor\" or \"survivor_home\" SpawnPoint in the town scene." % person.display_name)
+			push_warning("%s has no \"survivor\" or \"survivor_home\" SpawnPoint in the map scene." % person.display_name)
 			continue
 		var survivor := SurvivorScene.instantiate() as Survivor
 		survivor.display_name = person.display_name
@@ -120,7 +120,7 @@ func attach(player: Node3D, dialogue: Node, choices: Node, crafting: Node, base:
 	_woodworker = woodworker
 
 
-## Zombies the town put inside a survivor's house go outside it instead (they
+## Zombies the map put inside a survivor's house go outside it instead (they
 ## can't have got in: it's boarded up). Call once every zombie is placed.
 func move_zombies_out(zombies: Array) -> void:
 	for zombie: Node3D in zombies:
