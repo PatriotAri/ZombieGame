@@ -26,8 +26,17 @@ extends CharacterBody3D
 ## it's after, or a noise it heard, gets bashed the same way (_bash_blocker);
 ## once it's down it walks through the gap (_through_gap).
 ## Its kind (walker, runner, crawler...) is a file in characters/zombie/kinds/
-## (ZombieKind): health, speeds, shape, skin, voice. Set `kind` to its id before
-## adding it to the tree; main.gd rolls it.
+## (ZombieKind): health, speeds, shape, skin, voice, and its model. Set `kind`
+## to its id before adding it to the tree; main.gd rolls it.
+## Its body (characters/humanoid_body.gd) is the kind's model, or the mannequin
+## stand-in: animated by what it's doing (_animate), flinching where it's hit,
+## going limp (a ragdoll) when it dies. Each one gets its own colors and a
+## slightly different size. Blood sprays and splatters where it's hit
+## (effects/blood.gd), and marks its body.
+## Its head has its own small hitbox (HeadShape, kept on the head as it moves):
+## a shot that hits that is a headshot.
+## Bodies are cleared away once you're well away and not looking
+## (world/zombie_population.gd).
 ## The node tree lives in zombie.tscn.
 ## TUNING: open zombie.tscn, select the Zombie node, and use the Inspector.
 
@@ -37,13 +46,8 @@ const WindowPane := preload("res://world/window_pane.gd")
 const Sound := preload("res://core/sound.gd")
 const Water := preload("res://world/water.gd")
 const Ground := preload("res://world/ground.gd")
-## Every zombie is one mesh with this one material; its colors and hit flash
-## are set per zombie (_combine_parts).
-const BODY_MATERIAL := preload("res://characters/zombie/zombie_body.tres")
-
-## posture -> its body, head and arms as one mesh, shared by every zombie that
-## stands (or crawls) that way.
-static var _combined := {}
+const HumanoidBody := preload("res://characters/humanoid_body.gd")
+const Blood := preload("res://effects/blood.gd")
 
 enum State { IDLE, INVESTIGATE, HUNT }
 
@@ -69,8 +73,16 @@ const VIEW_DOT := 0.5 # cos(60 degrees): it sees a 120 degree cone in front of i
 const PROXIMITY_RANGE := 2.0 # this close, it notices you no matter what
 const EYE_HEIGHT := 1.6
 const CRAWLER_EYE_HEIGHT := 0.4
-const CRAWLER_HEAD := Vector3(0, 0.25, -0.8) # where a crawling one's head is (its own space)
-const RUNNER_LEAN := 0.4 # radians forward while running flat out (kinds that lean)
+## Each one's size: its kind's times a random amount in this range.
+const SIZE_RANGE := Vector2(0.92, 1.08)
+## How its animations keep pace with it (m/s at normal speed, from the
+## mannequin's animations): walking, running, crawling. Faster than RUN_FROM is a run.
+const WALK_PACE := 1.2
+const RUN_PACE := 2.8
+const CRAWL_PACE := 0.6
+const RUN_FROM := 3.0
+## Climbing in through a window takes this long: a chance to hit it.
+const CLIMB_TIME := 1.5
 const ATTACK_RANGE := 1.3
 const ATTACK_HEIGHT := 1.5 # can't bite something more than this far above or below it
 const SENSE_INTERVAL := 0.2 # sight checks are raycasts; 5 per second is plenty
@@ -125,7 +137,11 @@ var is_dead := false
 var speed := 1.6
 var target: Node3D = null # who it's hunting
 var day_night: Node
-var _body: MeshInstance3D # all of it as one mesh (_combine_parts)
+var _attacking := false # biting someone this tick (for its animation)
+var _bashing := false # beating on a door, window or fence
+var _bashed_last := false # ...last tick
+var _vault_tween: Tween
+var _last_blow: Array = [] # [impulse, where]: the hit that killed it, for its fall
 
 var investigate_pos := Vector3.ZERO
 var last_seen_pos := Vector3.ZERO
@@ -160,9 +176,10 @@ var _far_delta := 0.0 # time saved up between its turns
 var _step_scale := 1.0 # how many frames' worth this physics step moves it
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
-@onready var visual: Node3D = $Visual # all meshes hang off this, so they can tip over on death
+@onready var visual: Node3D = $Visual # its body, scaled to its size
+@onready var body: HumanoidBody = $Visual/Body
 @onready var collision: CollisionShape3D = $CollisionShape3D
-@onready var clothes: MeshInstance3D = $Visual/Body
+@onready var head_shape: CollisionShape3D = $HeadShape
 
 
 func _ready() -> void:
@@ -186,20 +203,21 @@ func _ready() -> void:
 	# Layer 1 is the ground; layer 2 is the links through windows (fortifications.gd).
 	agent.navigation_layers = 1 | 2
 	agent.link_reached.connect(_on_link_reached)
-	_combine_parts()
 
 
-## Its kind's shape.
+## Its kind's body, shape and colors.
 func _apply_kind() -> void:
-	visual.scale = kind_data.body_scale
+	body.setup(kind_data.model)
+	body.head_shape = head_shape
+	body.settled.connect(func() -> void: Blood.pool(get_parent(), body.head_center().lerp(global_position, 0.6)))
+	visual.scale = kind_data.body_scale * randf_range(SIZE_RANGE.x, SIZE_RANGE.y)
+	var skin := kind_data.skin_color if kind_data.skin_color.a > 0.0 else Color(0.45, 0.52, 0.4)
+	skin = skin.lightened(randf_range(-0.1, 0.1)) if randf() < 0.5 else skin.darkened(randf_range(0.0, 0.15))
+	body.set_colors(skin, Color.from_hsv(randf(), randf_range(0.15, 0.4), randf_range(0.2, 0.45)),
+			Color.from_hsv(randf_range(0.55, 0.7), randf_range(0.1, 0.35), randf_range(0.12, 0.3)))
 	if _crawls():
 		eye_height = CRAWLER_EYE_HEIGHT
-		# Lying face down, head forward (-z), dragging itself along.
-		visual.rotation.x = -PI / 2.0
-		visual.position = Vector3(0, 0.3, 0.8)
-		for arm: Node3D in [$Visual/ArmLeft, $Visual/ArmRight]:
-			arm.rotation.x = PI / 2.0 # flat on the ground, reaching ahead
-			arm.position.z -= 0.25
+		# Lying face down, head forward (its animations do the pose).
 		var shape := CapsuleShape3D.new()
 		shape.radius = 0.3
 		shape.height = 1.6
@@ -212,11 +230,14 @@ func aim_point() -> Vector3:
 	return global_position + (Vector3(0, 0.3, 0) if _crawls() else Vector3(0, 1.2, 0))
 
 
-## A hit here counts as a headshot.
+## A hit here counts as a headshot: it's on the head's hitbox.
 func is_headshot(hit_pos: Vector3) -> bool:
-	if _crawls():
-		return hit_pos.distance_to(global_transform * CRAWLER_HEAD) < 0.3
-	return hit_pos.y - global_position.y > 1.4 # heads sit at ~1.4-1.8 m
+	return hit_pos.distance_to(head_shape.global_position) < (head_shape.shape as SphereShape3D).radius + 0.03
+
+
+## The middle of its head (guards aiming a headshot).
+func head_point() -> Vector3:
+	return body.head_center()
 
 
 ## Its groans: its kind's pitch.
@@ -231,73 +252,6 @@ func _crawls() -> bool:
 ## How fast it goes after someone.
 func _hunt_speed() -> float:
 	return kind_data.hunt_speed if kind_data.hunt_speed > 0.0 else speed
-
-
-## Its body, head and arms (zombie.tscn, posed by _apply_kind) become one mesh,
-## so the graphics card draws a zombie in one go instead of four. The combined
-## mesh is made once per posture and shared; the vertex color's alpha marks the
-## shirt (1) from the skin (0), and the shared material (BODY_MATERIAL) colors
-## them per zombie: a random shirt, and its kind's skin (or the scene's usual).
-func _combine_parts() -> void:
-	var parts: Array[MeshInstance3D] = []
-	for child in visual.get_children():
-		if child is MeshInstance3D:
-			parts.append(child)
-	var skin := Color(0.45, 0.52, 0.4)
-	for part in parts:
-		if part != clothes: # the head and arms are skin (zombie.tscn's skin material)
-			skin = (part.mesh.surface_get_material(0) as StandardMaterial3D).albedo_color
-			break
-	if kind_data.skin_color.a > 0.0:
-		skin = kind_data.skin_color
-	var key := kind_data.posture
-	if not _combined.has(key):
-		_combined[key] = _combine(parts, clothes)
-	for part in parts:
-		visual.remove_child(part)
-		part.queue_free()
-	_body = MeshInstance3D.new()
-	_body.name = "Body"
-	_body.mesh = _combined[key]
-	_body.material_override = BODY_MATERIAL
-	visual.add_child(_body)
-	_body.set_instance_shader_parameter("skin", skin)
-	_body.set_instance_shader_parameter("shirt", Color.from_hsv(randf(), 0.3, 0.35))
-
-
-## parts (as posed) as one mesh; shirt's vertices get alpha 1, the rest 0.
-static func _combine(parts: Array[MeshInstance3D], shirt: MeshInstance3D) -> ArrayMesh:
-	var verts := PackedVector3Array()
-	var normals := PackedVector3Array()
-	var colors := PackedColorArray()
-	var indices := PackedInt32Array()
-	for part in parts:
-		var arrays := part.mesh.surface_get_arrays(0)
-		var xform := part.transform
-		var start := verts.size()
-		var part_verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		var part_normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
-		var alpha := 1.0 if part == shirt else 0.0
-		for i in part_verts.size():
-			verts.append(xform * part_verts[i])
-			normals.append((xform.basis * part_normals[i]).normalized())
-			colors.append(Color(1, 1, 1, alpha))
-		var part_indices = arrays[Mesh.ARRAY_INDEX]
-		if part_indices == null:
-			for i in part_verts.size():
-				indices.append(start + i)
-		else:
-			for i: int in part_indices:
-				indices.append(start + i)
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_COLOR] = colors
-	arrays[Mesh.ARRAY_INDEX] = indices
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	return mesh
 
 
 func _physics_process(delta: float) -> void:
@@ -323,6 +277,9 @@ func _physics_process(delta: float) -> void:
 		die(false) # fell out of the map (past its edge)
 		return
 
+	_attacking = false
+	_bashed_last = _bashing # (doors and windows are bashed after it picks its animation)
+	_bashing = false
 	# Reeling from a hit: just slide with the knockback.
 	if stagger_timer > 0.0:
 		stagger_timer -= delta
@@ -338,9 +295,6 @@ func _physics_process(delta: float) -> void:
 	_update_groan(delta)
 
 	var moving := false
-	if kind_data.leans_when_running: # leans into it when running flat out, upright otherwise
-		var lean := RUNNER_LEAN if _flat(velocity).length() > _hunt_speed() * 0.6 else 0.0
-		visual.rotation.x = move_toward(visual.rotation.x, -lean, 3.0 * delta)
 	match state:
 		State.HUNT:
 			if not _is_valid_target(target):
@@ -359,6 +313,7 @@ func _physics_process(delta: float) -> void:
 				if to_target.length() < ATTACK_RANGE and height_gap < ATTACK_HEIGHT \
 						and target.has_method("take_damage") and _can_reach(target):
 					target.call("take_damage", damage_per_second * delta)
+					_attacking = true
 		State.INVESTIGATE:
 			moving = _walk_to(investigate_pos, speed, delta)
 			# Jammed against a wall or a crowd short of the spot counts as there:
@@ -392,6 +347,7 @@ func _physics_process(delta: float) -> void:
 					_end_march()
 					wander_timer = randf_range(3.0, 12.0) * lerpf(1.0, 0.5, 1.0 - _light())
 
+	_animate(moving)
 	if not moving:
 		velocity.x = move_toward(velocity.x, 0.0, speed)
 		velocity.z = move_toward(velocity.z, 0.0, speed)
@@ -405,6 +361,7 @@ func _physics_process(delta: float) -> void:
 	if moving and state != State.IDLE:
 		bashing = _bash_doors(delta)
 		bashing = _handle_window(delta) or bashing
+	_bashing = _bashing or bashing
 	if bashing: # held up by a door or window it's breaking: that's not stuck
 		_stuck_time = 0.0
 	elif moving and (state == State.INVESTIGATE or (state == State.IDLE and march_to != Vector3.INF)):
@@ -434,6 +391,7 @@ func _bash_blocker(toward: Vector3, delta: float) -> bool:
 		return false
 	_face(dir)
 	thing.call("bash", door_damage_per_second * delta)
+	_bashing = true
 	if not thing.call("can_be_bashed"):
 		_gap_time = GAP_TIME # broke it
 	return true
@@ -505,24 +463,23 @@ func _handle_window(delta: float) -> bool:
 	return false
 
 
-## Over the sill and in (or out): up to just above it, then down the other side.
+## Over the sill and in (or out): it hauls itself up onto the sill, then drops
+## down the other side. It takes CLIMB_TIME, and it can be hit the whole time.
 func _vault() -> void:
 	_vaulting = true
-	collision.disabled = true # not mid-physics: called from _physics_process, after move_and_slide
 	velocity = Vector3.ZERO
 	var sill_y: float = _window_link.get_meta("sill_y")
 	var over := (_window_entry + _window_exit) / 2.0
 	over.y = sill_y + 0.15
 	_face(_flat(_window_exit - global_position))
-	var tween := create_tween()
-	tween.tween_property(self, "global_position", over, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(self, "global_position", _window_exit + Vector3(0, 0.1, 0), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tween.tween_callback(func() -> void:
+	body.one_shot("crawl" if _crawls() else "climb", CLIMB_TIME)
+	_vault_tween = create_tween()
+	_vault_tween.tween_property(self, "global_position", over, CLIMB_TIME * 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_vault_tween.tween_property(self, "global_position", _window_exit + Vector3(0, 0.1, 0), CLIMB_TIME * 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_vault_tween.tween_callback(func() -> void:
 		_vaulting = false
 		_window_link = null
-		repath_timer = 0.0
-		if not is_dead: # killed mid-climb: stays a corpse you can walk through
-			collision.disabled = false)
+		repath_timer = 0.0)
 
 
 # --- Senses ------------------------------------------------------------------
@@ -726,21 +683,30 @@ func _set_idle() -> void:
 
 # --- Combat ------------------------------------------------------------------
 
-## Called by the player's attacks and by guards. The attacker only becomes the
-## target if the zombie wasn't already chasing someone.
-func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node3D = null) -> void:
+## Called by the player's attacks and by guards. hit_pos: where it landed (a
+## shot), or INF (a blow: the chest). The attacker only becomes the target if
+## the zombie wasn't already chasing someone.
+func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node3D = null, hit_pos := Vector3.INF) -> void:
 	if is_dead:
 		return
 	health -= damage
 	var away := _flat(global_position - from_pos).normalized()
+	if hit_pos == Vector3.INF:
+		hit_pos = aim_point() - away * 0.25
 	velocity.x = away.x * knockback
 	velocity.z = away.z * knockback
 	stagger_timer = 0.4
 	_flash()
 	Sound.play_at(self, "zombie_hit", global_position + Vector3.UP, -4.0, 20.0, 0.15, _voice_pitch())
+	var shot_dir := (hit_pos - from_pos).normalized()
+	Blood.hit(get_parent(), hit_pos, shot_dir, [get_rid()])
+	body.wound(hit_pos, -shot_dir)
 	if health <= 0.0:
+		_last_blow = [shot_dir * (40.0 + knockback * 25.0) + Vector3.UP * 10.0, hit_pos]
 		die()
 		return
+	if not _vaulting: # (mid-climb it keeps climbing)
+		body.one_shot("crawl_hit" if _crawls() else "hit_" + body.zone_of(hit_pos))
 	if state == State.HUNT and _is_valid_target(target):
 		return # stay on its current target
 	if _is_valid_target(attacker):
@@ -752,26 +718,24 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 		_investigate(from_pos)
 
 
-## animate = false lays it straight down (loading a save with it already dead).
-func die(animate := true) -> void:
+## It goes limp and falls (a ragdoll), pushed by the blow that killed it.
+## loud = false: no death groan (drowned quietly, fell off the map).
+func die(loud := true) -> void:
+	if is_dead:
+		return
 	is_dead = true
 	target = null
 	remove_from_group("zombies") # stops hearing, being hit, and being targeted
 	collision.set_deferred("disabled", true) # deferred: physics may be mid-step
+	head_shape.set_deferred("disabled", true)
 	set_physics_process(false)
-	if _crawls(): # already down: it just goes still
-		if animate:
-			Sound.play_at(self, "zombie_death", global_position + Vector3.UP, -2.0, 25.0, 0.12, _voice_pitch())
-		return
-	if not animate:
-		visual.rotation.x = PI / 2.0
-		visual.position.y = 0.3
-		return
-	Sound.play_at(self, "zombie_death", global_position + Vector3.UP, -2.0, 25.0, 0.12, _voice_pitch())
-	var tween := create_tween()
-	tween.tween_property(visual, "rotation:x", PI / 2.0, 0.6) \
-			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN) # topple backward
-	tween.parallel().tween_property(visual, "position:y", 0.3, 0.6)
+	if _vault_tween and _vault_tween.is_valid():
+		_vault_tween.kill() # killed mid-climb: falls from the sill
+	_vaulting = false
+	if loud:
+		Sound.play_at(self, "zombie_death", global_position + Vector3.UP, -2.0, 25.0, 0.12, _voice_pitch())
+	var blow: Array = _last_blow if not _last_blow.is_empty() else [Vector3.UP * 5.0, aim_point()]
+	body.ragdoll(blow[0], blow[1], Vector3(velocity.x, 0.0, velocity.z))
 
 
 ## Every so often it moans: quietly while shuffling around, louder and more
@@ -793,7 +757,33 @@ func _alert_sound() -> void:
 
 
 func _set_flash(amount: float) -> void:
-	_body.set_instance_shader_parameter("flash", amount)
+	body.set_flash(amount)
+
+
+## Picks its animation from what it's doing this tick.
+func _animate(moving: bool) -> void:
+	if body.is_busy():
+		return # a flinch or the climb is playing out
+	var pace := _flat(velocity).length()
+	var action := "idle"
+	var speed_scale := 1.0
+	if _bashing or _bashed_last:
+		action = "bash"
+	elif _attacking:
+		action = "attack"
+	elif moving and pace > 0.1:
+		if _crawls():
+			action = "crawl"
+			speed_scale = pace / CRAWL_PACE
+		elif pace > RUN_FROM:
+			action = "run"
+			speed_scale = pace / RUN_PACE
+		else:
+			action = "walk"
+			speed_scale = pace / WALK_PACE
+	if _crawls() and action != "crawl":
+		action = "crawl_attack" if action in ["attack", "bash"] else "crawl_idle"
+	body.set_action(action, clampf(speed_scale, 0.3, 2.5))
 
 
 func _flash() -> void:

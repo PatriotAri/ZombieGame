@@ -1,17 +1,20 @@
 # How to add models and animations
 
-Every weapon in your hands works with or without a model. Without one it's
-today's box gun. You can swap a model in whenever you have one, and nothing else
-has to change.
+Weapons in your hands and zombies work with or without a model. Without one, a
+weapon is today's box gun and a zombie is the mannequin: a plain stand-in with
+a real skeleton and rough animations. You can swap a model in whenever you have
+one, and nothing else has to change.
 
-So far this covers **weapons in your hands** (first person). Characters, props
-and buildings come later.
+So far this covers **weapons in your hands** (first person) and **zombies**.
+NPCs, props and buildings come later.
 
 ## The rules every model follows
 
 - **1 unit = 1 meter.** In Blender, keep the scene's unit scale at 1.0.
-- **Forward is -Z** in Godot. In Blender that's +Y forward, and the glTF exporter
-  turns it for you (leave **+Y Up** ticked).
+- **Weapons face -Z** in Godot. In Blender that's +Y forward, and the glTF
+  exporter turns it for you (leave **+Y Up** ticked).
+- **Characters face +Z**: the way Blender, Mixamo and the glTF format leave them.
+  The game turns them round.
 - **A weapon's origin** is where your hand holds it: the grip of a gun, the
   handle of a melee weapon. Recoil and swings turn the weapon about this point.
 - **Real size.** A pistol is about 20 cm long and a shotgun about 1 m.
@@ -24,9 +27,11 @@ and buildings come later.
 |---|---|---|
 | Gun or melee weapon in your hands | 5,000 - 15,000 | 1024 or 2048 px: color, normal, roughness/metal |
 | The same item lying on the ground | under 3,000 | 512 px |
+| A zombie or person | 8,000 - 15,000 | 2048 px: color, normal, roughness |
 
 Weapons in your hands are only drawn one at a time and always close up, so they
-get the most detail.
+get the most detail. Characters get simpler versions further away
+automatically (LODs, see below), which a horde of 100+ needs.
 
 ## Getting a model in
 
@@ -116,12 +121,113 @@ The code is in:
 - `characters/player/hands.gd`: switching weapons, sway, bob and poses.
 - `items/held_model.gd`: one weapon's animations.
 
+## Zombies (characters)
+
+A zombie kind (`characters/zombie/kinds/`, see `HOW_TO_ADD.md`) has a **Model**
+setting. Leave it empty and its zombies are the mannequin
+(`characters/mannequin/mannequin.tscn`).
+
+### What a character model needs
+- **A humanoid skeleton**: hips, spine, chest, neck, head, both arms (upper arm,
+  forearm, hand) and both legs (thigh, shin, foot). Mixamo characters and
+  Blender's Rigify rigs have one.
+- **About 1.8 m tall**, standing on its origin (the origin at its feet), facing
+  +Z.
+- **Export as `.glb`**, skeleton and skin included.
+
+### Getting it in
+1. Put the `.glb` in `characters/zombie/models/` (make the folder).
+2. Double-click it to open the **Advanced Import Settings** and select the
+   skeleton (**Skeleton3D**). On the right, under **Retarget**:
+   - **Bone Map:** choose **New BoneMap**, then set its **Profile** to **New
+     SkeletonProfileHumanoid**. Godot matches the bones by their names. Check
+     the dots on the figure: each should be matched to a bone (green). Click
+     any that aren't and pick the bone yourself.
+   - Leave **Rest Fixer > Overwrite Axis** and **Fix Silhouette** on.
+
+   Click **Reimport**. This renames the bones to Godot's standard names (Hips,
+   Spine, LeftUpperArm...) and calls the skeleton `GeneralSkeleton`. The game
+   finds things by those names.
+3. Right-click the `.glb` and choose **New Inherited Scene**. Save it as
+   `characters/zombie/models/<name>.tscn`.
+4. Open the zombie kind's file and set **Model** to that scene.
+5. Run the game.
+
+### Animations
+The game plays these by name. A model's own animations are used first; for any
+it doesn't have, it borrows the mannequin's.
+
+| Name | When | Notes |
+|---|---|---|
+| `idle` | standing around | loops |
+| `walk` | walking | loops; one cycle (two steps) covers 1.2 m, and it's sped up or slowed to match how fast the zombie walks |
+| `run` | running (over 3 m/s) | loops; one cycle covers 2.8 m |
+| `attack` | biting someone in reach | loops |
+| `bash` | beating on a door, window or fence | loops |
+| `hit_head`, `hit_body`, `hit_legs` | flinching from a hit there | plays once (about 0.4 s) |
+| `climb` | climbing in through a window | plays once, fitted to the 1.5 s climb |
+| `crawl_idle`, `crawl`, `crawl_attack`, `crawl_hit` | the same, for crawlers | `crawl` covers 0.6 m per cycle |
+
+- **Mixamo animations:** download each one **Without Skin**. Import it with the
+  same Humanoid bone map as above. In its Advanced Import Settings, select the
+  animation and save it to a file. Then, in your model's scene, open the
+  **AnimationPlayer**, and use **Animation > Manage Animations** to load those
+  files, named as in the table.
+- **Borrowing the mannequin's:** this works because the mannequin is built like
+  a model imported with the Humanoid bone map. If borrowed animations look
+  twisted on your model, it was imported without the bone map (step 2), or give
+  it its own animations.
+
+### What happens on its own
+- **Ragdoll:** when it dies, its body goes limp and falls by physics. The
+  physics bodies are made from the bone names, so there's nothing to set up.
+- **Headshots:** a small hitbox follows the **Head** bone.
+- **Blood:** the splatter on the ground and walls, and the marks on bodies,
+  use the images in `effects/blood/` (`splat_1.png` to `splat_3.png`). Swap in
+  your own: square, transparent background, same names.
+- **Colors:** the mannequin gets random skin, shirt and pants colors. A real
+  model keeps its own textures (only models using
+  `characters/mannequin/body.tres` get random colors). Every zombie is also a
+  few percent bigger or smaller.
+- **Detail by distance:**
+  - Models get simpler versions further away (**Generate LODs** in the Import
+    tab, on by default).
+  - Animations move every frame within 25 m, every 3rd frame up to 60 m, and
+    every 8th further away or off screen.
+
+### The mannequin
+`characters/mannequin/make_mannequin.gd` builds the mannequin: its skeleton,
+body and animations. To change it, edit the script and run it from the project
+folder:
+
+```
+godot --headless --path . -s res://characters/mannequin/make_mannequin.gd
+```
+
+### Tuning
+- `characters/humanoid_body.gd`:
+  - animation distances (**NEAR_DISTANCE**, **MID_DISTANCE**);
+  - ragdoll limbs and joints (**RAGDOLL**);
+  - how many fall at once (**MAX_RAGDOLLS**);
+  - blood marks per body (**MAX_WOUNDS**).
+- `characters/zombie/zombie.gd`:
+  - **SIZE_RANGE** (random sizes);
+  - **CLIMB_TIME** (window climbing);
+  - the walking and running paces.
+- `effects/blood.gd`:
+  - how much splatter stays on the map (**MAX_SPLATS**);
+  - how far it's drawn.
+- `world/zombie_population.gd`: **BODY_CLEANUP_DISTANCE**. Bodies are cleared
+  away once you're this far and not looking.
+
 ## Free models
 
 Free models must be **CC0** (no credit needed) or licensed for games. Note each
-one's source and licence in `items/models/LICENSES.txt` (make the file with the
+one's source and licence in a `LICENSES.txt` next to it (make the file with the
 first one). Good places to look:
 - Poly Haven
 - OpenGameArt (filter by CC0)
 - itch.io (search "CC0 3D")
 - Quaternius and Kenney (low-poly)
+- Mixamo (free with an Adobe account): rigged characters and hundreds of
+  animations. Check its terms for your use.

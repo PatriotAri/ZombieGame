@@ -117,7 +117,8 @@ func _fire_at(target: Node3D) -> void:
 	var end := aim
 	if randf() < hit_chance:
 		var headshot := randf() < headshot_chance
-		target.call("take_hit", damage * (2.5 if headshot else 1.0), global_position, 1.0, self)
+		var hit_pos: Vector3 = target.call("head_point") if headshot and target.has_method("head_point") else aim
+		target.call("take_hit", damage * (2.5 if headshot else 1.0), rifle.global_position, 1.0, self, hit_pos)
 	else:
 		end += Vector3(randf_range(-1.5, 1.5), randf_range(-0.6, 1.0), randf_range(-1.5, 1.5))
 

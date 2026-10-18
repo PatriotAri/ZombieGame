@@ -1070,7 +1070,7 @@ func _apply_melee_hit(weapon: Dictionary) -> void:
 		if not space.intersect_ray(query).is_empty():
 			continue # wall, car, or window in the way
 		# call() because this script doesn't know the zombie script's functions.
-		victim.call("take_hit", weapon["damage"], global_position, weapon["knockback"], self)
+		victim.call("take_hit", weapon["damage"], origin, weapon["knockback"], self)
 		hit_any = true
 	if hit_any:
 		make_noise(weapon["noise"])
@@ -1128,6 +1128,7 @@ func _try_shoot() -> void:
 	var origin := camera.global_position
 	var space := get_world_3d().direct_space_state
 	var damage_to := {} # target -> total damage from this shot (pellets add up)
+	var hit_at := {} # target -> where it was hit (a headshot pellet's spot if any)
 	for i in gun.pellets:
 		# A random direction inside the cone: tilt off center, then spin round it.
 		var dir := -camera.global_basis.z
@@ -1145,9 +1146,11 @@ func _try_shoot() -> void:
 			var headshot: bool = target.call("is_headshot", hit_pos) if target.has_method("is_headshot") \
 					else hit_pos.y - target.global_position.y > 1.4 # people's heads sit at ~1.4-1.8 m
 			damage_to[target] = float(damage_to.get(target, 0.0)) + gun.damage * (headshot_multiplier if headshot else 1.0)
+			if headshot or not hit_at.has(target):
+				hit_at[target] = hit_pos
 	for target: Node3D in damage_to:
 		if is_instance_valid(target):
-			target.call("take_hit", damage_to[target], global_position, gun.knockback, self)
+			target.call("take_hit", damage_to[target], origin, gun.knockback, self, hit_at[target])
 
 
 func _start_reload() -> void:

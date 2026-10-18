@@ -13,8 +13,9 @@ extends Node
 ## A horde (world/horde.gd) can push the count over `population`; nobody new
 ## turns up until it's back under.
 ##
-## Bodies are cleared away a while after they fall, once you're well away. The
-## living are saved (main.gd).
+## Bodies stay where they fell until you're well away (BODY_CLEANUP_DISTANCE)
+## and not looking at them, then they're cleared away. Only the living are
+## saved (main.gd).
 ## main.gd creates it and owns the tuning (the Inspector's "Zombies" group).
 
 const Zones := preload("res://world/zones.gd")
@@ -27,8 +28,7 @@ const MIN_SPAWN_DISTANCE := 110.0 # from you: far enough that you never see one 
 const START_MIN_DISTANCE := 50.0 # extras at the start: this far from where you begin
 const ZONE_MARGIN := 40.0 # new ones turn up at least this far from any zone
 const OUTSKIRTS := 35.0 # ...and within this of the edge of the walkable area
-const BODY_CLEANUP_DISTANCE := 70.0
-const BODY_CLEANUP_DELAY := 60.0 # seconds dead before a body can be cleared away
+const BODY_CLEANUP_DISTANCE := 60.0
 
 var population := 100 # zombies up at once that it tops back up to
 var respawn_seconds_day := 30.0
@@ -43,7 +43,6 @@ var _triangles: Array[PackedVector3Array] = [] # the navigation mesh, for pickin
 var _cumulative_area: PackedFloat32Array = []
 var _check_timer := 0.0
 var _spawn_timer := 0.0
-var _died_at := {} # zombie -> seconds since it died
 var _rng := RandomNumberGenerator.new() # during play: its own dice
 
 
@@ -78,7 +77,7 @@ func _process(delta: float) -> void:
 	if _check_timer > 0.0:
 		return
 	_check_timer = CHECK_INTERVAL
-	_clear_bodies(CHECK_INTERVAL)
+	_clear_bodies()
 	if _spawn_timer > 0.0 or _alive() >= population:
 		return
 	var night := 1.0 - float(_day_night.call("light_level"))
@@ -116,17 +115,15 @@ func _near_zone(pos: Vector3) -> bool:
 	return false
 
 
-## Bodies: gone once they've been down a while and you're well away.
-func _clear_bodies(elapsed: float) -> void:
+## Bodies: gone once they've stopped falling, you're well away, and they're off
+## screen (so you never see one vanish).
+func _clear_bodies() -> void:
 	var zombies: Array = _main.get("zombies")
 	for i in range(zombies.size() - 1, -1, -1):
 		var zombie: Zombie = zombies[i]
-		if not zombie.is_dead:
+		if not zombie.is_dead or not zombie.body.is_settled or zombie.body.on_screen():
 			continue
-		_died_at[zombie] = float(_died_at.get(zombie, 0.0)) + elapsed
-		if _died_at[zombie] >= BODY_CLEANUP_DELAY \
-				and zombie.global_position.distance_to(_player.global_position) > BODY_CLEANUP_DISTANCE:
-			_died_at.erase(zombie)
+		if zombie.global_position.distance_to(_player.global_position) > BODY_CLEANUP_DISTANCE:
 			zombies.remove_at(i)
 			zombie.queue_free()
 

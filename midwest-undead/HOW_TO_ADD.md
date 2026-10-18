@@ -113,16 +113,19 @@ Every new zombie, at the start and arriving later, rolls a kind:
   Exactly one kind should have it.
 
 **Body:**
+- **Model:** its body, a character scene (see `HOW_TO_MODEL.md`). Empty: the
+  mannequin stand-in.
 - **Health.**
 - **Min / Max Speed:** each zombie picks a walking speed in this range (m/s).
-  You walk at 4.
+  You walk at 4. Anything over 3 m/s plays the running animation.
 - **Hunt Speed:** speed while chasing someone. 0 means its walking speed. The
   runner's is 7.
-- **Leans When Running:** leans forward while running flat out, like the runner.
 - **Posture:** `crawling` lies flat like the crawler. Chest-height shots go over
   it, and its head is at the front, near the ground.
-- **Body Scale:** stretches it. (0.75, 1, 0.75) looks thin.
-- **Skin Color:** leave it fully transparent for the usual skin.
+- **Body Scale:** stretches it. (0.75, 1, 0.75) looks thin. Each zombie is also
+  a few percent bigger or smaller at random.
+- **Skin Color:** leave it fully transparent for the usual skin. Each zombie's
+  is a little lighter or darker; shirts and pants are random.
 - **Voice Pitch:** its groans; 1 is normal, higher is shriller.
 
 ## Survivors (`characters/npcs/survivors/`, SurvivorData)
