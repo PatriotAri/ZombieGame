@@ -8,6 +8,7 @@ extends CanvasLayer
 ## main menu); Back, Esc or B comes back.
 
 const SaveGame := preload("res://core/save_game.gd")
+const SceneFade := preload("res://ui/scene_fade.gd")
 const MenuStyle := preload("res://ui/menu_style.gd")
 const SettingsPage := preload("res://ui/settings_page.gd")
 const ControlsPage := preload("res://ui/controls_page.gd")
@@ -70,14 +71,13 @@ func resume() -> void:
 
 ## Starts over from the beginning. Your save file is kept, so you can still load it.
 func _restart() -> void:
-	get_tree().paused = false # pause state survives a scene change, so clear it first
-	get_tree().reload_current_scene()
+	SaveGame.pending_load = {}
+	SceneFade.change_to(get_tree(), get_tree().current_scene.scene_file_path)
 
 
 ## Back to the title screen. Anything since your last save is lost (as with New game).
 func _to_main_menu() -> void:
-	get_tree().paused = false
-	get_tree().change_scene_to_file(MAIN_MENU)
+	SceneFade.change_to(get_tree(), MAIN_MENU)
 
 
 func _quit() -> void:

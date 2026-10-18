@@ -50,6 +50,7 @@ const DialogueBox := preload("res://ui/dialogue_box.gd")
 const QuestManager := preload("res://quests/quest_manager.gd")
 const JournalMenu := preload("res://ui/journal_menu.gd")
 const SaveGame := preload("res://core/save_game.gd")
+const SceneFade := preload("res://ui/scene_fade.gd")
 const SavePoint := preload("res://world/save_point.gd")
 const SaveMenu := preload("res://ui/save_menu.gd")
 const Bandit := preload("res://characters/npcs/bandit.gd")
@@ -549,7 +550,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## otherwise start over.
 func _load_or_restart() -> void:
 	if not SaveGame.request_load(get_tree()):
-		get_tree().reload_current_scene()
+		SceneFade.change_to(get_tree(), scene_file_path)
 
 
 # --- World -------------------------------------------------------------------

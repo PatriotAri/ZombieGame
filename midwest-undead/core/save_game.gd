@@ -16,6 +16,7 @@ const DIR := "user://saves/"
 const AUTOSAVE := DIR + "autosave.json"
 const OLD_PATH := "user://savegame.json" # before there was a list: becomes save_1
 const GAME_SCENE := "res://world/main.tscn"
+const SceneFade := preload("res://ui/scene_fade.gd")
 const VERSION := 5 # bump whenever the save layout changes; older saves are ignored (4: the new map; 5: base camps)
 
 ## Set by request_load(); main.gd picks it up after the scene reloads.
@@ -97,14 +98,15 @@ static func delete(path: String) -> void:
 ## the one at `path`, or the newest if path is "". Returns false if there's no
 ## usable save.
 static func request_load(tree: SceneTree, path := "") -> bool:
+	if SceneFade.busy(tree):
+		return true # already on the way somewhere (a second press during the fade)
 	if path == "":
 		path = latest()
 	var data := read(path)
 	if data.is_empty():
 		return false
 	pending_load = data
-	tree.paused = false # pause survives a scene change, so clear it first
-	tree.change_scene_to_file(GAME_SCENE)
+	SceneFade.change_to(tree, GAME_SCENE)
 	return true
 
 
