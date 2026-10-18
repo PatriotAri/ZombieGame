@@ -1,29 +1,28 @@
 extends Node
-## The wagon trader. The first time Zone 1 (the streets around the police
-## station, see world/zones.gd) is clear of zombies, word gets around, and a
-## trader's wagon comes to the station yard. It turns up while you're away
+## The wagon trader. Once you've killed KILLS_NEEDED zombies near the police
+## station (within world/camps.gd's RANGE of it), word gets around, and a
+## trader's wagon comes to the station. It turns up while you're away
 ## (ARRIVE_DISTANCE from the station), so you never see it pop in, and it stays
-## for good. Zombies wandering back into the zone later don't drive them off,
-## but they won't restock while there are zombies in it: the morning's restock
-## waits until the zone is clear again.
+## for good. They won't restock while zombies are close to the station
+## (RESTOCK_CLEAR): the morning's restock waits until they've gone.
 ## Coming back near it the first time is the "a trader is here" moment.
 ## main.gd creates it and listens to the signals; the quest follows along.
 ##
 ## Where the wagon and the trader stand are SpawnPoints in the map scene (roles
 ## "wagon" and "wagon_trader").
 ##
-## Saved: whether the zone has been cleared, whether the trader has come and
-## been seen, and the trader's stock.
+## Saved: whether enough have been killed, whether the trader has come and
+## been seen, and the trader's stock. (The kills are counted by camps.gd.)
 
-signal zone_cleared
+signal kills_reached
 signal arrived
 signal seen # the first time you come near after they arrived
 
-const Zones := preload("res://world/zones.gd")
 const Shopkeeper := preload("res://characters/npcs/shopkeeper.gd")
 const TraderScene := preload("res://characters/npcs/wagon_trader.tscn")
 
-const ZONE := "Zone 1"
+const KILLS_NEEDED := 75
+const RESTOCK_CLEAR := 40.0 # meters around the station with no zombies, for a restock
 const ARRIVE_DISTANCE := 100.0 # how far from the station you have to be for them to arrive
 const SEEN_DISTANCE := 35.0
 const CHECK_INTERVAL := 0.5
@@ -38,16 +37,16 @@ var trader: Shopkeeper # null until they arrive
 var wagon_spot := Transform3D.IDENTITY
 var trader_spot := Transform3D.IDENTITY
 var _player: Node3D
-var _zones: Zones
+var _camps: Node # world/camps.gd: the kill count, and where the station is
 var _day_night: Node
 var _station_center := Vector3.ZERO
 var _timer := 0.0
 
 
-func setup(player: Node3D, zones: Zones, day_night: Node, station_center: Vector3,
+func setup(player: Node3D, camps: Node, day_night: Node, station_center: Vector3,
 		wagon: Transform3D, trader_at: Transform3D) -> void:
 	_player = player
-	_zones = zones
+	_camps = camps
 	_day_night = day_night
 	_station_center = station_center
 	wagon_spot = wagon
@@ -60,10 +59,9 @@ func _process(delta: float) -> void:
 		return
 	_timer = CHECK_INTERVAL
 	var dist := _player.global_position.distance_to(_station_center)
-	# is_counted: before the first count every zone reads as safe.
-	if not cleared and _zones.is_counted() and _zones.status_of(ZONE) == Zones.Status.SAFE:
+	if not cleared and int(_camps.call("kills_near", _camps.station.name)) >= KILLS_NEEDED:
 		cleared = true
-		zone_cleared.emit()
+		kills_reached.emit()
 	if cleared and not has_arrived and dist >= ARRIVE_DISTANCE:
 		_arrive()
 		arrived.emit()
@@ -97,10 +95,17 @@ func _arrive() -> void:
 	trader.position = trader_spot.origin
 	trader.rotation.y = trader_spot.basis.get_euler().y
 	trader.day_night = _day_night # restocks each morning, like the Quartermaster...
-	trader.can_restock = func() -> bool: return _zones.status_of(ZONE) != Zones.Status.DANGER # ...when Zone 1 is clear
+	trader.can_restock = _station_clear # ...when no zombies are close to the station
 	get_parent().add_child(trader)
 	# Their first restock is the morning after they arrive.
 	trader.restocked_day = _day_night.day
+
+
+func _station_clear() -> bool:
+	for zombie: Node3D in get_tree().get_nodes_in_group("zombies"):
+		if zombie.global_position.distance_to(_station_center) < RESTOCK_CLEAR:
+			return false
+	return true
 
 
 ## A covered wagon: a box bed on four wheels, hoops of canvas over it, a hitch

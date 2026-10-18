@@ -133,20 +133,23 @@ Every new zombie, at the start and arriving later, rolls a kind:
 - **Display Name:** how the game shows them. Quests (a `talk_to` step's target)
   and markers go by it too.
 - **Job:**
-  - `none`: they work a garden plot or a bench at the base.
+  - `none`: they work a garden plot or a bench at their camp, or stand guard on
+    a guard post.
   - `machinist`: they make benches once the woodworker's at the station.
 - **Outfit Color, Skin Color.**
 - **Talk:**
   - **Join Talk:** a conversation, the same as in quests (see `QUESTS.md`).
-    Give it a reply with the `join` action and picking that brings them to the
-    base. A `decline` reply leaves them where they are for now. With no `join`
+    Give it a reply with the `join` action and picking that brings them to a
+    camp. A `decline` reply leaves them where they are for now. With no `join`
     reply anywhere, hearing them out brings them.
-  - **Base Talk:** optional. What they say at the base before their work menu.
+  - **Base Talk:** optional. What they say at their camp before their work menu.
   - **Base Line:** what they say over their work menu.
 
-Then put two SpawnPoints on the map (world/map/map.tscn) with **Person** set to their name
+Then put their SpawnPoints on the map (world/map/map.tscn) with **Person** set to their name
 (see `HOW_TO_BUILD.md`):
 - **survivor:** where you find them. Put it in a house.
-- **survivor_home:** their spot in the station yard.
+- **survivor_home:** optional. Their own spot at the police station. Without
+  one, they stand round whichever camp they live at.
 
-If the base is full when you find them, they stay put and say so.
+When they join, they head to a base camp with room. If more than one has room,
+you pick which. If every camp is full, they stay put and say so.

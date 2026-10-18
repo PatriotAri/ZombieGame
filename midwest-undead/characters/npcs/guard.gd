@@ -38,6 +38,11 @@ var _reload_left := 0.0
 @onready var muzzle_flash: OmniLight3D = $Rifle/MuzzleFlash
 
 
+## One of your survivors on a guard post (world/camps.gd) can be talked to.
+func interact_prompt() -> String:
+	return "talk to " + display_name if has_meta("survivor") else ""
+
+
 func _npc_ready() -> void:
 	rounds = magazine_size
 	_cooldown = randf() * fire_interval

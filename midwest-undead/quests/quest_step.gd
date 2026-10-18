@@ -7,17 +7,21 @@ extends Resource
 ##   go_to_place - the name of a Place marker in the town; done when you're within its radius.
 ##   talk_to     - an NPC's name (Police Chief, Wagon Trader, Woodworker, a survivor's
 ##                 name...); done when you finish `dialogue` with them.
-##   clear_zone  - a zone's name ("Zone 1"); done when no zombies are left in it.
+##   kill_near   - a base camp's name ("Police Station"); done once you've killed
+##                 `count` zombies within world/camps.gd's RANGE of it (since the
+##                 game began). "{count}" in the objective shows how many so far.
 ##   event       - a story event's name; done when the game reports it. The game's
 ##                 events: safe_house_reached, trader_found, woodworker_untied,
-##                 woodworker_found, zone_cleared:<zone>, reached:<place>.
+##                 woodworker_found, reached:<place>.
 
 ## Other steps (and variants) go to this one by its id.
 @export var id := ""
 ## Shown on the HUD and in the journal while it's the current step.
 @export_multiline var objective := ""
-@export_enum("go_to_place", "talk_to", "clear_zone", "event") var kind := "event"
+@export_enum("go_to_place", "talk_to", "kill_near", "event") var kind := "event"
 @export var target := ""
+## kill_near: how many kills it takes.
+@export var count := 0
 ## Done already counts (you went there, or it happened, before this step began).
 @export var counts_if_done_earlier := true
 

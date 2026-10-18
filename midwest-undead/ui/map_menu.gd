@@ -1,9 +1,10 @@
 extends CanvasLayer
-## The map (M, or Back/View on a controller): the town from above, each zone
-## colored by how safe it is and outlined (see world/zones.gd), the streets
-## named, the places you've found named (world/discoveries.gd), and you. North is up. Zoomed all the way out it shows exactly the area
-## the grid covers. The grid itself isn't drawn; the square under the pointer (or
-## the middle, on a controller) is named below the map.
+## The map (M, or Back/View on a controller): the map from above, the streets
+## named, the places you've found named (world/discoveries.gd), your base camps
+## (world/camps.gd), and you. North is up. Zoomed all the way out it shows the
+## whole map. The zones (world/zones.gd) are outlined and named only while you
+## have them turned on (interact: E, or X on a controller); the zone under the
+## pointer (or the middle, on a controller) is named below the map either way.
 ## Zoom: mouse wheel, or the right stick. Pan: drag, WASD, or the left stick.
 ## Space / A puts you back in the middle. It opens centered on you, at the zoom
 ## you left it at.
@@ -14,28 +15,25 @@ const Zones := preload("res://world/zones.gd")
 const Controls := preload("res://core/controls.gd")
 const Discoveries := preload("res://world/discoveries.gd")
 
-const ZONE_COLORS := {
-	Zones.Status.DANGER: Color(0.85, 0.12, 0.08, 0.55),
-	Zones.Status.HOSTILE: Color(0.95, 0.78, 0.12, 0.5),
-	Zones.Status.SAFE: Color(0.0, 0.0, 0.0, 0.0),
-}
 const BACKGROUND := Color(0.2, 0.22, 0.15)
 const ROAD := Color(0.36, 0.36, 0.37)
 const BUILDING := Color(0.62, 0.58, 0.5)
 const FENCE := Color(0.55, 0.42, 0.25)
-const ZONE_BORDER := Color(1.0, 1.0, 1.0, 0.35)
+const CAMP := Color(1.0, 0.62, 0.25)
 const PLAYER := Color(0.3, 0.85, 1.0)
 const ZONE_OUTLINE := Color(1.0, 0.95, 0.75, 0.9)
 const REDRAW_INTERVAL := 0.2
-const MAX_ZOOM := 8.0 # 1 = the whole grid fits
+const MAX_ZOOM := 8.0 # 1 = the whole map fits
 const WHEEL_ZOOM := 1.25 # per wheel notch
 const STICK_ZOOM := 2.0 # doublings per second, stick all the way
 const PAN_SPEED := 0.8 # map widths per second, key held or stick all the way
-const HELP_KEYBOARD := "Wheel zoom  ·  Drag / WASD pan  ·  Space center  ·  %s close"
-const HELP_GAMEPAD := "R stick zoom  ·  L stick pan  ·  A center  ·  %s close"
+const HELP_KEYBOARD := "Wheel zoom  ·  Drag / WASD pan  ·  Space center  ·  %s zones  ·  %s close"
+const HELP_GAMEPAD := "R stick zoom  ·  L stick pan  ·  A center  ·  %s zones  ·  %s close"
 
 var _player: Node3D
 var _zones: Zones
+var _camps: Node # world/camps.gd
+var show_zones := false # the zone outlines (toggled with interact)
 var _roads: Array[Rect2] = []
 var _buildings: Array[PackedVector2Array] = []
 var _fences: Array[Rect2] = []
@@ -71,10 +69,11 @@ func _ready() -> void:
 
 ## main.gd hands over what to draw. Roads and fences are rectangles in world
 ## (x, z); buildings are their four ground corners; streets are [name, (x, z)].
-func setup(player: Node3D, zones: Zones, discoveries: Discoveries, roads: Array[Rect2],
+func setup(player: Node3D, zones: Zones, camps: Node, discoveries: Discoveries, roads: Array[Rect2],
 		buildings: Array[PackedVector2Array], fences: Array[Rect2], streets: Array) -> void:
 	_player = player
 	_zones = zones
+	_camps = camps
 	_discoveries = discoveries
 	_roads = roads
 	_buildings = buildings
@@ -118,6 +117,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("jump"):
 		_center_on_player()
 		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("interact"):
+		show_zones = not show_zones
+		_redraw()
+		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
 		var button := event as InputEventMouseButton
 		if button.pressed and button.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
@@ -133,8 +136,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Keys and sticks, plus a regular redraw: zombies move and zones change color
-## while it's open.
+## Keys and sticks, plus a regular redraw (you move while it's open).
 func _process(delta: float) -> void:
 	if not visible:
 		return
@@ -195,7 +197,7 @@ func _zoom_at(zoom: float, pivot: Vector2) -> void:
 	_redraw()
 
 
-## Never scrolls past the edge of the grid.
+## Never scrolls past the edge of the map.
 func _clamp_center() -> void:
 	var bounds := Zones.bounds()
 	var half := _visible_world_size() / 2.0
@@ -247,18 +249,24 @@ func _draw_map() -> void:
 	for fence in _fences:
 		_canvas.draw_rect(_rect_to_map(fence), FENCE, false, 2.0)
 
-	# Zones: filled by status, outlined around their edge, named in the middle.
-	for zone: Dictionary in Zones.ZONES:
-		var status := _zones.status_of(zone["name"])
-		var rects := Zones.zone_rects(zone)
-		var bounds := Rect2()
-		for world_rect in rects:
-			var rect := _rect_to_map(world_rect)
-			if status != Zones.Status.SAFE:
-				_canvas.draw_rect(rect, ZONE_COLORS[status])
-			bounds = rect if bounds.size == Vector2.ZERO else bounds.merge(rect)
-		_draw_zone_outline(rects)
-		_draw_label(_canvas, font, _zones.full_name(zone["name"]), bounds.get_center() + Vector2(0, -bounds.size.y / 2.0 - 10.0), 15)
+	# Zones (when turned on): outlined, and named in the middle.
+	if show_zones:
+		for zone: Dictionary in _zones.all():
+			var points := PackedVector2Array()
+			var middle := Vector2.ZERO
+			for corner: Vector2 in zone["outline"]:
+				points.append(_to_map(corner))
+				middle += corner
+			points.append(points[0])
+			_canvas.draw_polyline(points, ZONE_OUTLINE, 2.5)
+			_draw_label(_canvas, font, zone["name"], _to_map(middle / (zone["outline"] as PackedVector2Array).size()), 15)
+	# Base camps: a tent, and the camp's name.
+	for camp in _camps.get("camps"):
+		var at := _to_map(Vector2(camp.center.x, camp.center.z))
+		var tent := PackedVector2Array([at + Vector2(0, -9), at + Vector2(9, 6), at + Vector2(-9, 6)])
+		_canvas.draw_colored_polygon(tent, CAMP)
+		_canvas.draw_polyline(tent + PackedVector2Array([tent[0]]), Color.BLACK, 1.5)
+		_draw_label(_canvas, font, camp.name, at + Vector2(0, 18), 14)
 	for street: Array in _streets:
 		_draw_label(_canvas, font, street[0], _to_map(street[1]), 14)
 	for place in _discoveries.places:
@@ -266,7 +274,7 @@ func _draw_map() -> void:
 			_draw_label(_canvas, font, place["name"], _to_map(place["label_at"]), 14)
 
 	_draw_player()
-	if Controls.using_gamepad: # what the square readout below refers to
+	if Controls.using_gamepad: # what the zone readout below refers to
 		var mid := _canvas.size / 2.0
 		_canvas.draw_line(mid - Vector2(8, 0), mid + Vector2(8, 0), Color(1, 1, 1, 0.8), 1.5)
 		_canvas.draw_line(mid - Vector2(0, 8), mid + Vector2(0, 8), Color(1, 1, 1, 0.8), 1.5)
@@ -281,43 +289,29 @@ func _draw_frame() -> void:
 	var font := ThemeDB.fallback_font
 	var area := _map_rect()
 	_view.draw_string(font, Vector2(area.position.x, area.position.y - 22.0), "MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 28)
-	var help := (HELP_GAMEPAD if Controls.using_gamepad else HELP_KEYBOARD) % Controls.hint("map")
+	var help := (HELP_GAMEPAD if Controls.using_gamepad else HELP_KEYBOARD) % [Controls.hint("interact"), Controls.hint("map")]
 	_view.draw_string(font, Vector2(area.position.x, area.position.y - 22.0),
 			help, HORIZONTAL_ALIGNMENT_RIGHT, area.size.x, 15, Color(1, 1, 1, 0.7))
 	_draw_compass(font, area.position + Vector2(area.size.x - 28.0, 34.0))
 
-	# The square being pointed at: under the mouse, or the middle on a controller.
+	# The zone being pointed at: under the mouse, or the middle on a controller.
 	var point := _canvas.size / 2.0 if Controls.using_gamepad else _view.get_local_mouse_position() - area.position
 	if Rect2(Vector2.ZERO, area.size).has_point(point):
 		var world := _to_world(point)
-		_view.draw_string(font, Vector2(area.position.x, area.end.y + 28.0), _zones.describe(Vector3(world.x, 0.0, world.y)),
+		_view.draw_string(font, Vector2(area.position.x, area.end.y + 28.0), _zones.zone_at(Vector3(world.x, 0.0, world.y)),
 				HORIZONTAL_ALIGNMENT_RIGHT, area.size.x, 16, Color(1, 1, 1, 0.85))
 
 	var legend_y := area.end.y + 28.0
 	var x := area.position.x
-	for entry: Array in [[Zones.Status.DANGER, "Zombies"], [Zones.Status.HOSTILE, "Bandits only"],
-			[Zones.Status.SAFE, "Safe"], [-1, "You"]]:
-		var swatch := Rect2(x, legend_y - 13.0, 16.0, 16.0)
-		if entry[0] == -1:
-			_view.draw_colored_polygon(_arrow(swatch.get_center(), Vector2.UP, 9.0), PLAYER)
-		else:
-			_view.draw_rect(swatch, BACKGROUND)
-			_view.draw_rect(swatch, ZONE_COLORS[entry[0]])
-			_view.draw_rect(swatch, ZONE_BORDER, false, 1.0)
-		_view.draw_string(font, Vector2(x + 24.0, legend_y), entry[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
-		x += 40.0 + font.get_string_size(entry[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-
-
-## The outer edge of a zone: each square's sides that don't touch another square
-## of the same zone.
-func _draw_zone_outline(rects: Array[Rect2]) -> void:
-	for r in rects:
-		var corners := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
-		var neighbors := [Vector2(0, -1), Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0)] # above, right, below, left
-		for side in 4:
-			var neighbor := Rect2(r.position + neighbors[side] * r.size, r.size)
-			if not rects.any(func(other: Rect2) -> bool: return other.is_equal_approx(neighbor)):
-				_canvas.draw_line(_to_map(corners[side]), _to_map(corners[(side + 1) % 4]), ZONE_OUTLINE, 2.5)
+	_view.draw_colored_polygon(_arrow(Vector2(x + 8.0, legend_y - 5.0), Vector2.UP, 9.0), PLAYER)
+	_view.draw_string(font, Vector2(x + 24.0, legend_y), "You", HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
+	x += 70.0
+	var tent := PackedVector2Array([Vector2(x + 8, legend_y - 14), Vector2(x + 16, legend_y), Vector2(x, legend_y)])
+	_view.draw_colored_polygon(tent, CAMP)
+	_view.draw_string(font, Vector2(x + 24.0, legend_y), "Base camp", HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
+	x += 130.0
+	_view.draw_string(font, Vector2(x, legend_y), "Zones: " + ("shown" if show_zones else "hidden"),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.7))
 
 
 ## You: an arrow pointing the way you're facing.

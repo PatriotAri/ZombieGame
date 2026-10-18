@@ -16,7 +16,7 @@ const DIR := "user://saves/"
 const AUTOSAVE := DIR + "autosave.json"
 const OLD_PATH := "user://savegame.json" # before there was a list: becomes save_1
 const GAME_SCENE := "res://world/main.tscn"
-const VERSION := 4 # bump whenever the save layout changes; older saves are ignored (4: the new map)
+const VERSION := 5 # bump whenever the save layout changes; older saves are ignored (4: the new map; 5: base camps)
 
 ## Set by request_load(); main.gd picks it up after the scene reloads.
 static var pending_load: Dictionary = {}

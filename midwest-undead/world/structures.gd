@@ -1,8 +1,7 @@
 extends Node
-## Building: scaffolding, guard posts, fences, fence gates, garden plots and ammo
-## benches (made by the woodworker and the machinist). Base objects like these
-## only go inside a zone, and only while it's clear of zombies. Hold one and
-## press use:
+## Building: scaffolding, guard posts, fences, fence gates, garden plots, ammo
+## benches and camp kits (made by the woodworker and the machinist). They go
+## anywhere on the map. Hold one and press use:
 ##   - Looking at the ground, it goes there, facing you.
 ##   - Looking at scaffolding you built, scaffolding or a guard post snaps on top
 ##     of it. A guard post on top makes it a guard tower: a ladder runs down the
@@ -10,6 +9,8 @@ extends Node
 ##     ground is just a guard post.
 ##   - Looking at a fence or gate you built, a fence or gate lines up at its
 ##     nearer end, to run a wall along.
+##   - A camp kit sets up a new base camp (world/camp_site.gd, world/camps.gd):
+##     on the ground, at least camps.RANGE from every other camp.
 ## A see-through copy shows where it'll go before you place it: green if it fits,
 ## red if it doesn't (player.gd draws it with show_ghost()).
 ## Fences and fence gates can be broken (structure_piece.gd): zombies bash them
@@ -26,9 +27,10 @@ const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
 const StructurePiece := preload("res://world/structure_piece.gd")
 const GateLeaf := preload("res://world/gate_leaf.gd")
-const Zones := preload("res://world/zones.gd")
+const CampSite := preload("res://world/camp_site.gd")
+const Ground := preload("res://world/ground.gd")
 
-const KINDS := ["scaffold", "guard_post", "fence", "fence_gate", "garden_plot", "ammo_bench", "shell_bench", "rifle_bench"]
+const KINDS := ["scaffold", "guard_post", "fence", "fence_gate", "garden_plot", "ammo_bench", "shell_bench", "rifle_bench", "camp_kit"]
 ## The ammo benches, and the round each one's brass is colored like (pistol, shells, rifle).
 const BENCHES := {"ammo_bench": Color(0.75, 0.6, 0.2), "shell_bench": Color(0.7, 0.12, 0.1), "rifle_bench": Color(0.6, 0.5, 0.25)}
 const GARDEN := Vector3(3.0, 0.35, 2.0)
@@ -58,7 +60,7 @@ const PLANK_REPAIR := 2500.0
 var pieces: Array[StructurePiece] = []
 var _nav_region: Node3D # world/nav_tiles.gd: pieces go under it, so the navigation bake sees them
 var _fortifications: Node # owns the shared navigation re-bake
-var zones: Zones # set by main.gd once the zones exist (for the clear-zone rule)
+var camps: Node # world/camps.gd, set by main.gd (camps keep their distance)
 var _materials := {} # Color -> StandardMaterial3D, shared by every piece
 var _ghost: Node3D
 var _ghost_key := "" # what the ghost currently shows, so it's only rebuilt when that changes
@@ -86,25 +88,16 @@ static func is_buildable(item_id: String) -> bool:
 ## why it can't)}.
 func preview(kind: String, origin: Vector3, dir: Vector3, viewer: Vector3, exclude: Array[RID]) -> Dictionary:
 	var result := _where(kind, origin, dir, viewer, exclude)
-	if result.has("aimed"):
-		var problem := _zone_problem((result["xform"] as Transform3D).origin)
+	if kind == "camp_kit" and result["ok"] and camps:
+		var problem: String = camps.call("placement_problem", (result["xform"] as Transform3D).origin)
+		if problem == "" and _too_steep(result["xform"]):
+			problem = "Too steep for a camp"
 		if problem != "":
 			result["ok"] = false
 			result["text"] = problem
+		else:
+			result["text"] = "set up a new base camp"
 	return result
-
-
-## Base objects only go inside a zone, and only while it's clear: why not here,
-## or "" if it's fine.
-func _zone_problem(at: Vector3) -> String:
-	if zones == null:
-		return ""
-	var zone := zones.zone_at(at)
-	if zone == "":
-		return "Base objects only go inside a zone"
-	if zones.status_of(zone) != Zones.Status.SAFE:
-		return zones.full_name(zone) + " isn't clear"
-	return ""
 
 
 func _where(kind: String, origin: Vector3, dir: Vector3, viewer: Vector3, exclude: Array[RID]) -> Dictionary:
@@ -115,7 +108,6 @@ func _where(kind: String, origin: Vector3, dir: Vector3, viewer: Vector3, exclud
 	if hit.is_empty():
 		result["text"] = "Look at the ground to build"
 		return result
-	result["aimed"] = true # it's pointing at something: the zone rule applies
 	var thing: Object = hit["collider"]
 	if thing is GateLeaf:
 		thing = (thing as GateLeaf).piece
@@ -152,11 +144,9 @@ func _where(kind: String, origin: Vector3, dir: Vector3, viewer: Vector3, exclud
 		return result
 
 	if thing is StructurePiece:
-		result.erase("aimed")
 		result["text"] = "Can't build on that"
 		return result
 	if (hit["normal"] as Vector3).y < 0.8:
-		result.erase("aimed")
 		result["text"] = "Look at the ground to build"
 		return result
 	# On the ground, facing you. Scaffolding and posts square up to the compass so
@@ -169,6 +159,20 @@ func _where(kind: String, origin: Vector3, dir: Vector3, viewer: Vector3, exclud
 	result["ok"] = _room(kind, result["xform"], [])
 	result["text"] = ("build the " + label) if result["ok"] else "No room for the " + label
 	return result
+
+
+## A camp's corners more than 0.8 m apart in height: too steep to set up on.
+func _too_steep(xform: Transform3D) -> bool:
+	var half := CampSite.SIZE / 2.0
+	var low := INF
+	var high := -INF
+	for corner: Vector3 in [Vector3(-half.x, 0, -half.z), Vector3(half.x, 0, -half.z), Vector3(-half.x, 0, half.z), Vector3(half.x, 0, half.z)]:
+		var h := Ground.height_at(xform * corner)
+		if is_nan(h):
+			continue
+		low = minf(low, h)
+		high = maxf(high, h)
+	return high - low > 0.8
 
 
 ## The base turned a quarter at a time, so its +z side (the ladder, or the way
@@ -210,7 +214,10 @@ func _room(kind: String, xform: Transform3D, exclude: Array[RID]) -> bool:
 	shape.size = Vector3(size.x - 0.3, size.y - 0.25, maxf(size.z - 0.3, 0.1))
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = shape
-	query.transform = xform * Transform3D(Basis.IDENTITY, Vector3(0, 0.15 + shape.size.y / 2.0, 0))
+	# A camp is big: lifted clear of the bumps in the ground under it (how
+	# level it has to be is checked separately: _too_steep).
+	var lift := 0.7 if kind == "camp_kit" else 0.15
+	query.transform = xform * Transform3D(Basis.IDENTITY, Vector3(0, lift + shape.size.y / 2.0, 0))
 	query.collision_mask = GameData.LAYER_WORLD | GameData.LAYER_GLASS | GameData.LAYER_PLAYER \
 			| GameData.LAYER_ZOMBIES | GameData.LAYER_NPC
 	query.exclude = exclude
@@ -227,6 +234,8 @@ func _size(kind: String) -> Vector3:
 			return Vector3(GARDEN.x, 0.6, GARDEN.z)
 		"ammo_bench", "shell_bench", "rifle_bench":
 			return Vector3(BENCH.x, 1.2, BENCH.z)
+		"camp_kit":
+			return CampSite.SIZE
 	return FENCE
 
 
@@ -460,6 +469,14 @@ func show_ghost(kind: String, view: Dictionary) -> void:
 func _model(kind: String, parent: Node3D, mat: StandardMaterial3D) -> void:
 	var half := SCAFFOLD / 2.0
 	match kind:
+		"camp_kit":
+			if mat == null:
+				CampSite.build(parent) # the real thing (with its logbook, board and crate)
+			else: # the preview: just its tents, fire and table
+				for x: float in [-2.4, 2.4]:
+					_box(parent, Vector3(1.7, 1.15, 2.1), Vector3(x, 0.58, -1.6), 0.0, 0.0, WOOD, mat)
+				_box(parent, Vector3(1.1, 0.3, 1.1), Vector3(0, 0.15, 0), 0.0, 0.0, WOOD, mat)
+				_box(parent, Vector3(1.4, 0.78, 0.8), Vector3(0.4, 0.39, 2.2), 0.0, 0.0, WOOD, mat)
 		"scaffold":
 			for x: float in [-half.x + 0.06, half.x - 0.06]:
 				for z: float in [-half.z + 0.06, half.z - 0.06]:

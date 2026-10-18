@@ -46,7 +46,7 @@ var _player: Node3D
 var _dialogue: Node # ui/dialogue_box.gd
 var _choices: Node # ui/choice_menu.gd
 var _conversation: Conversation
-var _zones: Node # world/zones.gd
+var _camps: Node # world/camps.gd (kills near a camp)
 var _day_night: Node
 var _waypoint: Label3D
 var _npc_markers := {} # npc -> its "!" / "?" label
@@ -62,17 +62,17 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS # moves the markers; hides them while paused
 
 
-func setup(main: Node, player: Node3D, dialogue: Node, choices: Node, zones: Node, day_night: Node) -> void:
+func setup(main: Node, player: Node3D, dialogue: Node, choices: Node, camps: Node, day_night: Node) -> void:
 	_main = main
 	_player = player
 	_dialogue = dialogue
 	_choices = choices
 	_conversation = Conversation.new(player, dialogue, choices)
-	_zones = zones
+	_camps = camps
 	_day_night = day_night
-	zones.connect("status_changed", func(zone_name: String, status: int) -> void:
-		if status == 0: # Zones.Status.SAFE
-			event("zone_cleared:" + zone_name))
+	camps.connect("kills_changed", func() -> void:
+		_check()
+		_announce())
 	_load_quests()
 	for q in quests:
 		_state[q.id] = _fresh_state()
@@ -158,6 +158,8 @@ func shown_quest() -> QuestData:
 func objective_text() -> String:
 	var q := shown_quest()
 	var step := current_step(q) if q else null
+	if step and step.kind == "kill_near":
+		return step.objective.replace("{count}", str(mini(_camps.call("kills_near", step.target), step.count)))
 	return step.objective if step else ""
 
 
@@ -386,10 +388,8 @@ func _step_done(q: QuestData, step: QuestStep) -> bool:
 			return _happened_for(q, step, step.target)
 		"go_to_place":
 			return _happened_for(q, step, "reached:" + step.target)
-		"clear_zone":
-			if _zones.call("is_counted") and int(_zones.call("status_of", step.target)) == 0:
-				return true
-			return _happened_for(q, step, "zone_cleared:" + step.target)
+		"kill_near":
+			return int(_camps.call("kills_near", step.target)) >= step.count
 	return false # talk_to: done by talking
 
 

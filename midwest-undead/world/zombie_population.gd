@@ -1,14 +1,14 @@
 extends Node
 ## How many zombies there are, and where new ones come from.
 ##
-## At the start: extra zombies scattered around the map (outside the zones, away
-## from where you begin), on top of the ones main.gd places at the map scene's
+## At the start: extra zombies scattered around the map (away from the base
+## camps and from where you begin), on top of the ones main.gd places at the map scene's
 ## ZombieSpawn markers. Placed at random spots on the navigation mesh, on the
 ## ground (not on roofs: world/ground.gd).
 ##
 ## While you play: whenever fewer than `population` are still up, another one
 ## turns up now and then on the outskirts of the map, far from you and away from
-## the zones, more often at night. Nothing sends them anywhere: they roam like
+## the camps, more often at night. Nothing sends them anywhere: they roam like
 ## the rest (zombie.gd), so over time some drift back into places you cleared.
 ## A horde (world/horde.gd) can push the count over `population`; nobody new
 ## turns up until it's back under.
@@ -18,7 +18,6 @@ extends Node
 ## saved (main.gd).
 ## main.gd creates it and owns the tuning (the Inspector's "Zombies" group).
 
-const Zones := preload("res://world/zones.gd")
 const Zombie := preload("res://characters/zombie/zombie.gd")
 const Ground := preload("res://world/ground.gd")
 const NavTiles := preload("res://world/nav_tiles.gd")
@@ -26,7 +25,7 @@ const NavTiles := preload("res://world/nav_tiles.gd")
 const CHECK_INTERVAL := 1.0
 const MIN_SPAWN_DISTANCE := 110.0 # from you: far enough that you never see one appear
 const START_MIN_DISTANCE := 50.0 # extras at the start: this far from where you begin
-const ZONE_MARGIN := 40.0 # new ones turn up at least this far from any zone
+const CAMP_MARGIN := 40.0 # zombies turn up at least this far from any base camp
 const OUTSKIRTS := 35.0 # ...and within this of the edge of the walkable area
 const BODY_CLEANUP_DISTANCE := 60.0
 
@@ -37,7 +36,7 @@ var respawn_seconds_night := 10.0
 var _main: Node # main.gd: owns the zombies list and _add_zombie
 var _player: Node3D
 var _day_night: Node
-var _zones: Zones
+var _camps: Node # world/camps.gd
 var bounds := Rect2() # the walkable area, (x, z): the whole map
 var _triangles: Array[PackedVector3Array] = [] # the navigation mesh, for picking random spots
 var _cumulative_area: PackedFloat32Array = []
@@ -46,11 +45,11 @@ var _spawn_timer := 0.0
 var _rng := RandomNumberGenerator.new() # during play: its own dice
 
 
-func setup(main: Node, nav_region: NavTiles, player: Node3D, day_night: Node, zones: Zones) -> void:
+func setup(main: Node, nav_region: NavTiles, player: Node3D, day_night: Node, camps: Node) -> void:
 	_main = main
 	_player = player
 	_day_night = day_night
-	_zones = zones
+	_camps = camps
 	var box := nav_region.bounds
 	bounds = Rect2(box.position.x, box.position.z, box.size.x, box.size.z)
 	for mesh in nav_region.meshes():
@@ -64,7 +63,7 @@ func populate(count: int, rng: RandomNumberGenerator, start: Vector3) -> void:
 		if placed >= count:
 			break
 		var pos := random_point(rng)
-		if not Ground.is_ground_level(pos) or _zones.zone_at(pos) != "" or pos.distance_to(start) < START_MIN_DISTANCE:
+		if not Ground.is_ground_level(pos) or _near_camp(pos) or pos.distance_to(start) < START_MIN_DISTANCE:
 			continue
 		_main.call("_add_zombie", pos + Vector3(0, 0.1, 0), rng)
 		placed += 1
@@ -91,7 +90,7 @@ func _alive() -> int:
 	return get_tree().get_nodes_in_group("zombies").size() # the dead leave the group
 
 
-## A random spot near the edge of the map, far from you and from every zone, or
+## A random spot near the edge of the map, far from you and from every camp, or
 ## Vector3.INF if none turned up this time (it tries again next spawn).
 func _outskirts_point() -> Vector3:
 	var inner := bounds.grow(-OUTSKIRTS)
@@ -101,17 +100,16 @@ func _outskirts_point() -> Vector3:
 			continue
 		if inner.has_point(Vector2(pos.x, pos.z)):
 			continue # not on the outskirts
-		if pos.distance_to(_player.global_position) < MIN_SPAWN_DISTANCE or _near_zone(pos):
+		if pos.distance_to(_player.global_position) < MIN_SPAWN_DISTANCE or _near_camp(pos):
 			continue
 		return pos
 	return Vector3.INF
 
 
-func _near_zone(pos: Vector3) -> bool:
-	for zone: Dictionary in Zones.ZONES:
-		for rect: Rect2 in Zones.zone_rects(zone):
-			if rect.grow(ZONE_MARGIN).has_point(Vector2(pos.x, pos.z)):
-				return true
+func _near_camp(pos: Vector3) -> bool:
+	for camp in _camps.get("camps"):
+		if Vector2(camp.center.x - pos.x, camp.center.z - pos.z).length() < CAMP_MARGIN:
+			return true
 	return false
 
 

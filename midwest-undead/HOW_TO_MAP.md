@@ -387,22 +387,38 @@ markers on the new map (drag them from `world/markers/` onto the
 | Where you start | SpawnPoint, role **player** (there's one at the middle of the map) | you start in the middle |
 | The Quartermaster (trader) | SpawnPoint, role **trader** | no shop |
 | The Police Chief | SpawnPoint, role **chief** | the story stops at "Talk to the Police Chief" |
-| Guards on towers | SpawnPoint, role **guard** (under its tower) | none |
 | Bandits | SpawnPoint, role **bandit** (under the camp node) | none |
 | The woodworker | SpawnPoints **woodworker_captive** and **woodworker_home** | he stands in the middle of the map |
 | The wagon trader | SpawnPoints **wagon** and **wagon_trader** | the wagon turns up in the middle |
-| Survivors | SpawnPoints **survivor** (in their house) and **survivor_home**, with Person set | they're missing |
+| Survivors | SpawnPoint **survivor** (in their house), with Person set. Optional: **survivor_home** for their own spot at the police station | they're missing (without a survivor_home they stand round their camp) |
 | Bodies at the safe house | SpawnPoint, role **corpse** | none |
 | Zombies at the start | ZombieSpawn markers | only the ones scattered around |
-| Story places | Place markers named **Police Station**, **Safe House**, **Gas Station**, **Grocery Store** | quest steps there can't be reached |
+| Story places | Place markers named **Safe House**, **Gas Station**, **Grocery Store** | quest steps there can't be reached |
+| The police station camp | **Map Tools > Police station camp**: a Base Camp marker in the station, with its **Logbook**, **Board** and **Crate** markers dragged where they go | the camp is wherever you start, with no logbook, board or supply crate |
+| Zones (named areas) | **Map Tools > New zone**, then draw its outline (below) | no zone names |
 | Reaching the safe house | an Area3D in the group **safe_house_trigger** | that story step never happens |
-| The base's supply crate | a container in the group **base_supply_crate** | no morning supplies |
-| Zone 1 (the base area) | its squares in `world/zones.gd` (ZONES) | it's the 3 x 3 squares in the middle |
+**Zones** are named areas: a hollow, a town, a farm. Walking into one shows
+its name, and the map screen outlines them when you turn that on (interact
+while the map is open). They're just names: nothing else depends on them.
+To make one:
+1. Press **Map Tools > New zone**.
+2. In the Inspector, type its **Zone Name**.
+3. Turn on **Draw points** and click its corners on the ground, all the way
+   round. It closes itself, and right-click removes the last corner.
+4. Drag the points to reshape it any time.
 
-The map screen's grid is 26 x 26 squares of 40 m (A1 in the north-west
-corner). To move Zone 1 to wherever you build the police station, change its
-square names in `world/zones.gd`. Building fences and the wagon trader both
-go by Zone 1.
+**The police station camp** is the base you start with:
+- Its logbook saves and loads the game.
+- Its bulletin board shows who lives there.
+- Its supply crate fills with food and ammo each morning.
+- The wagon trader comes once you've killed 75 zombies within 75 m of it.
+
+Put one marker in the station (**Map Tools > Police station camp**), then drag
+its three child markers where you want those things. Other camps are built in
+the game, from the woodworker's camp kit.
+
+The station's old fixed guards are gone. You post your own survivors on guard
+posts you build instead.
 
 ---
 

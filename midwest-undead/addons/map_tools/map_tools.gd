@@ -25,6 +25,8 @@ const MineEntrance := preload("res://world/map/mine_entrance.gd")
 const PlantsLayer := preload("res://world/map/plants_layer.gd")
 const Plants := preload("res://world/map/plants.gd")
 const PlantPainter := preload("res://world/map/plant_painter.gd")
+const Zone := preload("res://world/markers/zone.gd")
+const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
 const ROADS_DIR := "res://world/map/roads/"
 const APPLY_MARGIN := 40.0 # meters around a path that an Apply's undo step covers
 const BRUSHES := ["Off", "Forest", "Paint plant", "Place one", "Erase"]
@@ -116,12 +118,16 @@ func _build_panel() -> Control:
 	_button(features, "New rock", "Adds a rock in front of the camera. Move, turn and scale it; change Shape for another one.", _new_rock)
 	_button(features, "New mine entrance", "Adds a mine entrance in front of the camera. Turn it into the hillside, then Apply to open the hill.", _new_mine)
 
+	var places := _section(root, "Zones and camps")
+	_button(places, "New zone", "Adds a zone (a named area) in front of the camera. Name it in the Inspector, then Draw points around its edge.", _new_zone)
+	_button(places, "Police station camp", "Adds the police station's base camp marker in front of the camera (one per map). Drag its Logbook, Board and Crate markers where they go.", _new_base_camp)
+
 	var selected := _section(root, "Selected")
 	_selected_label = Label.new()
 	selected.add_child(_selected_label)
 	_draw = CheckButton.new()
 	_draw.text = "Draw points"
-	_draw.tooltip_text = "Click on the ground in the 3D view to add points to the selected road, creek or crop field. Right-click removes the last point."
+	_draw.tooltip_text = "Click on the ground in the 3D view to add points to the selected road, creek, crop field or zone. Right-click removes the last point."
 	selected.add_child(_draw)
 	_apply = _button(selected, "Apply", "Shapes, paints or opens the ground for the selected road, creek, crop field or mine entrance. Ctrl+Z undoes it.", _apply_selected)
 
@@ -195,13 +201,13 @@ func _on_selection_changed() -> void:
 	var nodes := EditorInterface.get_selection().get_selected_nodes()
 	_selected = null
 	if nodes.size() == 1 and (nodes[0] is Road or nodes[0] is Creek or nodes[0] is Pond or nodes[0] is CropField
-			or nodes[0] is Rock or nodes[0] is MineEntrance or nodes[0] is PlantsLayer):
+			or nodes[0] is Rock or nodes[0] is MineEntrance or nodes[0] is PlantsLayer or nodes[0] is Zone):
 		_selected = nodes[0]
-	var path := _selected is Road or _selected is Creek or _selected is CropField
+	var path := _selected is Road or _selected is Creek or _selected is CropField or _selected is Zone
 	_draw.disabled = not path
 	if not path:
 		_draw.button_pressed = false
-	_apply.disabled = not (path or _selected is MineEntrance)
+	_apply.disabled = not ((path and not _selected is Zone) or _selected is MineEntrance)
 	_add_span.disabled = not _selected is Road
 	_add_falls.disabled = not _selected is Creek
 	if not _selected is PlantsLayer and _brush.selected != 0:
@@ -213,6 +219,9 @@ func _on_selection_changed() -> void:
 	elif _selected is PlantsLayer:
 		_selected_label.text = "Plant brush: %s" % BRUSHES[_brush.selected]
 		_help.text = "Click and drag on the ground to paint (Place one: click). Ctrl+Z undoes a stroke. Choose another brush, or Off, in the Plants section."
+	elif _selected is Zone:
+		_selected_label.text = "Zone: %s (%d corners)" % [(_selected as Zone).zone_name, (_selected as Path3D).curve.point_count if (_selected as Path3D).curve else 0]
+		_help.text = "Name it in the Inspector (Zone Name). Turn on Draw points and click its corners on the ground, all the way round (it closes itself; right-click removes the last). Drag points to reshape it."
 	elif path:
 		_selected_label.text = "%s (%d points)" % [_selected.name, (_selected as Path3D).curve.point_count if (_selected as Path3D).curve else 0]
 		_help.text = "Turn on Draw points and click on the ground to add points (right-click removes the last). Drag points to move them. Then press Apply. Ctrl+Z undoes an Apply."
@@ -360,6 +369,28 @@ func _new_rock() -> void:
 	rock.position = _in_view()
 	rock.scale = Vector3.ONE * 1.5
 	_add(rock, _group("Rocks"), "New rock")
+
+
+func _new_zone() -> void:
+	var zone := Zone.new()
+	zone.name = "Zone"
+	zone.curve = Curve3D.new()
+	_add(zone, _group("Zones"), "New zone")
+
+
+func _new_base_camp() -> void:
+	var markers := _group("Markers")
+	for node in EditorInterface.get_edited_scene_root().find_children("*", "Marker3D", true, false):
+		if node is BaseCampMarker:
+			push_warning("The map already has a police station camp marker (%s): move that one." % node.name)
+			EditorInterface.get_selection().clear()
+			EditorInterface.get_selection().add_node(node)
+			return
+	var camp := BaseCampMarker.new()
+	camp.name = "PoliceStationCamp"
+	camp.position = _in_view()
+	_add(camp, markers, "Police station camp")
+	camp._ready() # its Logbook, Board and Crate markers, now that it's in the scene
 
 
 func _new_mine() -> void:
@@ -528,13 +559,13 @@ func _show_ring(on: bool, at := Vector3.ZERO) -> void:
 # --- Mouse in the 3D view ----------------------------------------------------------------
 
 func _handles(object: Object) -> bool:
-	return object is Road or object is Creek or object is CropField or object is PlantsLayer
+	return object is Road or object is Creek or object is CropField or object is PlantsLayer or object is Zone
 
 
 func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 	if _selected is PlantsLayer and _brush.selected != 0:
 		return _brush_input(camera, event)
-	if not _draw.button_pressed or not (_selected is Road or _selected is Creek or _selected is CropField):
+	if not _draw.button_pressed or not (_selected is Road or _selected is Creek or _selected is CropField or _selected is Zone):
 		return AFTER_GUI_INPUT_PASS
 	var mb := event as InputEventMouseButton
 	if mb == null or not mb.pressed:

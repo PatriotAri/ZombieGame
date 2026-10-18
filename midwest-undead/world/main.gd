@@ -67,7 +67,8 @@ const Horde := preload("res://world/horde.gd")
 const TraderArrival := preload("res://world/trader_arrival.gd")
 const WoodworkerRescue := preload("res://world/woodworker_rescue.gd")
 const Survivors := preload("res://world/survivors.gd")
-const BaseCamp := preload("res://world/base_camp.gd")
+const Camps := preload("res://world/camps.gd")
+const BulletinBoard := preload("res://world/bulletin_board.gd")
 const Salvage := preload("res://world/salvage.gd")
 const Recipes := preload("res://core/recipes.gd")
 const CraftMenu := preload("res://ui/craft_menu.gd")
@@ -142,10 +143,10 @@ var backpack_menu: BackpackMenu
 var discoveries: Discoveries
 var zombie_population_node: ZombiePopulation
 var horde: Horde # every couple of weeks, a horde crosses the map
-var trader_arrival: TraderArrival # the wagon trader who comes once Zone 1 is cleared
+var trader_arrival: TraderArrival # the wagon trader who comes once enough zombies are killed round the station
 var woodworker_rescue: WoodworkerRescue # the woodworker held at the bandit camp
 var survivors: Survivors # the ones holed up in boarded-up houses
-var base_camp: BaseCamp # how many the base holds, jobs, the supply crate
+var camps: Camps # the base camps: who lives where, jobs, guards, supply crates
 var salvage: Salvage # stripping cars and furniture for materials
 var craft_menu: CraftMenu
 var choice_menu: ChoiceMenu
@@ -204,17 +205,21 @@ func _ready() -> void:
 	_spawn_player()
 	_spawn_zombies()
 	zones = Zones.new()
-	zones.bandits = bandits
 	add_child(zones)
-	zones.status_changed.connect(_on_zone_status_changed)
-	structures.zones = zones
+	zones.setup(town, player)
+	zones.zone_entered.connect(func(zone_name: String) -> void: hud.show_toast("Entering " + zone_name))
+	camps = Camps.new()
+	add_child(camps)
+	camps.setup(_base_camp_marker(), Survivors.station_homes(spawn_points), survivors, null, structures,
+			zones, day_night, player)
+	structures.camps = camps
 	# More zombies around the map, and new ones over time.
 	zombie_population_node = ZombiePopulation.new()
 	add_child(zombie_population_node)
 	zombie_population_node.population = zombie_population
 	zombie_population_node.respawn_seconds_day = zombie_respawn_seconds_day
 	zombie_population_node.respawn_seconds_night = zombie_respawn_seconds_night
-	zombie_population_node.setup(self, nav_region, player, day_night, zones)
+	zombie_population_node.setup(self, nav_region, player, day_night, camps)
 	zombie_population_node.populate(extra_zombies, rng, player_spawn.origin)
 	horde = Horde.new()
 	add_child(horde)
@@ -241,12 +246,11 @@ func _ready() -> void:
 	discoveries = Discoveries.new()
 	add_child(discoveries)
 	discoveries.setup(player, _discoverable_places())
-	zones.discoveries = discoveries
 	discoveries.discovered.connect(func(names: Array[String]) -> void:
 		hud.show_toast("Discovered: " + ", ".join(names)))
 	map_menu = MapMenu.new()
 	add_child(map_menu)
-	map_menu.setup(player, zones, discoveries, _map_rects("map_road"), _map_buildings(),
+	map_menu.setup(player, zones, camps, discoveries, _map_rects("map_road"), _map_buildings(),
 			_map_rects("map_fence"), _map_streets())
 	backpack_menu = BackpackMenu.new()
 	add_child(backpack_menu)
@@ -254,6 +258,11 @@ func _ready() -> void:
 	player.object_interacted.connect(func(obj: Node) -> void:
 		if obj is SavePoint:
 			save_menu.open(player, _save_game)
+		elif obj is BulletinBoard:
+			var board := obj as BulletinBoard
+			choice_menu.open(player, board.title, board.summary + "\n\n" + board.details, [["Close", Callable(), true]])
+		elif obj is StructurePiece and (obj as StructurePiece).kind == "camp_kit":
+			_take_down_camp(obj as StructurePiece)
 		elif obj is Door:
 			(obj as Door).toggle()
 		elif obj is Fortification:
@@ -280,7 +289,7 @@ func _ready() -> void:
 	add_child(quests)
 	quests.objective_changed.connect(hud.set_objective)
 	quests.story_beat.connect(hud.show_story)
-	quests.setup(self, player, dialogue, choice_menu, zones, day_night)
+	quests.setup(self, player, dialogue, choice_menu, camps, day_night)
 	journal_menu = JournalMenu.new()
 	add_child(journal_menu)
 	journal_menu.setup(player, quests)
@@ -296,9 +305,8 @@ func _ready() -> void:
 
 	trader_arrival = TraderArrival.new()
 	add_child(trader_arrival)
-	trader_arrival.setup(player, zones, day_night, _place_position("Police Station"),
+	trader_arrival.setup(player, camps, day_night, camps.station.center,
 			_spawn_transform("wagon"), _spawn_transform("wagon_trader"))
-	trader_arrival.zone_cleared.connect(quests.event.bind("zone_cleared:" + TraderArrival.ZONE))
 	trader_arrival.seen.connect(quests.event.bind("trader_found"))
 
 	woodworker_rescue = WoodworkerRescue.new()
@@ -310,11 +318,8 @@ func _ready() -> void:
 	salvage = Salvage.new()
 	add_child(salvage)
 	salvage.setup(loot_spots, salvage_others)
-	base_camp = BaseCamp.new()
-	add_child(base_camp)
-	base_camp.setup(get_tree().get_first_node_in_group("base_supply_crate") as Node3D, survivors,
-			woodworker_rescue, structures, day_night, player)
-	survivors.attach(player, dialogue, choice_menu, craft_menu, base_camp, woodworker_rescue)
+	camps.attach_woodworker(woodworker_rescue)
+	survivors.attach(player, dialogue, choice_menu, craft_menu, camps, woodworker_rescue)
 
 	# Coming from "Load": the map is freshly loaded; now put the saved state on top.
 	if not SaveGame.pending_load.is_empty():
@@ -408,6 +413,14 @@ func _spawn_transform(role: String) -> Transform3D:
 	return Transform3D(Basis(Vector3.UP, spot.global_rotation.y), spot.global_position)
 
 
+## The police station's camp marker (a KitBaseCamp in the map scene), or null.
+func _base_camp_marker() -> KitBaseCamp:
+	for node in town.find_children("*", "Marker3D", true, false):
+		if node is KitBaseCamp:
+			return node
+	return null
+
+
 func _place_position(place_name: String) -> Vector3:
 	for place in places:
 		if place.place_name == place_name:
@@ -496,6 +509,8 @@ func _on_npc_interacted(npc: HumanNPC) -> void:
 
 ## What an NPC does when it's not about quests: [label, callable], or [] if nothing.
 func _own_business(npc: HumanNPC) -> Array:
+	if npc is Guard and npc.has_meta("survivor"): # one of your survivors on a guard post
+		return ["Come down off guard duty", func() -> void: camps.stand_down(npc.get_meta("survivor"))]
 	if npc is Woodworker and (npc as Woodworker).state == Woodworker.State.HOME:
 		return ["Build something", func() -> void: craft_menu.open(player, npc.display_name, Recipes.WOODWORKER)]
 	if npc is Survivor:
@@ -596,6 +611,40 @@ func _setup_navigation() -> void:
 			Vector3(rect.size.x, heights.y - heights.x + 45.0, rect.size.y)), terrain)
 
 
+## Taking down a camp you built: its people need somewhere else to live. For
+## each, you pick another camp with room; once everyone's placed, it comes down
+## and you get the camp kit back. With nowhere for someone to go, it stays up.
+func _take_down_camp(piece: StructurePiece) -> void:
+	var camp := camps.camp_for_piece(piece)
+	if camp == null:
+		return
+	var people := camps.members(camp)
+	_rehome(people, camp, piece)
+
+
+func _rehome(people: Array, leaving: Camps.Camp, piece: StructurePiece) -> void:
+	if people.is_empty():
+		var back := structures.take_down(piece)
+		for id: String in back:
+			player.give_item(id, back[id])
+		hud.show_toast("%s is packed up." % leaving.name)
+		return
+	var survivor: Survivor = people[0]
+	var options := []
+	for camp in camps.with_room():
+		if camp == leaving:
+			continue
+		var label := "%s  (%d / %d)" % [camp.name, camps.population(camp), camps.capacity(camp)]
+		options.append([label, func() -> void:
+			camps.move_to(survivor, camp)
+			_rehome(people.slice(1), leaving, piece), true])
+	if options.is_empty():
+		hud.show_toast("There's no room anywhere for %s. Make room at another camp first." % survivor.display_name)
+		return
+	options.append(["Never mind (keep the camp)", Callable(), true])
+	choice_menu.open(player, "Taking down " + leaving.name, "Where should %s live now?" % survivor.display_name, options)
+
+
 # --- Saving and loading --------------------------------------------------------
 
 ## Autosave the first time you get within AUTOSAVE_DISTANCE of the tracked
@@ -674,7 +723,7 @@ func _save_game(path: String) -> bool:
 		"wagon_trader": trader_arrival.save_state(),
 		"woodworker": woodworker_rescue.save_state(),
 		"survivors": survivors.save_state(),
-		"base": base_camp.save_state(),
+		"camps": camps.save_state(),
 		"salvaged": salvage.save_state(),
 	}, path)
 
@@ -746,11 +795,9 @@ func _apply_save(data: Dictionary) -> void:
 	trader_arrival.load_state(data.get("wagon_trader", {}))
 	woodworker_rescue.load_state(data.get("woodworker", {}))
 	survivors.load_state(data.get("survivors", []))
-	base_camp.load_state(data.get("base", {}))
+	camps.load_state(data.get("camps", {}))
 	salvage.load_state(data.get("salvaged", []))
 	# What the world says has happened (for saves from before quests kept their own record).
-	if trader_arrival.cleared:
-		quests.event("zone_cleared:" + TraderArrival.ZONE)
 	if trader_arrival.was_seen:
 		quests.event("trader_found")
 	if woodworker_rescue.state() != Woodworker.State.CAPTIVE:
@@ -877,15 +924,3 @@ func _on_player_died() -> void:
 		get_tree().create_timer(4.0).timeout.connect(func() -> void:
 			if is_inside_tree() and player.is_dead:
 				_load_or_restart())
-
-
-## A zone's last zombie (or bandit) just went down, or zombies wandered back in.
-func _on_zone_status_changed(zone_name: String, status: Zones.Status) -> void:
-	match status:
-		Zones.Status.SAFE:
-			hud.show_toast("%s is clear." % zones.full_name(zone_name))
-		Zones.Status.HOSTILE:
-			hud.show_toast("No more zombies in %s, but bandits are still around." % zones.full_name(zone_name))
-		Zones.Status.DANGER:
-			# Wherever you are: a zone you'd made safe isn't anymore.
-			hud.show_toast("Zombies have gotten into %s." % zones.full_name(zone_name))

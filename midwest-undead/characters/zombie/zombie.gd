@@ -704,6 +704,8 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 	if health <= 0.0:
 		_last_blow = [shot_dir * (40.0 + knockback * 25.0) + Vector3.UP * 10.0, hit_pos]
 		die()
+		# Who killed it, for anyone counting (world/camps.gd: kills near a camp).
+		get_tree().call_group("kill_listeners", "zombie_killed", global_position, attacker)
 		return
 	if not _vaulting: # (mid-climb it keeps climbing)
 		body.one_shot("crawl_hit" if _crawls() else "hit_" + body.zone_of(hit_pos))

@@ -144,30 +144,36 @@ tiles at any size. Custom 3D models come later.
 ## Markers
 
 Drag these from `world/markers/` (or add them as nodes: KitSpawnPoint,
-KitZombieSpawn, KitPlace) onto the map's **Markers** node (or under the
-building or camp they belong to). In the editor each one shows a floating
+KitZombieSpawn, KitPlace; zones and the police station camp come from the Map
+Tools panel) onto the map's **Markers** node (or under the building or camp
+they belong to). In the editor each one shows a floating
 label. `HOW_TO_MAP.md` (section 12) lists which ones the story needs.
 
 - **SpawnPoint:** where someone starts, facing the marker's forward (-Z).
   **Role** picks who:
   - player, trader, chief, wagon, wagon_trader, woodworker_captive,
     woodworker_home: the game uses the first marker it finds with that role.
-  - guard: put it under its guard tower node (the tower's parts don't block
-    its aim). Watch From and Watch To are the ends of the stretch of road it
-    shoots zombies on.
+  - guard: an old-style fixed guard (the old police station had them). Put it
+    under its guard tower node. Watch From and Watch To are the ends of the
+    stretch of road it shoots zombies on. The new map doesn't use any: you post
+    your own survivors on guard posts you build instead.
   - bandit: put it under the camp node. Bandits stay near the camp node's
     position.
   - survivor: put it inside a house (as a child of the Building). Person must
     be a survivor's name (their file in `characters/npcs/survivors/`; see
     `HOW_TO_ADD.md`).
-  - survivor_home: their spot in the station yard (same Person).
+  - survivor_home: optional. Their own spot at the police station camp (same
+    Person). Without one they stand round their camp.
   - corpse: a body lying there, in Outfit Color.
 - **ZombieSpawn:** when a new game starts, each of **Count** zombies turns up
   with **Chance**. **Spread** scatters them in a box around the marker.
 - **Place:** a named place on the map. **Kind** is discoverable (found by
   coming within Radius of the marker) or street (a street name, always shown).
-  The quest and the wagon trader use the "Safe House" and "Police Station"
-  places.
+  The quest uses the "Safe House" place.
+- **Zone:** a named area, drawn as an outline (Map Tools > New zone, then Draw
+  points). Walking in shows its name.
+- **Base Camp:** the police station's camp (Map Tools > Police station camp).
+  Drag its Logbook, Board and Crate child markers to where those go.
 
 ## Things the game relies on
 
@@ -178,7 +184,6 @@ label. `HOW_TO_MAP.md` (section 12) lists which ones the story needs.
 - **Groups mark a few special things** (Node dock > Groups):
   - `map_road`: drawn as road on the map screen.
   - `map_fence`: drawn as the compound fence.
-  - `base_supply_crate`: the container the base fills each morning.
   - `safe_house_trigger`: walking into it counts as reaching the safe house.
 - **Saves find things by their path in the map scene** (folder / building
   / name). Renaming or moving something to another parent means an older save

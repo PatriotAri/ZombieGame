@@ -9,6 +9,8 @@ const WOODWORKER := [
 	{"id": "fence", "needs": {"planks": 3, "plywood": 1}},
 	{"id": "fence_gate", "needs": {"planks": 3, "plywood": 1, "scrap_metal": 1}},
 	{"id": "garden_plot", "needs": {"planks": 4}},
+	# A new base camp (world/camps.gd): tents, a table and the radio (the batteries).
+	{"id": "camp_kit", "needs": {"planks": 12, "plywood": 6, "scrap_metal": 6, "batteries": 2}},
 ]
 ## The machinist makes these any time.
 const MACHINIST_ANYTIME := [
