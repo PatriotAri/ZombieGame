@@ -57,6 +57,10 @@ opening in the list to change it:
   survivors' houses. The player can pull the planks off.
 - **Door > Start Open, Door Color:** for doors.
 
+**Models > Door Models, Window Models:** what its doors and windows look like
+(stretched to each opening); empty uses `world/props/door.tscn` and
+`window.tscn`. See `HOW_TO_MODEL.md`, "Props".
+
 Only ground-floor doors and windows can be planked up by the player. Zombies
 can smash ground-floor windows and climb in.
 
@@ -85,6 +89,9 @@ dumpster, cardboard boxes, supply crate and car. A container has:
   items. The list shows every table in `items/loot/`; see `HOW_TO_ADD.md` to
   change one or make a new one.
 - **Look > Size, Material:** any size, any material.
+- **Model > Models:** what it looks like (a shaped stand-in to start with),
+  stretched to its Size; see `HOW_TO_MODEL.md`, "Props". Empty: a plain box in
+  its Material.
 
 A **bed** can be stripped for plywood because of its metadata `salvage_label`
 (Inspector, bottom). Give any box that metadata (value "Bed", or another label

@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://items/loot_spot.gd" id="1_msjr4"]
 [ext_resource type="Material" path="res://world/kit/materials/crate_wood.tres" id="2_jtwoy"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/supply_crate.tscn" id="9_standin"]
 
 [node name="SupplyCrate" type="StaticBody3D" unique_id=2131243322]
 script = ExtResource("1_msjr4")
@@ -14,3 +15,4 @@ loot_table = "none"
 size = Vector3(1, 0.9, 1.4)
 material = ExtResource("2_jtwoy")
 sits_on_floor = true
+models = Array[PackedScene]([ExtResource("9_standin")])

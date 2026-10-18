@@ -23,6 +23,7 @@ extends Node
 ## crate's contents, who works what, who guards where, and the kills. (Who lives where is
 ## saved with the survivors.)
 
+const CampSite := preload("res://world/camp_site.gd")
 const Survivor := preload("res://characters/npcs/survivor.gd")
 const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Guard := preload("res://characters/npcs/guard.gd")
@@ -102,12 +103,7 @@ func setup(marker: KitBaseCamp, station_homes: Dictionary, survivors: Node, wood
 		station.center = marker.global_position
 		station.logbook = _part(SavePoint.new(), marker.part_transform("Logbook"))
 		station.board = _part(BulletinBoard.new(), marker.part_transform("Board"))
-		var crate := KitContainer.new()
-		crate.label = "Supply crate"
-		crate.loot_table = "none"
-		crate.size = Vector3(1.0, 0.7, 0.7)
-		crate.sits_on_floor = true
-		station.crate = _part(crate, marker.part_transform("Crate"))
+		station.crate = _part(CampSite.make_crate(), marker.part_transform("Crate"))
 	else:
 		push_warning("The map scene has no KitBaseCamp marker (the police station's camp): it's where you start, with no logbook, board or crate.")
 		station.name = "Police Station"

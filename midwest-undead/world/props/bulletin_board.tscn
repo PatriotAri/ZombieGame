@@ -1,0 +1,54 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/props/kit_prop.gd" id="1_8t6yp"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vmfm5"]
+albedo_color = Color(0.42, 0.31, 0.2, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_xn5ui"]
+material = SubResource("StandardMaterial3D_vmfm5")
+size = Vector3(0.08, 1.9, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_3q42q"]
+material = SubResource("StandardMaterial3D_vmfm5")
+size = Vector3(0.08, 1.9, 0.08)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_c3cvs"]
+albedo_color = Color(0.62, 0.48, 0.32, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_bdgl6"]
+material = SubResource("StandardMaterial3D_c3cvs")
+size = Vector3(1.3, 0.95, 0.05)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ufnhu"]
+material = SubResource("StandardMaterial3D_vmfm5")
+size = Vector3(1.4, 0.06, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_uwjxm"]
+material = SubResource("StandardMaterial3D_vmfm5")
+size = Vector3(1.4, 0.06, 0.08)
+
+[node name="BulletinBoard" type="Node3D" unique_id=1963056568]
+script = ExtResource("1_8t6yp")
+
+[node name="StandIn" type="Node3D" parent="." unique_id=774644869]
+
+[node name="@MeshInstance3D@300" type="MeshInstance3D" parent="StandIn" unique_id=1602760025]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.59999996, 0.95, -0.05)
+mesh = SubResource("BoxMesh_xn5ui")
+
+[node name="@MeshInstance3D@301" type="MeshInstance3D" parent="StandIn" unique_id=244759299]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.59999996, 0.95, -0.05)
+mesh = SubResource("BoxMesh_3q42q")
+
+[node name="@MeshInstance3D@302" type="MeshInstance3D" parent="StandIn" unique_id=289887009]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.3, 0)
+mesh = SubResource("BoxMesh_bdgl6")
+
+[node name="@MeshInstance3D@303" type="MeshInstance3D" parent="StandIn" unique_id=35440823]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.805, 0)
+mesh = SubResource("BoxMesh_ufnhu")
+
+[node name="@MeshInstance3D@304" type="MeshInstance3D" parent="StandIn" unique_id=1482543069]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.795, 0)
+mesh = SubResource("BoxMesh_uwjxm")

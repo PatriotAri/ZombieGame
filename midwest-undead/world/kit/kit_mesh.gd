@@ -102,10 +102,12 @@ func _wall_box(frame: Transform3D, size: Vector3, center: Vector3, y0: float, y1
 
 ## The glass for a window made by wall(): add it to the tree yourself.
 ## floor_drop: how far the floor is below the pane's middle (fortifications.gd).
-static func make_window(op: Dictionary, boardable: bool, boarded_at_start: bool, floor_drop: float) -> WindowPane:
+## models: the building's Window Models (empty: world/props/window.tscn's).
+static func make_window(op: Dictionary, boardable: bool, boarded_at_start: bool, floor_drop: float,
+		models: Array = []) -> WindowPane:
 	var pane := WindowPane.new()
 	pane.transform = op["frame"]
-	pane.setup(Vector3(0.06, op["top"] - op["bottom"], op["width"]), GLASS)
+	pane.setup(Vector3(0.06, op["top"] - op["bottom"], op["width"]), models)
 	pane.boardable = boardable
 	pane.boarded_at_start = boarded_at_start
 	pane.set_meta("floor_drop", floor_drop)
@@ -113,15 +115,16 @@ static func make_window(op: Dictionary, boardable: bool, boarded_at_start: bool,
 
 
 ## The door for a doorway made by wall(), hinged on its start edge and swinging
-## in (+X). Add it to the tree yourself.
-static func make_door(op: Dictionary, color: Color) -> Door:
+## in (+X). Add it to the tree yourself. models: the building's Door Models
+## (empty: world/props/door.tscn's).
+static func make_door(op: Dictionary, color: Color, models: Array = []) -> Door:
 	var height: float = op["top"] - op["bottom"] - 0.02
 	var width: float = op["width"]
 	var leaf := Vector3(0.08, height, width - 0.1)
 	var frame: Transform3D = op["frame"]
 	var hinge := frame * Transform3D(Basis.IDENTITY, Vector3(0, -(op["top"] - op["bottom"]) / 2.0, -width / 2.0))
 	var door := Door.new()
-	door.setup(leaf, Vector3(0.0, height / 2.0, width / 2.0), color, hinge, PI / 2.0)
+	door.setup(leaf, Vector3(0.0, height / 2.0, width / 2.0), color, hinge, PI / 2.0, Vector3.ZERO, models)
 	return door
 
 

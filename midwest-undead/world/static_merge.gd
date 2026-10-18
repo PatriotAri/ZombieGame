@@ -11,7 +11,7 @@ extends RefCounted
 ## of the kit's scripts.
 
 const PATCH := 48.0 # meters: small enough that off-screen patches aren't drawn
-const MERGED_SCRIPTS := ["building.gd", "kit_wall.gd", "kit_floor.gd", "kit_stairs.gd", "kit_box.gd"]
+const MERGED_SCRIPTS := ["building.gd", "kit_wall.gd", "kit_floor.gd", "kit_stairs.gd", "kit_box.gd", "kit_prop.gd"]
 
 
 ## Combines town's static meshes. Returns how many meshes it hid.
@@ -55,7 +55,7 @@ static func _mergeable(mesh_inst: MeshInstance3D, town: Node3D) -> bool:
 	while node != null and node != town:
 		if node.has_meta("salvage_label"):
 			return false # can be stripped (it darkens)
-		if not scripted and node.get_script():
+		if node.get_script(): # every script up the way (a model sits in a container or a door too)
 			if not (node.get_script() as Script).resource_path.get_file() in MERGED_SCRIPTS:
 				return false # a container, a door, a window, an item...
 			scripted = true

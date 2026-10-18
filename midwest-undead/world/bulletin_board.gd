@@ -3,10 +3,11 @@ extends StaticBody3D
 ## how many live there out of how many it can hold, and who they are (written
 ## on the board itself, and read out in full when you look at it and press
 ## interact). world/camps.gd makes one for each camp and keeps it up to date;
-## main.gd opens it.
+## main.gd opens it. Its look is world/props/bulletin_board.tscn (set Models
+## there to swap in a model; HOW_TO_MODEL.md, "Props"; the writing goes on the
+## board's face, BOARD centered 1.3 m up).
 
-const WOOD := Color(0.42, 0.31, 0.2)
-const CORK := Color(0.62, 0.48, 0.32)
+const LOOK := preload("res://world/props/bulletin_board.tscn")
 const BOARD := Vector2(1.3, 0.95)
 
 var title := "" # the camp's name
@@ -18,15 +19,15 @@ var _text: Label3D
 
 func _ready() -> void:
 	collision_layer = 1 # the world: you can look at it, zombies path around it
-	for x: float in [-BOARD.x / 2.0 + 0.05, BOARD.x / 2.0 - 0.05]:
-		_box(Vector3(0.08, 1.9, 0.08), Vector3(x, 0.95, 0.0), WOOD)
-	_box(Vector3(BOARD.x, BOARD.y, 0.05), Vector3(0, 1.3, 0.0), CORK)
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(BOARD.x, 1.9, 0.2)
-	var col := CollisionShape3D.new()
-	col.shape = shape
-	col.position.y = 0.95
-	add_child(col)
+	var look := KitProp.make(LOOK)
+	add_child(look)
+	if not look.take_shapes(self):
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(BOARD.x, 1.9, 0.2)
+		var col := CollisionShape3D.new()
+		col.shape = shape
+		col.position.y = 0.95
+		add_child(col)
 	_text = Label3D.new()
 	_text.pixel_size = 0.0022
 	_text.font_size = 36
@@ -56,14 +57,3 @@ func _refresh() -> void:
 func interact_prompt() -> String:
 	return "read the bulletin board"
 
-
-func _box(size: Vector3, pos: Vector3, color: Color) -> void:
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mesh.material = mat
-	var inst := MeshInstance3D.new()
-	inst.mesh = mesh
-	inst.position = pos
-	add_child(inst)

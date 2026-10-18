@@ -22,6 +22,9 @@ extends Node
 ## fortifications.gd, so only one bake runs at a time).
 ## Saved: every piece, what it stands on, whether gates are open, and each
 ## fence's or gate's health, plating and whether it's broken.
+## How each looks is a prop scene in world/props/ (PROPS and the ones below it):
+## set Models on one to swap in a model (HOW_TO_MODEL.md, "Props"). A model's
+## own collision shapes are used; without any, the boxes in _collision().
 
 const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
@@ -46,6 +49,7 @@ const FENCE := Vector3(3.0, 2.2, 0.15)
 const MAX_STACK := 3 # scaffolding this many high, at most
 const LADDER_OUT := 0.12 # how far the ladder stands off the scaffolding
 const CLIMB_REACH := 1.0 # how far out from the ladder you can be and still climb
+## The stand-ins' colors (world/props/make_props.gd).
 const WOOD := Color(0.58, 0.45, 0.28)
 const WOOD_DARK := Color(0.4, 0.3, 0.19)
 const STEEL := Color(0.42, 0.43, 0.45)
@@ -56,12 +60,26 @@ const DARKEN_STEPS := 8 # damage shows in this many shades (each a shared materi
 const WRECK_ITEMS := {"fence": {"used_planks": 2}, "fence_gate": {"used_planks": 2, "scrap_metal": 1}}
 ## Health one plank puts back (a third of a fence).
 const PLANK_REPAIR := 2500.0
+const PROPS := {
+	"scaffold": preload("res://world/props/scaffold.tscn"),
+	"guard_post": preload("res://world/props/guard_post.tscn"),
+	"fence": preload("res://world/props/fence.tscn"),
+	"fence_gate": preload("res://world/props/gate_posts.tscn"),
+	"garden_plot": preload("res://world/props/garden_plot.tscn"),
+	"ammo_bench": preload("res://world/props/ammo_bench.tscn"),
+	"shell_bench": preload("res://world/props/shell_bench.tscn"),
+	"rifle_bench": preload("res://world/props/rifle_bench.tscn"),
+}
+const GATE_LEAF := preload("res://world/props/gate_leaf.tscn")
+const FENCE_PLATING := preload("res://world/props/fence_plating.tscn")
+const GATE_PLATING := preload("res://world/props/gate_plating.tscn")
+const WRECK := preload("res://world/props/fence_wreck.tscn")
+const LADDER := preload("res://world/props/ladder.tscn")
 
 var pieces: Array[StructurePiece] = []
 var _nav_region: Node3D # world/nav_tiles.gd: pieces go under it, so the navigation bake sees them
 var _fortifications: Node # owns the shared navigation re-bake
 var camps: Node # world/camps.gd, set by main.gd (camps keep their distance)
-var _materials := {} # Color -> StandardMaterial3D, shared by every piece
 var _ghost: Node3D
 var _ghost_key := "" # what the ghost currently shows, so it's only rebuilt when that changes
 var _ghost_material: StandardMaterial3D
@@ -247,12 +265,12 @@ func build(kind: String, xform: Transform3D, on: StructurePiece, quiet := false)
 	piece.kind = kind
 	piece.structures = self
 	piece.transform = xform
-	_model(kind, piece, null)
-	_collision(kind, piece)
 	if on:
 		piece.below = on
 		on.above = piece
 	_nav_region.add_child(piece) # in the bake: zombies path around it
+	if not _model(kind, piece, null).take_shapes(piece):
+		_collision(kind, piece)
 	pieces.append(piece)
 	if kind == "fence_gate":
 		_add_leaf(piece)
@@ -312,24 +330,27 @@ func plate(piece: StructurePiece, quiet := false) -> void:
 	piece.health = StructurePiece.MAX_HEALTH
 	_shade(piece)
 	if piece.kind == "fence":
-		for z: float in [-0.06, 0.06]: # both faces
-			_box(piece, Vector3(FENCE.x - 0.1, FENCE.y - 0.1, 0.02), Vector3(0, FENCE.y / 2.0, z), 0.0, 0.0, METAL, null)
+		_add_prop(piece, FENCE_PLATING)
 	elif piece.leaf: # the gate's leaf, so the plates swing with it
-		var width := FENCE.x - 0.2
-		for z: float in [-0.06, 0.1]:
-			_box(piece.leaf, Vector3(width, FENCE.y - 0.2, 0.02), Vector3(FENCE.x / 2.0 - 0.08, FENCE.y / 2.0 + 0.05, z), 0.0, 0.0, METAL, null)
+		_add_prop(piece.leaf, GATE_PLATING)
 	if not quiet:
 		Sound.play_at(piece, "hammer", piece.global_position + Vector3.UP, 0.0, 30.0)
 
 
-## Darker the more damaged, in DARKEN_STEPS shades (materials shared by every piece).
+## Darker the more damaged, in DARKEN_STEPS shades.
 func _shade(piece: StructurePiece) -> void:
 	var step := 0 if piece.plated else int((1.0 - piece.health / StructurePiece.MAX_HEALTH) * DARKEN_STEPS)
-	var nodes: Array[Node] = piece.find_children("*", "MeshInstance3D", true, false)
-	for node in nodes:
-		var mesh := node as MeshInstance3D
-		var base := (mesh.mesh.surface_get_material(0) as StandardMaterial3D).albedo_color
-		mesh.material_override = null if step == 0 else _wood(base.darkened(0.6 * step / DARKEN_STEPS))
+	for prop in _props(piece):
+		prop.darken(0.6 * step / DARKEN_STEPS)
+
+
+## Every look on a piece (its gate's leaf and plating too).
+func _props(piece: Node) -> Array[KitProp]:
+	var found: Array[KitProp] = []
+	for node in piece.find_children("*", "Node3D", true, false):
+		if node is KitProp:
+			found.append(node)
+	return found
 
 
 ## Broken: no longer stops anyone. The upright parts go, a few boards lie where
@@ -342,13 +363,10 @@ func _break(piece: StructurePiece, quiet := false) -> void:
 		piece.leaf = null
 		piece.gate_open = false
 	for child in piece.get_children():
-		if child is MeshInstance3D or child is CollisionShape3D:
+		if child is KitProp or child is CollisionShape3D or child is CollisionPolygon3D:
 			piece.remove_child(child)
 			child.queue_free()
-	var wood := [Vector3(-0.8, 0.04, 0.3), Vector3(0.4, 0.04, -0.2), Vector3(0.9, 0.04, 0.5)]
-	for i in wood.size():
-		_box(piece, Vector3(1.4, 0.05, 0.22), wood[i], 0.4 * (i - 1), 0.0, WOOD_DARK, null)
-	_box(piece, Vector3(0.14, 0.6, 0.14), Vector3(-FENCE.x / 2.0, 0.3, 0), 0.0, 0.0, WOOD_DARK, null) # a post stump
+	_add_prop(piece, WRECK)
 	# You can still look at it (to take it down) but nothing bumps into it, and
 	# the navigation bake doesn't see it (an area, not a body).
 	var zone := Area3D.new()
@@ -450,12 +468,12 @@ func show_ghost(kind: String, view: Dictionary) -> void:
 		add_child(_ghost)
 		_model(kind, _ghost, _ghost_material)
 		if kind == "fence_gate":
-			_leaf_model(_ghost, _ghost_material)
+			_add_prop(_ghost, GATE_LEAF).position = Vector3(-FENCE.x / 2.0 + 0.08, 0, 0)
 		if ladder > 0.0:
-			_ladder_model(_ghost, ladder, _ghost_material)
+			_ladder_model(_ghost, ladder)
 		_ghost_key = key
-		for mesh in _ghost.find_children("*", "MeshInstance3D", true, false):
-			(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for prop in _props(_ghost):
+			prop.ghost(_ghost_material)
 	_ghost.visible = true
 	_ghost.global_transform = view["xform"]
 	_ghost_material.albedo_color = Color(0.3, 1.0, 0.4, 0.35) if view["ok"] else Color(1.0, 0.25, 0.2, 0.35)
@@ -463,69 +481,28 @@ func show_ghost(kind: String, view: Dictionary) -> void:
 
 # --- Models and collision ----------------------------------------------------------
 
-## The look of each piece, in its own space: origin on the ground (or the top of
-## the scaffolding below) in the middle, +z toward the side you placed it from.
-## mat: one material for everything (the see-through preview), or null for wood.
-func _model(kind: String, parent: Node3D, mat: StandardMaterial3D) -> void:
-	var half := SCAFFOLD / 2.0
-	match kind:
-		"camp_kit":
-			if mat == null:
-				CampSite.build(parent) # the real thing (with its logbook, board and crate)
-			else: # the preview: just its tents, fire and table
-				for x: float in [-2.4, 2.4]:
-					_box(parent, Vector3(1.7, 1.15, 2.1), Vector3(x, 0.58, -1.6), 0.0, 0.0, WOOD, mat)
-				_box(parent, Vector3(1.1, 0.3, 1.1), Vector3(0, 0.15, 0), 0.0, 0.0, WOOD, mat)
-				_box(parent, Vector3(1.4, 0.78, 0.8), Vector3(0.4, 0.39, 2.2), 0.0, 0.0, WOOD, mat)
-		"scaffold":
-			for x: float in [-half.x + 0.06, half.x - 0.06]:
-				for z: float in [-half.z + 0.06, half.z - 0.06]:
-					_box(parent, Vector3(0.1, SCAFFOLD.y, 0.1), Vector3(x, half.y, z), 0.0, 0.0, STEEL, mat)
-			for side in 4: # a diagonal brace on each face, and a rail around the middle
-				var turn := side * PI / 2.0
-				var out := Vector3(0, 0, half.z - 0.06).rotated(Vector3.UP, turn)
-				_box(parent, Vector3(SCAFFOLD.x * 1.15, 0.07, 0.05), out + Vector3(0, half.y, 0), turn, 0.85, STEEL, mat)
-				_box(parent, Vector3(SCAFFOLD.x, 0.06, 0.05), out + Vector3(0, half.y, 0), turn, 0.0, STEEL, mat)
-			for i in 6: # boards across the top
-				var z := -half.z + SCAFFOLD.z * (i + 0.5) / 6.0
-				_box(parent, Vector3(SCAFFOLD.x, 0.06, SCAFFOLD.z / 6.0 - 0.03), Vector3(0, SCAFFOLD.y - 0.03, z), 0.0, 0.0, WOOD, mat)
-		"guard_post":
-			_box(parent, Vector3(SCAFFOLD.x, 0.05, SCAFFOLD.z), Vector3(0, 0.025, 0), 0.0, 0.0, WOOD, mat) # floor
-			for x: float in [-half.x + 0.07, half.x - 0.07]:
-				for z: float in [-half.z + 0.07, half.z - 0.07]:
-					_box(parent, Vector3(0.12, POST_HEIGHT, 0.12), Vector3(x, POST_HEIGHT / 2.0, z), 0.0, 0.0, WOOD_DARK, mat)
-			for rail in _rails():
-				_box(parent, rail["size"], rail["pos"], 0.0, 0.0, PLYWOOD, mat)
-			_box(parent, Vector3(SCAFFOLD.x + 0.4, 0.1, SCAFFOLD.z + 0.4), Vector3(0, POST_HEIGHT, 0), 0.0, 0.0, WOOD_DARK, mat) # roof
-		"fence":
-			for x: float in [-FENCE.x / 2.0, FENCE.x / 2.0]:
-				_box(parent, Vector3(0.14, FENCE.y + 0.1, 0.14), Vector3(x, (FENCE.y + 0.1) / 2.0, 0), 0.0, 0.0, WOOD_DARK, mat)
-			_box(parent, Vector3(FENCE.x, FENCE.y, 0.06), Vector3(0, FENCE.y / 2.0, 0), 0.0, 0.0, PLYWOOD, mat)
-		"fence_gate":
-			for x: float in [-FENCE.x / 2.0, FENCE.x / 2.0]:
-				_box(parent, Vector3(0.16, FENCE.y + 0.2, 0.16), Vector3(x, (FENCE.y + 0.2) / 2.0, 0), 0.0, 0.0, WOOD_DARK, mat)
-		"garden_plot": # a raised bed of soil with rows of something growing
-			var g := GARDEN / 2.0
-			for z: float in [-g.z, g.z]:
-				_box(parent, Vector3(GARDEN.x, GARDEN.y, 0.08), Vector3(0, g.y, z), 0.0, 0.0, WOOD, mat)
-			for x: float in [-g.x, g.x]:
-				_box(parent, Vector3(0.08, GARDEN.y, GARDEN.z), Vector3(x, g.y, 0), 0.0, 0.0, WOOD, mat)
-			_box(parent, Vector3(GARDEN.x - 0.1, 0.05, GARDEN.z - 0.1), Vector3(0, GARDEN.y - 0.06, 0), 0.0, 0.0, SOIL, mat)
-			for row in 3:
-				for k in 6:
-					var at := Vector3(-g.x + 0.3 + k * (GARDEN.x - 0.6) / 5.0, GARDEN.y + 0.08, -g.z + 0.45 + row * 0.55)
-					_box(parent, Vector3(0.22, 0.18, 0.22), at, k * 0.7, 0.0, LEAVES, mat)
-		"ammo_bench", "shell_bench", "rifle_bench": # a heavy workbench with a press and a vise
-			var b := BENCH / 2.0
-			for x: float in [-b.x + 0.08, b.x - 0.08]:
-				for z: float in [-b.z + 0.08, b.z - 0.08]:
-					_box(parent, Vector3(0.08, BENCH.y - 0.08, 0.08), Vector3(x, (BENCH.y - 0.08) / 2.0, z), 0.0, 0.0, WOOD_DARK, mat)
-			_box(parent, Vector3(BENCH.x, 0.08, BENCH.z), Vector3(0, BENCH.y - 0.04, 0), 0.0, 0.0, WOOD, mat)
-			_box(parent, Vector3(BENCH.x - 0.2, 0.05, BENCH.z - 0.15), Vector3(0, 0.25, 0), 0.0, 0.0, WOOD_DARK, mat) # shelf
-			_box(parent, Vector3(0.2, 0.55, 0.2), Vector3(-0.55, BENCH.y + 0.27, -0.15), 0.0, 0.0, STEEL, mat) # reloading press
-			_box(parent, Vector3(0.08, 0.3, 0.45), Vector3(-0.55, BENCH.y + 0.5, 0.05), 0.0, 0.0, STEEL, mat) # its lever
-			_box(parent, Vector3(0.25, 0.15, 0.18), Vector3(0.6, BENCH.y + 0.08, 0.1), 0.0, 0.0, STEEL, mat) # vise
-			_box(parent, Vector3(0.3, 0.1, 0.2), Vector3(0.1, BENCH.y + 0.05, -0.1), 0.3, 0.0, BENCHES[kind], mat) # rounds
+## The look of a piece (its prop scene) on parent: origin on the ground (or the
+## top of the scaffolding below) in the middle, +z toward the side you placed it
+## from. mat: the see-through preview (for the camp kit: just its tents, fire
+## and table), or null for the real thing. Returns the look.
+func _model(kind: String, parent: Node3D, mat: StandardMaterial3D) -> KitProp:
+	if kind == "camp_kit":
+		var holder := KitProp.new() # the camp's props hang off this (it has no look of its own)
+		parent.add_child(holder)
+		if mat == null:
+			CampSite.build(holder, parent as CollisionObject3D) # the real thing (with its logbook, board and crate)
+		else:
+			CampSite.preview(holder)
+		return holder
+	return _add_prop(parent, PROPS[kind])
+
+
+## A prop scene's look on parent. Returns it.
+func _add_prop(parent: Node3D, scene: PackedScene) -> KitProp:
+	var prop := KitProp.make(scene)
+	prop.name = "Look"
+	parent.add_child(prop)
+	return prop
 
 
 ## The guard post's railing: three full sides and two short pieces either side of
@@ -573,26 +550,14 @@ func _add_leaf(piece: StructurePiece) -> void:
 	leaf.position = Vector3(-FENCE.x / 2.0 + 0.08, 0, 0)
 	piece.add_child(leaf)
 	piece.leaf = leaf
-	_leaf_model(leaf, null, false)
-	_shape(leaf, Vector3(FENCE.x - 0.2, FENCE.y - 0.15, 0.1), Vector3(FENCE.x / 2.0 - 0.08, FENCE.y / 2.0 + 0.05, 0))
-
-
-## The leaf's boards, centered between the posts. on_piece false: drawn on the
-## leaf itself, whose origin is the hinge.
-func _leaf_model(parent: Node3D, mat: StandardMaterial3D, on_piece := true) -> void:
-	var offset := Vector3.ZERO if on_piece else Vector3(FENCE.x / 2.0 - 0.08, 0, 0)
-	var width := FENCE.x - 0.2
-	for i in 5:
-		var x := -width / 2.0 + width * (i + 0.5) / 5.0
-		_box(parent, Vector3(width / 5.0 - 0.04, FENCE.y - 0.15, 0.06), offset + Vector3(x, FENCE.y / 2.0 + 0.05, 0), 0.0, 0.0, WOOD, mat)
-	for y: float in [0.5, FENCE.y - 0.3]:
-		_box(parent, Vector3(width, 0.14, 0.08), offset + Vector3(0, y, 0.05), 0.0, 0.0, WOOD_DARK, mat)
+	if not _add_prop(leaf, GATE_LEAF).take_shapes(leaf):
+		_shape(leaf, Vector3(FENCE.x - 0.2, FENCE.y - 0.15, 0.1), Vector3(FENCE.x / 2.0 - 0.08, FENCE.y / 2.0 + 0.05, 0))
 
 
 ## A ladder down the +z side of the scaffolding, from the post's floor to the
 ## ground, and the area you climb it in (player.gd).
 func _add_ladder(post: StructurePiece, height: float) -> void:
-	_ladder_model(post, height, null)
+	_ladder_model(post, height)
 	var area := Area3D.new()
 	area.collision_layer = 0
 	area.collision_mask = GameData.LAYER_PLAYER
@@ -611,24 +576,12 @@ func _add_ladder(post: StructurePiece, height: float) -> void:
 	post.ladder = area
 
 
-func _ladder_model(parent: Node3D, height: float, mat: StandardMaterial3D) -> void:
-	var z := SCAFFOLD.z / 2.0 + LADDER_OUT
-	for x: float in [-0.25, 0.25]:
-		_box(parent, Vector3(0.06, height + 1.0, 0.06), Vector3(x, (1.0 - height) / 2.0, z), 0.0, 0.0, WOOD_DARK, mat)
-	var rungs := int(height / 0.3)
-	for i in rungs:
-		_box(parent, Vector3(0.5, 0.04, 0.05), Vector3(0, -height + 0.3 * (i + 1), z), 0.0, 0.0, WOOD, mat)
-
-
-func _box(parent: Node3D, size: Vector3, pos: Vector3, yaw: float, roll: float, color: Color, mat: StandardMaterial3D) -> void:
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	mesh.material = mat if mat else _wood(color)
-	var inst := MeshInstance3D.new()
-	inst.mesh = mesh
-	inst.position = pos
-	inst.rotation = Vector3(0, yaw, roll)
-	parent.add_child(inst)
+## The ladder's look, stretched from the ground (height below) to 1 m above the post's floor.
+func _ladder_model(parent: Node3D, height: float) -> void:
+	var prop := KitProp.make(LADDER, [], Vector3(0.56, height + 1.0, 0.06),
+			Vector3(0, (1.0 - height) / 2.0, SCAFFOLD.z / 2.0 + LADDER_OUT))
+	prop.name = "Ladder"
+	parent.add_child(prop)
 
 
 func _shape(parent: Node3D, size: Vector3, pos: Vector3) -> void:
@@ -639,10 +592,3 @@ func _shape(parent: Node3D, size: Vector3, pos: Vector3) -> void:
 	col.position = pos
 	parent.add_child(col)
 
-
-func _wood(color: Color) -> StandardMaterial3D:
-	if not _materials.has(color):
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = color
-		_materials[color] = mat
-	return _materials[color]

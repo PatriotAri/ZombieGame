@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://items/loot_spot.gd" id="1_ou1gc"]
 [ext_resource type="Material" path="res://world/kit/materials/cabinet.tres" id="2_yut04"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/kitchen_cabinet.tscn" id="9_standin"]
 
 [node name="KitchenCabinet" type="StaticBody3D" unique_id=1813816325]
 script = ExtResource("1_ou1gc")
@@ -9,3 +10,4 @@ label = "Kitchen cabinet"
 size = Vector3(0.6, 0.9, 2.4)
 material = ExtResource("2_yut04")
 sits_on_floor = true
+models = Array[PackedScene]([ExtResource("9_standin")])

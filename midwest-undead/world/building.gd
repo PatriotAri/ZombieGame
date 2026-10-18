@@ -145,6 +145,20 @@ const POST_SPACING := 2.5 # wooden posts: this far apart along each side
 		roof_material = value
 		_changed()
 
+@export_group("Models")
+## Its doors and windows: model scenes (HOW_TO_MODEL.md, "Props"), stretched to
+## each opening. With several, each door or window picks one (always the same
+## one there). Empty: world/props/door.tscn and window.tscn (set Models there
+## to change every building's).
+@export var door_models: Array[PackedScene] = []:
+	set(value):
+		door_models = value
+		_changed()
+@export var window_models: Array[PackedScene] = []:
+	set(value):
+		window_models = value
+		_changed()
+
 var _generated: Array[Node] = []
 var _foundation_body: StaticBody3D
 var _dirty := true
@@ -403,7 +417,7 @@ func _opening_nodes(wall_name: String, level: int, list: Array, fy: float) -> Ar
 		var n: int = counts[op.kind]
 		var node_name: String = prefix + op.kind.capitalize() + (str(n) if n > 1 else "")
 		if op.kind == "door":
-			var door := KitMesh.make_door(entry, op.door_color)
+			var door := KitMesh.make_door(entry, op.door_color, door_models)
 			door.name = node_name
 			door.start_open = op.start_open
 			door.boardable = level == 0
@@ -411,7 +425,7 @@ func _opening_nodes(wall_name: String, level: int, list: Array, fy: float) -> Ar
 			nodes.append(door)
 		elif not op.boarded_up:
 			var frame: Transform3D = entry["frame"]
-			var pane := KitMesh.make_window(entry, level == 0, op.boarded_at_start and level == 0, frame.origin.y - fy)
+			var pane := KitMesh.make_window(entry, level == 0, op.boarded_at_start and level == 0, frame.origin.y - fy, window_models)
 			pane.name = node_name
 			nodes.append(pane)
 	return nodes

@@ -15,10 +15,15 @@ extends AnimatableBody3D
 ## The body sits on the pivot (the hinge, for a swinging door). Opening turns it
 ## by open_yaw and moves it by open_shift, both in its closed frame, so the same
 ## script does swinging doors and sliding gate leaves.
+##
+## A door made in code (a building's) looks like world/props/door.tscn, or one
+## of the building's Door Models, stretched to the doorway (HOW_TO_MODEL.md,
+## "Props"); it's solid where the model's collision shapes are, else the panel.
 
 const Sound := preload("res://core/sound.gd")
 const ViewDistance := preload("res://core/view_distance.gd")
 const VIEW_METERS := 90.0 # past this the door isn't drawn (core/view_distance.gd)
+const DOOR_PROP := preload("res://world/props/door.tscn")
 
 const OPEN_TIME := 0.6
 const BASH_WOBBLE := 0.04 # meters the leaf jumps per blow
@@ -61,7 +66,11 @@ var boarded := false
 var _closed := Transform3D.IDENTITY
 var _amount := 0.0 # 0 = shut, 1 = open; tweened in between
 var _closing := false
-var _mesh: MeshInstance3D
+var _mesh: MeshInstance3D # a door in the map scene: its panel
+var _look: KitProp # a door made in code: its look
+var _visual: Node3D # whichever it has (it jumps when bashed)
+var _visual_rest := Vector3.ZERO
+var _models: Array = [] # a building's Door Models (empty: the door prop's)
 var _material: StandardMaterial3D
 var _base_color: Color
 var _move_tween: Tween
@@ -72,21 +81,21 @@ var _next_bash_ms := 0
 ## For doors made in code: leaf_size and leaf_offset place the panel relative to
 ## the pivot; closed is the pivot's transform when shut, in the parent's space.
 func setup(leaf: Vector3, offset: Vector3, leaf_color: Color, closed: Transform3D,
-		yaw: float, shift := Vector3.ZERO) -> void:
+		yaw: float, shift := Vector3.ZERO, models: Array = []) -> void:
 	leaf_size = leaf
 	leaf_offset = offset
 	color = leaf_color
 	open_yaw = yaw
 	open_shift = shift
 	transform = closed
-	_build()
+	_models = models
 
 
 ## Doors in the map scene come with their panel and collision already (made by
 ## _build when the town was frozen); ones made in code get them from setup().
 func _ready() -> void:
 	_closed = transform
-	if _mesh == null:
+	if _mesh == null and _look == null:
 		for child in get_children():
 			if child is MeshInstance3D:
 				_mesh = child
@@ -99,8 +108,10 @@ func _ready() -> void:
 			# in the shared one.
 			_material = _shared(_mesh.mesh.surface_get_material(0) as StandardMaterial3D)
 			_mesh.set_surface_override_material(0, _material)
+			_visual = _mesh
+			_visual_rest = _mesh.position
+			ViewDistance.limit(_mesh, VIEW_METERS)
 	_base_color = _material.albedo_color
-	ViewDistance.limit(_mesh, VIEW_METERS)
 	if start_open and not Engine.is_editor_hint(): # the editor shows it shut
 		set_open(true, false)
 
@@ -110,16 +121,16 @@ func _build() -> void:
 		var made := StandardMaterial3D.new()
 		made.albedo_color = color
 		_colors[color] = made
-	_material = _colors[color] # shared until it takes a beating (_tint)
-	var box := BoxMesh.new()
-	box.size = leaf_size
-	box.material = _material
-	_mesh = MeshInstance3D.new()
-	_mesh.name = "Panel"
-	_mesh.mesh = box
-	_mesh.position = leaf_offset
-	add_child(_mesh)
-
+	_material = _colors[color] # its color, on the look's Paint meshes
+	_look = KitProp.make(DOOR_PROP, _models, leaf_size, leaf_offset)
+	_look.name = "Look"
+	add_child(_look)
+	_look.paint(_material)
+	for mesh in _look.meshes():
+		ViewDistance.limit(mesh, VIEW_METERS)
+	_visual = _look
+	if _look.take_shapes(self):
+		return
 	var shape := BoxShape3D.new()
 	shape.size = leaf_size
 	var col := CollisionShape3D.new()
@@ -170,7 +181,7 @@ func bash(damage: float) -> void:
 		_burst()
 		return
 	# Splinter and darken as it takes a beating.
-	_tint(_base_color.darkened(0.5 * (1.0 - health / max_health)))
+	_tint(0.5 * (1.0 - health / max_health))
 	var now := Time.get_ticks_msec()
 	if now < _next_bash_ms:
 		return
@@ -178,9 +189,9 @@ func bash(damage: float) -> void:
 	Sound.play_at(self, "door_bash", global_position + Vector3.UP, 0.0, 30.0, 0.12)
 	if _bash_tween:
 		_bash_tween.kill()
-	_mesh.position = leaf_offset + Vector3(BASH_WOBBLE, 0.0, 0.0)
+	_visual.position = _visual_rest + Vector3(BASH_WOBBLE, 0.0, 0.0)
 	_bash_tween = create_tween()
-	_bash_tween.tween_property(_mesh, "position", leaf_offset, 0.15)
+	_bash_tween.tween_property(_visual, "position", _visual_rest, 0.15)
 
 
 func save_state() -> Dictionary:
@@ -192,9 +203,9 @@ func load_state(data: Dictionary) -> void:
 	is_broken = bool(data.get("broken", false))
 	_set_open_one(bool(data.get("open", is_open)) or is_broken, false)
 	if is_broken:
-		_tint(_base_color.darkened(0.6))
+		_tint(0.6)
 	elif health < max_health:
-		_tint(_base_color.darkened(0.5 * (1.0 - health / max_health)))
+		_tint(0.5 * (1.0 - health / max_health))
 
 
 ## One material per door color, shared until a door takes a beating.
@@ -207,21 +218,25 @@ static func _shared(mat: StandardMaterial3D) -> StandardMaterial3D:
 	return _colors[mat.albedo_color]
 
 
-## Splintered and darkened as it takes a beating. The first time gives it its
-## own material (until then it shares one with the other doors).
-func _tint(c: Color) -> void:
+## Splintered and darkened (by amount, 0-1) as it takes a beating. A map
+## scene's door gets its own material the first time (until then it shares one
+## with the other doors).
+func _tint(amount: float) -> void:
+	if _look:
+		_look.darken(amount)
+		return
 	if _mesh.material_override == null:
 		_material = _material.duplicate()
 		_mesh.material_override = _material
-	_material.albedo_color = c
+	_material.albedo_color = _base_color.darkened(amount)
 
 
 ## Smashed: it flies open and hangs off its hinges for good.
 func _burst() -> void:
 	health = 0.0
 	is_broken = true
-	_tint(_base_color.darkened(0.6))
-	_mesh.position = leaf_offset
+	_tint(0.6)
+	_visual.position = _visual_rest
 	_set_open_one(true, true, 0.15)
 	Sound.play_at(self, "door_break", global_position + Vector3.UP, 2.0, 35.0, 0.08)
 
