@@ -1,14 +1,19 @@
 extends Node
 ## How many zombies there are, and where new ones come from.
 ##
-## At the start: extra zombies scattered around the map (away from the base
-## camps and from where you begin), on top of the ones main.gd places at the map scene's
-## ZombieSpawn markers. Placed at random spots on the navigation mesh, on the
-## ground (not on roofs: world/ground.gd).
+## Zombies never turn up where you'd see it happen: a new one goes on a random
+## spot of the map that's out of your view or hidden from your eyes (behind a
+## hill, a building, a tree trunk), at least MIN_DISTANCE from you and
+## CAMP_MARGIN from any base camp (hidden_spot). Spots are random points on the
+## navigation mesh, on the ground (not on roofs: world/ground.gd).
+##
+## At the start: extra zombies scattered around the map like that, on top of
+## the ones main.gd places at the map scene's ZombieSpawn markers. A marker's
+## zombie you'd see appear (or within MIN_DISTANCE of you) moves to a hidden
+## spot nearby first.
 ##
 ## While you play: whenever fewer than `population` are still up, another one
-## turns up now and then on the outskirts of the map, far from you and away from
-## the camps, more often at night. Nothing sends them anywhere: they roam like
+## turns up now and then on a hidden spot, more often at night. Nothing sends them anywhere: they roam like
 ## the rest (zombie.gd), so over time some drift back into places you cleared.
 ## A horde (world/horde.gd) can push the count over `population`; nobody new
 ## turns up until it's back under.
@@ -21,12 +26,14 @@ extends Node
 const Zombie := preload("res://characters/zombie/zombie.gd")
 const Ground := preload("res://world/ground.gd")
 const NavTiles := preload("res://world/nav_tiles.gd")
+const GameData := preload("res://core/game_data.gd")
 
 const CHECK_INTERVAL := 1.0
-const MIN_SPAWN_DISTANCE := 110.0 # from you: far enough that you never see one appear
-const START_MIN_DISTANCE := 50.0 # extras at the start: this far from where you begin
+const MIN_DISTANCE := 30.0 # meters from you: nothing turns up closer
 const CAMP_MARGIN := 40.0 # zombies turn up at least this far from any base camp
-const OUTSKIRTS := 35.0 # ...and within this of the edge of the walkable area
+const MOVE_NEAR := 40.0 # a marker's zombie you'd see moves to a hidden spot within this of it
+## Points on a zombie checked for whether you'd see it: feet, middle, head.
+const LOOK_HEIGHTS: Array[float] = [0.3, 1.0, 1.7]
 const BODY_CLEANUP_DISTANCE := 60.0
 
 var population := 100 # zombies up at once that it tops back up to
@@ -56,18 +63,53 @@ func setup(main: Node, nav_region: NavTiles, player: Node3D, day_night: Node, ca
 		_index_triangles(mesh, nav_region.global_transform)
 
 
-## The extra zombies at the start. Call once, after main.gd has placed its own.
+## The extra zombies at the start. Call once, after main.gd has placed its own:
+## those you'd see appear move out of sight first.
 func populate(count: int, rng: RandomNumberGenerator, start: Vector3) -> void:
-	var placed := 0
-	for attempt in count * 20:
-		if placed >= count:
-			break
-		var pos := random_point(rng)
-		if not Ground.is_ground_level(pos) or _near_camp(pos) or pos.distance_to(start) < START_MIN_DISTANCE:
-			continue
-		_main.call("_add_zombie", pos + Vector3(0, 0.1, 0), rng)
-		placed += 1
+	for zombie: Node3D in _main.get("zombies"):
+		var at := zombie.global_position
+		if at.distance_to(start) < MIN_DISTANCE or seen(at):
+			var spot := hidden_spot(rng, at, MOVE_NEAR)
+			if spot == Vector3.INF:
+				spot = hidden_spot(rng)
+			if spot != Vector3.INF:
+				zombie.global_position = spot + Vector3(0, 0.1, 0)
+	for i in count:
+		var pos := hidden_spot(rng)
+		if pos != Vector3.INF:
+			_main.call("_add_zombie", pos + Vector3(0, 0.1, 0), rng)
 	_spawn_timer = respawn_seconds_day # nobody new in the first moments
+
+
+## Could you see a zombie standing at pos? In your view (on screen) with
+## nothing solid between your eyes and its feet, middle or head.
+func seen(pos: Vector3) -> bool:
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		return false
+	var space := get_viewport().get_world_3d().direct_space_state
+	for height in LOOK_HEIGHTS:
+		var point := pos + Vector3(0, height, 0)
+		if not camera.is_position_in_frustum(point):
+			continue
+		var query := PhysicsRayQueryParameters3D.create(camera.global_position, point, GameData.LAYER_WORLD)
+		if space.intersect_ray(query).is_empty():
+			return true
+	return false
+
+
+## A random spot on the ground where a zombie can turn up unseen: out of your
+## sight, MIN_DISTANCE from you, CAMP_MARGIN from every camp. near / radius:
+## only within radius of near. Vector3.INF if none turned up (try again later).
+func hidden_spot(rng: RandomNumberGenerator, near := Vector3.INF, radius := 0.0) -> Vector3:
+	for attempt in 60:
+		var pos := random_point(rng) if near == Vector3.INF else _in_circle(rng, near, radius)
+		if not Ground.is_ground_level(pos) or _near_camp(pos):
+			continue
+		if pos.distance_to(_player.global_position) < MIN_DISTANCE or seen(pos):
+			continue
+		return pos
+	return Vector3.INF
 
 
 func _process(delta: float) -> void:
@@ -81,7 +123,7 @@ func _process(delta: float) -> void:
 		return
 	var night := 1.0 - float(_day_night.call("light_level"))
 	_spawn_timer = lerpf(respawn_seconds_day, respawn_seconds_night, night)
-	var pos := _outskirts_point()
+	var pos := hidden_spot(_rng)
 	if pos != Vector3.INF:
 		_main.call("_add_zombie", pos + Vector3(0, 0.1, 0), _rng)
 
@@ -90,20 +132,14 @@ func _alive() -> int:
 	return get_tree().get_nodes_in_group("zombies").size() # the dead leave the group
 
 
-## A random spot near the edge of the map, far from you and from every camp, or
-## Vector3.INF if none turned up this time (it tries again next spawn).
-func _outskirts_point() -> Vector3:
-	var inner := bounds.grow(-OUTSKIRTS)
-	for attempt in 30:
-		var pos := random_point(null)
-		if not Ground.is_ground_level(pos):
-			continue
-		if inner.has_point(Vector2(pos.x, pos.z)):
-			continue # not on the outskirts
-		if pos.distance_to(_player.global_position) < MIN_SPAWN_DISTANCE or _near_camp(pos):
-			continue
-		return pos
-	return Vector3.INF
+## A random point on the ground within radius of center.
+func _in_circle(rng: RandomNumberGenerator, center: Vector3, radius: float) -> Vector3:
+	var angle := (rng.randf() if rng else randf()) * TAU
+	var dist := radius * sqrt(rng.randf() if rng else randf())
+	var pos := center + Vector3(cos(angle), 0.0, sin(angle)) * dist
+	if Ground.terrain:
+		pos.y = Ground.height_at(pos)
+	return pos
 
 
 func _near_camp(pos: Vector3) -> bool:
@@ -130,7 +166,9 @@ func _clear_bodies() -> void:
 
 func _index_triangles(mesh: NavigationMesh, xform: Transform3D) -> void:
 	var verts := mesh.get_vertices()
-	var total := 0.0
+	# Carries on from the tiles before (one running total for random_point's
+	# search, not one per tile).
+	var total: float = _cumulative_area[_cumulative_area.size() - 1] if not _cumulative_area.is_empty() else 0.0
 	for p in mesh.get_polygon_count():
 		var poly := mesh.get_polygon(p)
 		for k in range(1, poly.size() - 1): # a fan of triangles

@@ -95,11 +95,11 @@ const Plants := preload("res://world/map/plants.gd")
 @export_group("World")
 ## The map to play on. Edit world/map/map.tscn to change it (HOW_TO_MAP.md).
 @export var map_scene: PackedScene = preload("res://world/map/map.tscn")
-## More zombies scattered around the map at the start (never inside a zone), on
-## top of the ones at the map's ZombieSpawn markers.
+## More zombies scattered around the map at the start (where you can't see
+## them, 30 m+ from you), on top of the ones at the map's ZombieSpawn markers.
 @export_range(0, 300) var extra_zombies := 60
-## How many zombies are up at once. When there are fewer, new ones turn up on the
-## outskirts of the map now and then (see world/zombie_population.gd).
+## How many zombies are up at once. When there are fewer, new ones turn up now
+## and then somewhere you can't see (see world/zombie_population.gd).
 @export_range(0, 400) var zombie_population := 100
 ## Seconds between new arrivals while there are fewer than zombie_population.
 @export var zombie_respawn_seconds_day := 30.0
