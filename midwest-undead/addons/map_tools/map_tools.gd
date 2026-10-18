@@ -17,9 +17,10 @@ extends EditorPlugin
 ## right angles unless Shift is held), draws inner walls (click each end),
 ## places stairs (click where a flight starts, then which way it climbs), puts
 ## doors and windows in its walls, outside or inner (click on a wall), or marks
-## a room to give it its own materials (click inside it). Right-click takes
-## back the last corner, or removes the inner wall, stairs, opening or room
-## under the mouse. Its walls' numbers show while it's selected.
+## a room to give it its own materials (click inside it), or places chimneys
+## and dormers (click on the roof's level: a dormer goes on the slope nearest
+## the click). Right-click takes back the last corner, or removes the inner
+## wall, stairs, opening, room, chimney or dormer under the mouse. Its walls' numbers show while it's selected.
 
 const TerrainEdit := preload("res://world/map/terrain_edit.gd")
 const Road := preload("res://world/map/road.gd")
@@ -36,7 +37,8 @@ const PlantPainter := preload("res://world/map/plant_painter.gd")
 const Zone := preload("res://world/markers/zone.gd")
 const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
 const Building := preload("res://world/building.gd")
-const BUILDING_TOOLS := ["Off", "Draw outline", "Draw inner wall", "Place stairs", "Add door", "Add window", "Add doorway", "Paint room"]
+const BUILDING_TOOLS := ["Off", "Draw outline", "Draw inner wall", "Place stairs", "Add door", "Add window", "Add doorway",
+		"Paint room", "Place chimney", "Place dormer"]
 ## Openings the tools add: [width, bottom, top]. Doors and doorways are as wide
 ## as zombies need to path through (Building.MIN_PASSAGE).
 const OPENING_SIZES := {"door": [1.6, 0.0, 2.4], "window": [1.2, 0.9, 2.3], "doorway": [1.6, 0.0, 2.4]}
@@ -713,6 +715,10 @@ func _building_help() -> String:
 			return "Click one end of the wall, then the other (on the Floor set here; right angles, Shift for any). Ends snap to a 0.5 m grid: start and end on an outside wall or another inner wall to close off a room. Right-click removes the inner wall under the mouse. Then add doorways with Add doorway."
 		"Paint room":
 			return "Click inside a room (on the Floor set here): it's marked and opens in the Inspector, to give its walls and floor their own materials. Right-click on a room removes its mark."
+		"Place chimney":
+			return "Click where it goes (clicks land at the top of the walls). It stands from the ground up through the roof. Right-click removes the one under the mouse."
+		"Place dormer":
+			return "Pick a pitched Roof Shape first. Click near the edge of the roof where it goes (clicks land at the top of the walls); it sits on the nearest slope. Right-click removes the one under the mouse. Change its width in the Inspector (Dormers)."
 		"Place stairs":
 			return "Click where the bottom step goes, then click which way it climbs (right angles; Shift for any). It climbs from the Floor set here to the next. Right-click removes the stairs under the mouse."
 		"Add door", "Add window", "Add doorway":
@@ -742,6 +748,8 @@ func _building_input(camera: Camera3D, event: InputEvent) -> int:
 	var building := _selected as Node3D
 	var tool: String = BUILDING_TOOLS[_building_tool.selected]
 	var level := int(_building_floor.value) if tool != "Draw outline" else 0
+	if tool in ["Place chimney", "Place dormer"]:
+		level = int(building.get("floors")) # the top of the walls
 	var p := _on_floor(camera, mb.position, building, level)
 	if p == Vector2.INF:
 		return AFTER_GUI_INPUT_STOP
@@ -755,6 +763,10 @@ func _building_input(camera: Camera3D, event: InputEvent) -> int:
 			_inner_wall_click(building, p, right, mb.shift_pressed, level)
 		"Paint room":
 			_room_click(building, p, right, level)
+		"Place chimney":
+			_point_click(building, "chimneys", p, right, func(at: Vector2) -> Resource: return KitChimney.make(at), "chimney")
+		"Place dormer":
+			_point_click(building, "dormers", p, right, func(at: Vector2) -> Resource: return KitDormer.make(at), "dormer")
 		_:
 			_opening_click(building, p, right, tool.trim_prefix("Add ").to_lower(), level)
 	return AFTER_GUI_INPUT_STOP
@@ -892,6 +904,21 @@ func _opening_click(building: Node3D, p: Vector2, right: bool, kind: String, lev
 	var added := openings.duplicate()
 	added.append(op)
 	_set_list(building, "openings", added, "Add " + kind)
+
+
+## Chimneys and dormers: one added where clicked (on the 0.5 m grid), or the
+## one under the mouse removed.
+func _point_click(building: Node3D, property: String, p: Vector2, right: bool, make: Callable, what: String) -> void:
+	var list: Array = building.get(property)
+	if right:
+		for item: Resource in list:
+			if item and (item.get("position") as Vector2).distance_to(p) < 1.5:
+				_set_list(building, property, list.filter(func(i: Resource) -> bool: return i != item), "Remove " + what)
+				return
+		return
+	var added := list.duplicate()
+	added.append(make.call(_snap(p)))
+	_set_list(building, property, added, "Place " + what)
 
 
 ## An opening in an inner wall: added to (or removed from) its own list.

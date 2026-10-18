@@ -46,7 +46,8 @@ bottom, next to Output) click **Buildings > New building**. It adds a
   round: Concrete block, Stone, or Wooden posts (`HOW_TO_MAP.md`, section 10).
 - **Upper Height:** a solid block over the top floor that you can't enter,
   with painted-on windows. This is how the Main Street shops look taller than
-  they are. Leave it at 0 for a flat roof.
+  they are. Leave it at 0 for a roof straight over the top floor (a pitched
+  Roof sits on top of the block when there is one).
 
 **Openings**
 
@@ -98,6 +99,36 @@ with no Stairs, which side wall the first staircase runs along.
   floor, as far as the walls (a doorway doesn't join two rooms). Empty
   materials use the building's.
 
+**Roof**
+- **Roof Shape:** Flat, or a pitched roof worked out over the whole outline:
+  **Gable** (two slopes, a triangle of wall at each end), **Hip** (sloped on
+  every side), **Shed** (one slope) or **Gambrel** (a barn roof: steep lower
+  slopes, gentler upper ones). An L, T or U gets a roof per wing, meeting in
+  valleys. Pitched roofs need every wall of the outline to run straight back
+  or straight across (right angles, as Draw outline makes them without
+  Shift); an outline with an angled wall gets a flat roof and a warning.
+- **Roof Pitch:** how steep, in degrees from flat (35 is a typical house; a
+  gambrel's upper slopes are gentler than this, its lower ones steeper).
+- **Roof Overhang:** how far the eaves stick out past the walls (meters).
+- **Shed Slopes To:** for a Shed roof, the side it slopes down to. Steep shed
+  roofs over a wide building get very tall on the high side: use a low pitch
+  (10 to 20).
+- **Attic:** **Closed** (no way in), or **Walk-in**: the ceiling of the top
+  floor becomes an attic floor. Place a flight on the top floor (Level =
+  Floors - 1) to reach it. Put it under the ridge, the middle of the roof,
+  where there's headroom: near the eaves the roof comes down to the floor,
+  and a warning says when the top of the stairs is too low to stand. A
+  walk-in attic needs Upper Height 0.
+- **Chimneys:** brick chimneys from the ground up through the roof, to 0.8 m
+  above its peak. Each has a **Position** (x back from the front, y along the
+  front) and a **Size**.
+- **Dormers:** little gabled bumps with a window, each on the slope nearest
+  its **Position**, set near the eave; **Width** sets its size. The window is
+  to look at, there's no way in. Not on Shed roofs.
+
+You can stand and walk on a pitched roof; past 45° it's too steep to stand
+on and you slide off.
+
 **Drawing it: Map Tools > Buildings**
 
 Select the building, then pick a tool. Clicks land on the building's floor
@@ -118,6 +149,10 @@ Select the building, then pick a tool. Clicks land on the building's floor
 - **Add door / window / doorway:** click on a wall, outside or inner, where
   it goes, on the Floor set in the panel. Right-click on one removes it. Change its size in
   the Inspector (Openings).
+- **Place chimney / Place dormer:** click where it goes; clicks land at the
+  top of the walls. A dormer needs a pitched Roof Shape; click near the edge
+  of the roof, and it sits on the nearest slope. Right-click on one removes
+  it.
 Everything can be undone (Ctrl+Z).
 
 **Materials:** exterior, interior, floor, ceiling, roof. Drag a material from

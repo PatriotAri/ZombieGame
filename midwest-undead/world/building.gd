@@ -15,8 +15,11 @@ extends Node3D
 ## doors, doorways and windows), and Rooms give a room its own wall and floor
 ## materials. Floors above the ground are reached by the flights
 ## in Stairs (a rectangle with none gets one along a side wall per floor,
-## alternating sides going up). Over the top floor sits either a flat roof or,
-## with Upper Height, a solid block you can't enter, with painted-on windows.
+## alternating sides going up). Over the top floor: a flat roof, or a pitched
+## one (Roof: gable, hip, shed or gambrel, worked out over the outline by
+## world/kit/kit_roof.gd, with dormers and chimneys), with an attic under it
+## you can climb into or not; and/or, with Upper Height, a solid block you
+## can't enter, with painted-on windows.
 ##
 ## On uneven ground it stands on a foundation down to the ground all round
 ## (Foundation: concrete block, stone or wooden posts), made from the terrain
@@ -60,6 +63,9 @@ const FOUNDATION_MATERIALS := {
 }
 const TerrainEdit := preload("res://world/map/terrain_edit.gd")
 const POST_SPACING := 2.5 # wooden posts: this far apart along each side
+const KitRoof := preload("res://world/kit/kit_roof.gd")
+const WindowLook := preload("res://world/props/window.tscn")
+const CHIMNEY_MATERIAL := preload("res://world/kit/materials/brick_red.tres")
 
 @export_group("Size")
 ## How far back from the front wall it goes (local +x), in meters. (A drawn
@@ -143,6 +149,48 @@ const POST_SPACING := 2.5 # wooden posts: this far apart along each side
 @export_enum("left", "right") var stairs_side := "left":
 	set(value):
 		stairs_side = value
+		_changed()
+
+@export_group("Roof")
+## Flat, or a pitched roof worked out over the outline. Pitched roofs need an
+## outline whose walls all run along x or z (right angles); an angled one gets
+## a flat roof (a warning says so).
+@export_enum("Flat", "Gable", "Hip", "Shed", "Gambrel") var roof_shape := "Flat":
+	set(value):
+		roof_shape = value
+		_changed()
+## Degrees from flat (a gambrel's upper slopes are gentler, its lower ones steep).
+@export_range(10.0, 60.0, 1.0) var roof_pitch := 35.0:
+	set(value):
+		roof_pitch = value
+		_changed()
+## How far the roof sticks out past the walls (meters).
+@export_range(0.0, 1.5, 0.05) var roof_overhang := 0.4:
+	set(value):
+		roof_overhang = value
+		_changed()
+## A shed roof: the side it slopes down to.
+@export_enum("back", "front", "left", "right") var shed_slopes_to := "back":
+	set(value):
+		shed_slopes_to = value
+		_changed()
+## The space under a pitched roof: closed off, or an attic floor you can climb
+## to (place stairs from the top floor, like any other floor).
+@export_enum("Closed", "Walk-in") var attic := "Closed":
+	set(value):
+		attic = value
+		_changed()
+## Brick chimneys, from the ground up through the roof (Map Tools: Place chimney).
+@export var chimneys: Array[KitChimney] = []:
+	set(value):
+		_watch(chimneys, value)
+		chimneys = value
+		_changed()
+## Dormers on its sloped roof (Map Tools: Place dormer).
+@export var dormers: Array[KitDormer] = []:
+	set(value):
+		_watch(dormers, value)
+		dormers = value
 		_changed()
 
 @export_group("Rooms")
@@ -397,13 +445,17 @@ func _get_configuration_warnings() -> PackedStringArray:
 		warnings.append("The drawn outline needs at least 3 corners (it's using the Size rectangle until then).")
 	elif footprint.size() >= 3 and not Geometry2D.triangulate_polygon(footprint).size():
 		warnings.append("The drawn outline crosses itself: draw it again going round once.")
-	for k in floors - 1:
+	if roof_shape != "Flat" and not KitRoof.fits(outline()):
+		warnings.append("A pitched roof needs walls that all meet at right angles (along x or z): this one gets a flat roof.")
+	for k in _top_level():
 		if not _flights().any(func(f: Dictionary) -> bool: return f["level"] == k):
 			warnings.append("Nothing goes up from floor %d to floor %d: place stairs (Map Tools, Buildings)." % [k, k + 1] if footprint.size() >= 3 or not stairs.is_empty()
 					else "Too shallow for the staircase to floor %d: it needs %.1f m of depth." % [k + 1, _stairs_needs(k)])
 	for flight in _flights():
-		if flight["level"] >= floors - 1:
-			warnings.append("A staircase starts on floor %d, but the building has %d floor(s)." % [flight["level"], floors])
+		if flight["level"] >= _top_level():
+			warnings.append("A staircase starts on floor %d, but there's nothing above it (%d floor(s)%s)." % [flight["level"], floors, ", and no walk-in attic" if flight["level"] == floors - 1 else ""])
+		elif flight["level"] == floors - 1 and _walk_in_attic() and _headroom(flight) < 2.0:
+			warnings.append("The stairs to the attic come up where the roof is only %.1f m above the attic floor: move them under the ridge." % _headroom(flight))
 		elif not _flight_fits(flight):
 			warnings.append("A staircase on floor %d doesn't fit inside the building (it needs %.1f m of room ahead of its bottom step)." % [flight["level"], _run(flight["level"]) + LANDING])
 	for op in openings:
@@ -462,7 +514,7 @@ func _rebuild() -> void:
 	var poly := outline()
 	var km := KitMesh.new()
 	var made: Array[Node] = [] # glass and doors, added once the shell is in
-	var flights := _flights().filter(func(f: Dictionary) -> bool: return f["level"] < floors - 1 and _flight_fits(f))
+	var flights := _flights().filter(func(f: Dictionary) -> bool: return f["level"] < _top_level() and _flight_fits(f))
 
 	var maps: Array[Dictionary] = []
 	for k in floors:
@@ -492,17 +544,40 @@ func _rebuild() -> void:
 		# The slab over this floor: its ceiling, and the next floor's floor (with
 		# holes where staircases come up).
 		var y1 := (k + 1) * STOREY
-		var upstairs := k + 1 < floors
+		var upstairs := k + 1 < floors or (k + 1 == floors and _walk_in_attic())
 		var here := flights.filter(func(f: Dictionary) -> bool: return f["level"] == k)
 		var holes := here.map(func(f: Dictionary) -> Dictionary: return _hole(f))
-		if upstairs:
+		if upstairs and k + 1 < floors:
 			km.slab(poly, holes, y1, 0.2, floor_mat, ceiling, null, inside, true, _slits(k + 1), _floor_pick.bind(maps[k + 1]))
+		elif upstairs: # the attic's floor
+			km.slab(poly, holes, y1, 0.2, floor_mat, ceiling, null, inside)
 		else:
-			km.slab(poly, holes, y1, 0.2, roof, ceiling, null, inside)
+			km.slab(poly, holes, y1, 0.2, floor_mat if _pitched() else roof, ceiling, null, inside)
 		for flight in here:
 			_stairs(km, flight, floor_mat, inside)
 	if upper_height > 0.0:
 		_upper_block(km, poly, ext, roof)
+	var peak := floors * STOREY + upper_height
+	if _pitched():
+		var under := inside if _walk_in_attic() else ceiling
+		var built := KitRoof.build(km, poly, floors * STOREY + upper_height, roof_shape.to_lower(), roof_pitch,
+				roof_overhang, shed_slopes_to, roof, under, ext, inside)
+		peak = built["top"]
+		if roof_shape != "Shed":
+			for dormer in dormers:
+				if dormer == null:
+					continue
+				var placed := KitRoof.dormer(km, built["parts"], dormer.position, dormer.width, floors * STOREY + upper_height,
+						roof_pitch, roof, ext, inside)
+				if not placed.is_empty():
+					var look := KitProp.make(WindowLook, window_models, Vector3(0.08, 0.9, minf(dormer.width - 0.5, 1.0)))
+					look.transform = placed["xform"]
+					made.append(look)
+	for chimney in chimneys:
+		if chimney:
+			var height := peak + 0.8
+			km.box(Vector3(chimney.size.x, height, chimney.size.y), _at(Vector3(chimney.position.x, height / 2.0, chimney.position.y)),
+					KitMesh.all(CHIMNEY_MATERIAL))
 
 	var body := StaticBody3D.new()
 	body.name = "Shell"
@@ -662,6 +737,46 @@ func _opening_nodes(wall_name: String, level: int, list: Array, fy: float, outsi
 			pane.name = node_name
 			nodes.append(pane)
 	return nodes
+
+
+# --- The roof ---------------------------------------------------------------------
+
+## A pitched roof (not flat, and the outline allows it).
+func _pitched() -> bool:
+	return roof_shape != "Flat" and KitRoof.fits(outline())
+
+
+## An attic you can climb into: a pitched roof, set Walk-in, straight on the top floor.
+func _walk_in_attic() -> bool:
+	return _pitched() and attic == "Walk-in" and upper_height <= 0.0
+
+
+## Room to stand under the roof (above the attic floor) at the top of a flight
+## to the attic, and past it: the least of the two. (Worked out as if every
+## part of the roof were a gable: a hip's ends are lower.)
+func _headroom(flight: Dictionary) -> float:
+	var frame := _flight_frame(flight)
+	var run := _run(flight["level"])
+	var least := INF
+	var tan_p := tan(deg_to_rad(roof_pitch))
+	for at: Vector2 in [frame * Vector2(run, 0), frame * Vector2(run + LANDING, 0)]:
+		var best := 0.0
+		for part: Dictionary in KitRoof._split(outline()):
+			var r: Rect2 = part["rect"]
+			if not r.grow(0.01).has_point(at):
+				continue
+			var v := at.y if part["along_x"] else at.x
+			var v0 := r.position.y if part["along_x"] else r.position.x
+			var v1 := r.end.y if part["along_x"] else r.end.x
+			var height := (minf(v - v0, v1 - v) * tan_p) if roof_shape != "Shed" else (v1 - v0) * tan_p / 2.0
+			best = maxf(best, height - KitRoof.THICK)
+		least = minf(least, best)
+	return least
+
+
+## The highest floor stairs can reach: the top floor, or the attic.
+func _top_level() -> int:
+	return floors if _walk_in_attic() else floors - 1
 
 
 # --- Walls and rooms ------------------------------------------------------------------

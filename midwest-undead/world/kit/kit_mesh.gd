@@ -213,6 +213,38 @@ func slab(outline: PackedVector2Array, holes: Array, top: float, thick: float, t
 			_side(corners[i], corners[(i + 1) % 4], top, bottom, hole_mat, collide)
 
 
+## A flat plate of any (convex) outline in 3D: a roof slope, a gable end. Its
+## corners go round counterclockwise seen from its face (that's the side top_mat
+## shows on); it's `thick` deep behind that face, where back_mat shows; its
+## rim takes edge_mat (null: not drawn). collide: solid (both faces).
+func plate(corners: PackedVector3Array, thick: float, top_mat: Material, back_mat: Material,
+		edge_mat: Material, collide := true) -> void:
+	if corners.size() < 3:
+		return
+	var n := (corners[1] - corners[0]).cross(corners[2] - corners[0]).normalized()
+	if n == Vector3.ZERO:
+		return
+	var back := PackedVector3Array()
+	for p in corners:
+		back.append(p - n * thick)
+	for i in range(1, corners.size() - 1):
+		var front := PackedVector3Array([corners[0], corners[i], corners[i + 1]])
+		var behind := PackedVector3Array([back[0], back[i + 1], back[i]])
+		if top_mat:
+			_tri(top_mat, front, n)
+		if back_mat:
+			_tri(back_mat, behind, -n)
+		if collide:
+			_faces.append_array(front)
+			_faces.append_array(behind)
+	if edge_mat:
+		for i in corners.size():
+			var j := (i + 1) % corners.size()
+			var side := (corners[j] - corners[i]).cross(n).normalized() # outward along the rim
+			_tri(edge_mat, PackedVector3Array([corners[i], corners[j], back[j]]), side)
+			_tri(edge_mat, PackedVector3Array([corners[i], back[j], back[i]]), side)
+
+
 ## Whether slab() made anything solid (its collision is one trimesh, not boxes).
 func has_slabs() -> bool:
 	return not _faces.is_empty()
