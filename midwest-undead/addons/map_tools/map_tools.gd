@@ -14,10 +14,12 @@ extends EditorPlugin
 ## is selected and the 3D view paints where you click and drag.
 ## Buildings: select a Building and pick a tool in the Buildings section; the
 ## 3D view then draws its outline (corner by corner, on a 0.5 m grid, walls at
-## right angles unless Shift is held), places stairs (click where a flight
-## starts, then which way it climbs) or puts doors and windows in its walls
-## (click on a wall). Right-click takes back the last corner, or removes the
-## stairs or opening under the mouse. Its walls' numbers show while it's selected.
+## right angles unless Shift is held), draws inner walls (click each end),
+## places stairs (click where a flight starts, then which way it climbs), puts
+## doors and windows in its walls, outside or inner (click on a wall), or marks
+## a room to give it its own materials (click inside it). Right-click takes
+## back the last corner, or removes the inner wall, stairs, opening or room
+## under the mouse. Its walls' numbers show while it's selected.
 
 const TerrainEdit := preload("res://world/map/terrain_edit.gd")
 const Road := preload("res://world/map/road.gd")
@@ -34,9 +36,10 @@ const PlantPainter := preload("res://world/map/plant_painter.gd")
 const Zone := preload("res://world/markers/zone.gd")
 const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
 const Building := preload("res://world/building.gd")
-const BUILDING_TOOLS := ["Off", "Draw outline", "Place stairs", "Add door", "Add window", "Add doorway"]
-## Openings the tools add: [width, bottom, top].
-const OPENING_SIZES := {"door": [1.0, 0.0, 2.2], "window": [1.2, 0.9, 2.3], "doorway": [1.2, 0.0, 2.4]}
+const BUILDING_TOOLS := ["Off", "Draw outline", "Draw inner wall", "Place stairs", "Add door", "Add window", "Add doorway", "Paint room"]
+## Openings the tools add: [width, bottom, top]. Doors and doorways are as wide
+## as zombies need to path through (Building.MIN_PASSAGE).
+const OPENING_SIZES := {"door": [1.6, 0.0, 2.4], "window": [1.2, 0.9, 2.3], "doorway": [1.6, 0.0, 2.4]}
 const GRID := 0.5
 const ROADS_DIR := "res://world/map/roads/"
 const APPLY_MARGIN := 40.0 # meters around a path that an Apply's undo step covers
@@ -67,6 +70,7 @@ var _building_tool: OptionButton
 var _building_floor: SpinBox
 var _draft := PackedVector2Array() # the outline being drawn, in click order
 var _stair_start := Vector2.INF # Place stairs: where the flight starts, before the second click
+var _wall_start := Vector2.INF # Draw inner wall: its first end, before the second click
 var _numbered: Node # the building showing its wall numbers
 
 
@@ -697,6 +701,7 @@ func _ground_under(camera: Camera3D, at: Vector2) -> Vector3:
 func _on_building_tool(_index: int) -> void:
 	_draft = PackedVector2Array()
 	_stair_start = Vector2.INF
+	_wall_start = Vector2.INF
 	_on_selection_changed()
 
 
@@ -704,10 +709,14 @@ func _building_help() -> String:
 	match BUILDING_TOOLS[_building_tool.selected]:
 		"Draw outline":
 			return "Click its corners on the ground, going round (it closes itself). Corners snap to a 0.5 m grid and walls to right angles; hold Shift for any angle. Right-click takes back the last corner. The first click starts a new outline. Walls are numbered from the first corner."
+		"Draw inner wall":
+			return "Click one end of the wall, then the other (on the Floor set here; right angles, Shift for any). Ends snap to a 0.5 m grid: start and end on an outside wall or another inner wall to close off a room. Right-click removes the inner wall under the mouse. Then add doorways with Add doorway."
+		"Paint room":
+			return "Click inside a room (on the Floor set here): it's marked and opens in the Inspector, to give its walls and floor their own materials. Right-click on a room removes its mark."
 		"Place stairs":
 			return "Click where the bottom step goes, then click which way it climbs (right angles; Shift for any). It climbs from the Floor set here to the next. Right-click removes the stairs under the mouse."
 		"Add door", "Add window", "Add doorway":
-			return "Click on a wall (on the Floor set here) where it goes. Right-click removes the door or window under the mouse. Fine-tune it in the Inspector (Openings)."
+			return "Click on a wall, outside or inner (on the Floor set here), where it goes. Right-click removes the door or window under the mouse. Fine-tune it in the Inspector (Openings)."
 	return "Pick a tool to draw its outline, place stairs, or add doors and windows. Or set it all in the Inspector. Its walls' numbers show while it's selected."
 
 
@@ -742,6 +751,10 @@ func _building_input(camera: Camera3D, event: InputEvent) -> int:
 			_outline_click(building, p, right, mb.shift_pressed)
 		"Place stairs":
 			_stairs_click(building, p, right, mb.shift_pressed, level)
+		"Draw inner wall":
+			_inner_wall_click(building, p, right, mb.shift_pressed, level)
+		"Paint room":
+			_room_click(building, p, right, level)
 		_:
 			_opening_click(building, p, right, tool.trim_prefix("Add ").to_lower(), level)
 	return AFTER_GUI_INPUT_STOP
@@ -795,10 +808,56 @@ func _stairs_click(building: Node3D, p: Vector2, right: bool, free_angle: bool, 
 	_help.text = _building_help()
 
 
+func _inner_wall_click(building: Node3D, p: Vector2, right: bool, free_angle: bool, level: int) -> void:
+	var walls: Array = building.get("inner_walls")
+	if right:
+		_wall_start = Vector2.INF
+		for wall: KitInnerWall in walls:
+			if wall and wall.level == level and Geometry2D.get_closest_point_to_segment(p, wall.start, wall.end).distance_to(p) < 0.6:
+				_set_list(building, "inner_walls", walls.filter(func(w: KitInnerWall) -> bool: return w != wall), "Remove inner wall")
+				return
+		return
+	p = _snap(p)
+	if _wall_start == Vector2.INF:
+		_wall_start = p
+		_help.text = _building_help() + "\nNow click its other end."
+		return
+	if not free_angle:
+		if absf(p.x - _wall_start.x) > absf(p.y - _wall_start.y):
+			p.y = _wall_start.y
+		else:
+			p.x = _wall_start.x
+	if p.distance_to(_wall_start) >= 0.5:
+		var added := walls.duplicate()
+		added.append(KitInnerWall.make(level, _wall_start, p))
+		_set_list(building, "inner_walls", added, "Draw inner wall")
+	_wall_start = Vector2.INF
+	_help.text = _building_help()
+
+
+func _room_click(building: Node3D, p: Vector2, right: bool, level: int) -> void:
+	var rooms: Array = building.get("rooms")
+	var marked: KitRoom = building.call("room_at", level, p)
+	if right:
+		if marked:
+			_set_list(building, "rooms", rooms.filter(func(r: KitRoom) -> bool: return r != marked), "Remove room")
+		return
+	if marked:
+		EditorInterface.edit_resource(marked) # already marked: just open it
+		return
+	var room := KitRoom.make(level, _snap(p))
+	var added := rooms.duplicate()
+	added.append(room)
+	_set_list(building, "rooms", added, "Paint room")
+	EditorInterface.edit_resource(room)
+
+
 func _opening_click(building: Node3D, p: Vector2, right: bool, kind: String, level: int) -> void:
 	var openings: Array = building.get("openings")
-	# The wall nearest the click: its number, and how far along from its middle.
+	# The wall nearest the click (the outline's by number, or an inner wall),
+	# and how far along from its middle.
 	var best := -1
+	var best_inner: KitInnerWall = null
 	var best_dist := 1.5
 	var along := 0.0
 	for n in int(building.call("edge_count")):
@@ -808,6 +867,17 @@ func _opening_click(building: Node3D, p: Vector2, right: bool, kind: String, lev
 			best = n
 			best_dist = on.distance_to(p)
 			along = (on - (ends[0] + ends[1]) / 2.0).dot((ends[1] - ends[0]).normalized())
+	for wall: KitInnerWall in building.get("inner_walls"):
+		if wall == null or wall.level != level:
+			continue
+		var on := Geometry2D.get_closest_point_to_segment(p, wall.start, wall.end)
+		if on.distance_to(p) < best_dist:
+			best_inner = wall
+			best_dist = on.distance_to(p)
+			along = (on - (wall.start + wall.end) / 2.0).dot((wall.end - wall.start).normalized())
+	if best_inner:
+		_inner_opening_click(best_inner, along, right, kind)
+		return
 	if best < 0:
 		return
 	if right:
@@ -822,6 +892,30 @@ func _opening_click(building: Node3D, p: Vector2, right: bool, kind: String, lev
 	var added := openings.duplicate()
 	added.append(op)
 	_set_list(building, "openings", added, "Add " + kind)
+
+
+## An opening in an inner wall: added to (or removed from) its own list.
+func _inner_opening_click(wall: KitInnerWall, along: float, right: bool, kind: String) -> void:
+	var list: Array[KitOpening] = wall.openings.duplicate()
+	if right:
+		var keep: Array[KitOpening] = []
+		var removed := false
+		for op in list:
+			if not removed and op and absf(op.offset - along) < op.width / 2.0 + 0.2:
+				removed = true
+				continue
+			keep.append(op)
+		if not removed:
+			return
+		list = keep
+	else:
+		var size: Array = OPENING_SIZES[kind]
+		list.append(KitOpening.make("front", kind, snappedf(along, 0.1), size[0], size[1], size[2]))
+	var ur := get_undo_redo()
+	ur.create_action(("Remove opening" if right else "Add " + kind))
+	ur.add_do_property(wall, "openings", list)
+	ur.add_undo_property(wall, "openings", wall.openings)
+	ur.commit_action()
 
 
 ## Sets one of the building's lists (stairs, openings) as one undo step.

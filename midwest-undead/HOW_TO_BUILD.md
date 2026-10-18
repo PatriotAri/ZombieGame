@@ -63,7 +63,8 @@ opening in the list to change it:
 - **Offset:** where its middle is along the wall, from the wall's middle.
   Positive is to the right, seen from outside.
 - **Width, Bottom, Top:** its size. Bottom and Top are meters above that
-  floor. A door's Bottom is 0.
+  floor. A door's Bottom is 0. Doors and doorways need to be at least 1.6 m
+  wide or zombies can't find their way through them (a warning says so).
 - **Boarded Up:** nailed shut for good (wood, no glass).
 - **Boarded At Start:** planked shut when a new game starts, like the
   survivors' houses. The player can pull the planks off.
@@ -84,6 +85,19 @@ for one storey) plus 1 m of floor past the top inside the building. The floor
 above gets a hole and a railing round it. **Stairs Side:** for a rectangle
 with no Stairs, which side wall the first staircase runs along.
 
+**Rooms**
+- **Inner Walls:** walls inside, each on one floor (**Level**), from
+  **Start** to **End** (the building's own meters), floor to ceiling. Each
+  has its own **Openings**: doorways, doors and windows like the outside
+  walls' (**Offset** from the wall's middle, + toward End; Wall and Edge
+  don't matter). Inner doors and windows can't be boarded up. The spaces the
+  walls close off are rooms; start and end each wall on an outside wall or
+  another inner wall to close one off.
+- **Rooms:** give a room its own **Wall Material** (its walls' inside faces)
+  and **Floor Material**. A room is the space round its **Point** on its
+  floor, as far as the walls (a doorway doesn't join two rooms). Empty
+  materials use the building's.
+
 **Drawing it: Map Tools > Buildings**
 
 Select the building, then pick a tool. Clicks land on the building's floor
@@ -93,11 +107,16 @@ Select the building, then pick a tool. Clicks land on the building's floor
   turns at a right angle to the last; hold Shift for any angle. Right-click
   takes back the last corner. Then use **Default Openings** for a door in
   wall 0 and windows, or add your own.
+- **Draw inner wall:** click one end, then the other (right angles; Shift
+  for any; ends on the 0.5 m grid). Right-click on one removes it.
+- **Paint room:** click inside a room: it's marked and opens in the
+  Inspector to set its materials (click a marked room to open it again).
+  Right-click removes the mark.
 - **Place stairs:** click where the bottom step goes, then click the way it
   climbs (right angles; Shift for any). It climbs from the Floor set in the
   panel. Right-click on a flight removes it.
-- **Add door / window / doorway:** click on a wall where it goes, on the
-  Floor set in the panel. Right-click on one removes it. Change its size in
+- **Add door / window / doorway:** click on a wall, outside or inner, where
+  it goes, on the Floor set in the panel. Right-click on one removes it. Change its size in
   the Inspector (Openings).
 Everything can be undone (Ctrl+Z).
 

@@ -180,13 +180,22 @@ func add_to(body: Node3D, mesh_name := "Mesh") -> Array[Node]:
 ## A flat slab over outline, its top at `top`, `thick` deep, with holes cut out
 ## (staircases). Its top, bottom, the outline's edges and the holes' edges each
 ## get a material (null: not drawn). collide: also solid (one trimesh shape).
+## slits: more holes, but only to split the top into pieces (thin ones under
+## inner walls), so top_pick (piece -> Material, or null for top_mat) can give
+## each room's floor its own material.
 func slab(outline: PackedVector2Array, holes: Array, top: float, thick: float, top_mat: Material,
-		bottom_mat: Material, side_mat: Material, hole_mat: Material, collide := true) -> void:
+		bottom_mat: Material, side_mat: Material, hole_mat: Material, collide := true,
+		slits: Array = [], top_pick := Callable()) -> void:
 	var bottom := top - thick
-	for piece in cut(outline, holes):
+	for piece in cut(outline, holes + slits):
 		var tris := Geometry2D.triangulate_polygon(piece)
+		var piece_top := top_mat
+		if top_pick.is_valid():
+			var picked: Variant = top_pick.call(piece)
+			if picked != null:
+				piece_top = picked
 		for i in range(0, tris.size(), 3):
-			for face: Array in [[top, Vector3.UP, top_mat], [bottom, Vector3.DOWN, bottom_mat]]:
+			for face: Array in [[top, Vector3.UP, piece_top], [bottom, Vector3.DOWN, bottom_mat]]:
 				var corners := PackedVector3Array()
 				for k in 3:
 					var p := piece[tris[i + k]]

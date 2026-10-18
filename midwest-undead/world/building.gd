@@ -11,7 +11,9 @@ extends Node3D
 ## rectangle (Size) or any shape drawn as Footprint corners; every floor has a
 ## wall along each side of it, numbered from the first corner (a rectangle's
 ## front is 0, right 1, back 2, left 3), with the doorways and windows in
-## Openings cut into them. Floors above the ground are reached by the flights
+## Openings cut into them. Inner Walls split floors into rooms (with their own
+## doors, doorways and windows), and Rooms give a room its own wall and floor
+## materials. Floors above the ground are reached by the flights
 ## in Stairs (a rectangle with none gets one along a side wall per floor,
 ## alternating sides going up). Over the top floor sits either a flat roof or,
 ## with Upper Height, a solid block you can't enter, with painted-on windows.
@@ -38,6 +40,9 @@ const STAIR_RUN_PER_RISE := 1.6 # about 32 degrees
 const LANDING := 1.0 # floor needed past the top of a staircase
 const PAINTED_WINDOW := Vector3(0.04, 1.3, 1.1)
 const PAINTED_SPACING := 2.6
+## The narrowest door or doorway zombies can path through (the navigation mesh
+## keeps 0.5 m from walls each side).
+const MIN_PASSAGE := 1.6
 ## A rectangle's walls by name (KitOpening's Wall): their numbers.
 const WALL_NUMBERS := {"front": 0, "right": 1, "back": 2, "left": 3}
 
@@ -138,6 +143,22 @@ const POST_SPACING := 2.5 # wooden posts: this far apart along each side
 @export_enum("left", "right") var stairs_side := "left":
 	set(value):
 		stairs_side = value
+		_changed()
+
+@export_group("Rooms")
+## Walls inside, on one floor each, with their own openings. Draw them with
+## Map Tools (Buildings > Draw inner wall).
+@export var inner_walls: Array[KitInnerWall] = []:
+	set(value):
+		_watch(inner_walls, value)
+		inner_walls = value
+		_changed()
+## Rooms with their own wall and floor materials (the space round each one's
+## point, closed off by walls). Map Tools (Buildings > Paint room) adds them.
+@export var rooms: Array[KitRoom] = []:
+	set(value):
+		_watch(rooms, value)
+		rooms = value
 		_changed()
 
 @export_group("Materials")
@@ -398,6 +419,27 @@ func _get_configuration_warnings() -> PackedStringArray:
 			warnings.append("An opening on wall %d (floor %d) doesn't fit in the wall." % [n, op.level])
 		if op.level >= floors:
 			warnings.append("An opening is on floor %d, but the building has %d floor(s)." % [op.level, floors])
+		if op.kind != "window" and op.width < MIN_PASSAGE - 0.01:
+			warnings.append("A %s on wall %d (floor %d) is under %.1f m wide: zombies can't find their way through it." % [op.kind, n, op.level, MIN_PASSAGE])
+	for i in inner_walls.size():
+		var inner := inner_walls[i]
+		if inner == null:
+			continue
+		if inner.level >= floors:
+			warnings.append("Inner wall %d is on floor %d, but the building has %d floor(s)." % [i + 1, inner.level, floors])
+		if not contains_local(inner.start.lerp(inner.end, 0.5)):
+			warnings.append("Inner wall %d is outside the building." % (i + 1))
+		var length := inner.start.distance_to(inner.end)
+		for op in inner.openings:
+			if op == null:
+				continue
+			if absf(op.offset) + op.width / 2.0 > length / 2.0 or op.top > STOREY - 0.25 or op.bottom < 0.0:
+				warnings.append("An opening in inner wall %d doesn't fit in the wall." % (i + 1))
+			if op.kind != "window" and op.width < MIN_PASSAGE - 0.01:
+				warnings.append("A %s in inner wall %d is under %.1f m wide: zombies can't find their way through it." % [op.kind, i + 1, MIN_PASSAGE])
+	for room in rooms:
+		if room and not contains_local(room.point):
+			warnings.append("A room's point (floor %d) is outside the building." % room.level)
 	return warnings
 
 
@@ -422,27 +464,41 @@ func _rebuild() -> void:
 	var made: Array[Node] = [] # glass and doors, added once the shell is in
 	var flights := _flights().filter(func(f: Dictionary) -> bool: return f["level"] < floors - 1 and _flight_fits(f))
 
-	if floor_y > 0.001:
-		km.slab(poly, [], floor_y, floor_y, floor_mat, null, null, null)
+	var maps: Array[Dictionary] = []
 	for k in floors:
-		var y0 := k * STOREY
-		var y1 := (k + 1) * STOREY
+		maps.append(_room_map(k))
+	if floor_y > 0.001:
+		km.slab(poly, [], floor_y, floor_y, floor_mat, null, null, null, true, _slits(0), _floor_pick.bind(maps[0]))
+	for k in floors:
 		var fy := floor_top(k)
 		for n in poly.size():
 			var ends := edge_ends(n)
 			var list := []
 			for op in openings:
 				if op and edge_of(op) == n and op.level == k:
-					list.append({"kind": op.kind, "along": op.offset, "width": op.width, "bottom": fy + op.bottom,
-							"top": fy + op.top, "boarded_up": op.boarded_up, "source": op})
-			km.wall(_wall_frame(n), ends[0].distance_to(ends[1]), y0, y1, fy, list, ext, inside)
-			made.append_array(_opening_nodes(n, k, list, fy))
+					list.append(_opening_entry(op, fy))
+			_wall_pieces(km, ends[0], ends[1], WALL / 2.0, k, list, maps[k], ext, inside, true)
+			made.append_array(_opening_nodes(_outer_name(n), k, list, fy, true))
+		for i in inner_walls.size():
+			var inner := inner_walls[i]
+			if inner == null or inner.level != k or inner.start.distance_to(inner.end) < 0.3:
+				continue
+			var list := []
+			for op in inner.openings:
+				if op:
+					list.append(_opening_entry(op, fy))
+			_wall_pieces(km, inner.start, inner.end, 0.0, k, list, maps[k], inside, inside, false)
+			made.append_array(_opening_nodes("Inner%d" % (i + 1), k, list, fy, false))
 		# The slab over this floor: its ceiling, and the next floor's floor (with
 		# holes where staircases come up).
+		var y1 := (k + 1) * STOREY
 		var upstairs := k + 1 < floors
 		var here := flights.filter(func(f: Dictionary) -> bool: return f["level"] == k)
 		var holes := here.map(func(f: Dictionary) -> Dictionary: return _hole(f))
-		km.slab(poly, holes, y1, 0.2, floor_mat if upstairs else roof, ceiling, null, inside)
+		if upstairs:
+			km.slab(poly, holes, y1, 0.2, floor_mat, ceiling, null, inside, true, _slits(k + 1), _floor_pick.bind(maps[k + 1]))
+		else:
+			km.slab(poly, holes, y1, 0.2, roof, ceiling, null, inside)
 		for flight in here:
 			_stairs(km, flight, floor_mat, inside)
 	if upper_height > 0.0:
@@ -566,15 +622,25 @@ func _wall_frame(n: int) -> Transform3D:
 	return Transform3D(Basis(x, Vector3.UP, z), Vector3(middle.x, 0, middle.y) + x * (WALL / 2.0))
 
 
+## An opening as km.wall() takes it (heights from the floor's top).
+static func _opening_entry(op: KitOpening, fy: float) -> Dictionary:
+	return {"kind": op.kind, "along": op.offset, "width": op.width, "bottom": fy + op.bottom,
+			"top": fy + op.top, "boarded_up": op.boarded_up, "source": op}
+
+
+## Wall n's name for its doors and windows: a rectangle's Front, Right, Back,
+## Left; a drawn outline's Wall0, Wall1...
+func _outer_name(n: int) -> String:
+	return WALL_NUMBERS.find_key(n).capitalize() if footprint.size() < 3 else "Wall%d" % n
+
+
 ## Glass and doors for one wall of one floor, named for saving ("FrontDoor",
-## "BackWindow2", "Floor2FrontWindow", "Wall5Door"...). Only the ground floor's
-## can be boarded up.
-func _opening_nodes(n: int, level: int, list: Array, fy: float) -> Array[Node]:
+## "BackWindow2", "Floor2FrontWindow", "Wall5Door", "Inner2Door"...). Only the
+## ground floor's outside ones can be boarded up.
+func _opening_nodes(wall_name: String, level: int, list: Array, fy: float, outside: bool) -> Array[Node]:
 	var nodes: Array[Node] = []
 	var counts := {"door": 0, "window": 0}
-	var wall_name := "Wall%d" % n
-	if footprint.size() < 3:
-		wall_name = WALL_NUMBERS.find_key(n).capitalize()
+	var boardable := outside and level == 0
 	var prefix := ("Floor%d" % (level + 1) if level > 0 else "") + wall_name
 	for entry: Dictionary in list: # sorted along the wall by km.wall()
 		var op: KitOpening = entry["source"]
@@ -587,15 +653,151 @@ func _opening_nodes(n: int, level: int, list: Array, fy: float) -> Array[Node]:
 			var door := KitMesh.make_door(entry, op.door_color, door_models)
 			door.name = node_name
 			door.start_open = op.start_open
-			door.boardable = level == 0
-			door.boarded_at_start = op.boarded_at_start and level == 0
+			door.boardable = boardable
+			door.boarded_at_start = op.boarded_at_start and boardable
 			nodes.append(door)
 		elif not op.boarded_up:
 			var frame: Transform3D = entry["frame"]
-			var pane := KitMesh.make_window(entry, level == 0, op.boarded_at_start and level == 0, frame.origin.y - fy, window_models)
+			var pane := KitMesh.make_window(entry, boardable, op.boarded_at_start and boardable, frame.origin.y - fy, window_models)
 			pane.name = node_name
 			nodes.append(pane)
 	return nodes
+
+
+# --- Walls and rooms ------------------------------------------------------------------
+
+## A wall from a to b on floor `level`, its middle line `shift` in from the
+## line (a wall of the outline: WALL / 2, so its outside is flush with the
+## outline; an inner wall: 0, centered). It's made in pieces, split where inner
+## walls meet it, so each side of each piece can take the material of the room
+## it faces (see _room_map). outside_mat: its -X face's when that's not in a
+## room (outer: the outside of the building, never a room). list: its
+## openings (km.wall()'s), which come back with their frames.
+func _wall_pieces(km: KitMesh, a: Vector2, b: Vector2, shift: float, level: int, list: Array,
+		map: Dictionary, outside_mat: Material, inside_mat: Material, outer: bool) -> void:
+	var length := a.distance_to(b)
+	var along := (b - a).normalized()
+	var into := Vector2(along.y, -along.x) # +X: into the building, or an inner wall's +X side
+	var cuts: Array[float] = [0.0, length]
+	for inner in inner_walls:
+		if inner == null or inner.level != level:
+			continue
+		for end: Vector2 in [inner.start, inner.end]:
+			var t := (end - a).dot(along)
+			var off := (end - a).dot(into) - shift
+			if absf(off) < WALL and t > 0.05 and t < length - 0.05:
+				cuts.append(t)
+	cuts.sort()
+	var y0 := level * STOREY
+	var y1 := (level + 1) * STOREY
+	var fy := floor_top(level)
+	for i in cuts.size() - 1:
+		var t0 := cuts[i]
+		var t1 := cuts[i + 1]
+		if t1 - t0 < 0.01:
+			continue
+		var mid := (t0 + t1) / 2.0
+		var middle := a + along * mid + into * shift
+		var frame := Transform3D(Basis(Vector3(into.x, 0, into.y), Vector3.UP, Vector3(along.x, 0, along.y)), Vector3(middle.x, 0, middle.y))
+		var here := []
+		for op: Dictionary in list:
+			var at: float = op["along"] + length / 2.0 # from a
+			if at >= t0 and at < t1:
+				var piece_op := op.duplicate()
+				piece_op["along"] = at - mid
+				here.append(piece_op)
+		var in_room := _room_at(map, middle + into * (WALL / 2.0 + 0.3))
+		var out_room := null if outer else _room_at(map, middle - into * (WALL / 2.0 + 0.3))
+		km.wall(frame, t1 - t0, y0, y1, fy, here, _wall_mat(out_room, outside_mat), _wall_mat(in_room, inside_mat))
+		# Back to the caller's list, with their frames (for the doors and glass).
+		for piece_op: Dictionary in here:
+			for op: Dictionary in list:
+				if op["source"] == piece_op["source"]:
+					op["frame"] = piece_op["frame"]
+
+
+static func _wall_mat(room: KitRoom, otherwise: Material) -> Material:
+	return room.wall_material if room and room.wall_material else otherwise
+
+
+## Thin cuts along each inner wall on a floor, so its floor splits into rooms.
+func _slits(level: int) -> Array:
+	var result := []
+	for inner in inner_walls:
+		if inner and inner.level == level and inner.start.distance_to(inner.end) >= 0.3:
+			var middle := (inner.start + inner.end) / 2.0
+			var angle := (inner.end - inner.start).angle()
+			result.append({"xform": Transform2D(angle, middle), "size": Vector2(inner.start.distance_to(inner.end), 0.004)})
+	return result
+
+
+## A floor piece's material: its room's floor, or null (the building's).
+func _floor_pick(piece: PackedVector2Array, map: Dictionary) -> Variant:
+	var middle := Vector2.ZERO
+	for p in piece:
+		middle += p
+	middle /= piece.size()
+	var room := _room_at(map, middle)
+	if room == null:
+		# A long thin piece's middle can land on a wall: try near a corner.
+		for p in piece:
+			room = _room_at(map, p.lerp(middle, 0.2))
+			if room:
+				break
+	return room.floor_material if room and room.floor_material else null
+
+
+const ROOM_CELL := 0.25 # meters: the grid rooms are found on
+
+
+## Which floor cells belong to which room on floor `level`: from each room's
+## point, every cell reachable without crossing a wall (doorways don't join
+## rooms). {"origin": Vector2, "cells": {Vector2i: KitRoom}}; empty if the
+## floor has no rooms.
+func _room_map(level: int) -> Dictionary:
+	var here := rooms.filter(func(r: KitRoom) -> bool: return r != null and r.level == level)
+	if here.is_empty():
+		return {}
+	var poly := outline()
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for p in poly:
+		box = box.expand(p)
+	var walls := inner_walls.filter(func(w: KitInnerWall) -> bool: return w != null and w.level == level)
+	var cells := {}
+	for room: KitRoom in here:
+		var queue: Array[Vector2i] = [Vector2i(((room.point - box.position) / ROOM_CELL).floor())]
+		while not queue.is_empty():
+			var cell: Vector2i = queue.pop_back()
+			if cells.has(cell):
+				continue
+			var at := box.position + (Vector2(cell) + Vector2(0.5, 0.5)) * ROOM_CELL
+			if not Geometry2D.is_point_in_polygon(at, poly) or _on_inner_wall(at, walls):
+				continue
+			cells[cell] = room
+			for step: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+				if not cells.has(cell + step):
+					queue.append(cell + step)
+	return {"origin": box.position, "cells": cells}
+
+
+func _on_inner_wall(p: Vector2, walls: Array) -> bool:
+	for wall: KitInnerWall in walls:
+		var closest := Geometry2D.get_closest_point_to_segment(p, wall.start, wall.end)
+		if closest.distance_to(p) < WALL / 2.0 + ROOM_CELL * 0.5:
+			return true
+	return false
+
+
+static func _room_at(map: Dictionary, p: Vector2) -> KitRoom:
+	if map.is_empty():
+		return null
+	var cell := Vector2i(((p - (map["origin"] as Vector2)) / ROOM_CELL).floor())
+	return (map["cells"] as Dictionary).get(cell)
+
+
+## The room marked round a point on a floor (its Rooms entry), or null.
+func room_at(level: int, p: Vector2) -> KitRoom:
+	return _room_at(_room_map(level), p)
 
 
 # --- Stairs ------------------------------------------------------------------------
