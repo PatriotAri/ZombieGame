@@ -121,8 +121,8 @@ func hear_noise(pos: Vector3, radius: float) -> void:
 
 
 ## Getting shot reveals the shooter, if it wasn't already fighting someone.
-func take_hit(amount: float, from_pos: Vector3, knockback: float, attacker: Node3D = null) -> void:
-	super(amount, from_pos, knockback, attacker)
+func take_hit(amount: float, from_pos: Vector3, knockback: float, attacker: Node3D = null, hit_pos := Vector3.INF) -> void:
+	super(amount, from_pos, knockback, attacker, hit_pos)
 	if is_dead or state == State.COMBAT:
 		return
 	if attacker != null and _is_enemy(attacker):

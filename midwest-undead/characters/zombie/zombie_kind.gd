@@ -16,14 +16,15 @@ const DIR := "res://characters/zombie/kinds/"
 @export var fills_the_rest := false
 
 @export_group("Body")
+## Its model: a character scene with a humanoid skeleton (see HOW_TO_MODEL.md).
+## Empty: the mannequin stand-in.
+@export var model: PackedScene
 @export var health := 100.0
 ## Each one picks a walking speed in this range (m/s). You walk at 4.
 @export var min_speed := 1.2
 @export var max_speed := 2.2
 ## Speed while chasing someone. 0: its walking speed.
 @export var hunt_speed := 0.0
-## Leans forward when running flat out.
-@export var leans_when_running := false
 ## "crawling": lies flat and drags itself along: low (shots at chest height go
 ## over it; its head is at the front, near the ground).
 @export_enum("standing", "crawling") var posture := "standing"

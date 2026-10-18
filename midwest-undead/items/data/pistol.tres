@@ -6,6 +6,7 @@
 [resource]
 script = ExtResource("2_tnkue")
 held_model = ExtResource("1_idyei")
+draw_time = 0.3
 damage = 55.0
 ammo = "pistol_ammo"
 id = "pistol"

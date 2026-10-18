@@ -1,6 +1,7 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://characters/player/player.gd" id="1_player"]
+[ext_resource type="Script" path="res://characters/player/hands.gd" id="2_hands"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.35
@@ -34,16 +35,17 @@ shadow_enabled = true
 spot_range = 25.0
 spot_angle = 25.0
 
-[node name="WeaponPivot" type="Node3D" parent="Camera3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.35, -0.35, -0.55)
+[node name="Hands" type="Node3D" parent="Camera3D"]
+script = ExtResource("2_hands")
 
-[node name="Fists" type="MeshInstance3D" parent="Camera3D/WeaponPivot"]
+[node name="Fists" type="MeshInstance3D" parent="Camera3D/Hands"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.35, -0.35, -0.55)
 cast_shadow = 0
 mesh = SubResource("BoxMesh_fist")
 
-[node name="ItemPivot" type="Node3D" parent="Camera3D"]
+[node name="ItemPivot" type="Node3D" parent="Camera3D/Hands"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.22, -0.25, -0.45)
 visible = false
 
-[node name="HeldItem" type="MeshInstance3D" parent="Camera3D/ItemPivot"]
+[node name="HeldItem" type="MeshInstance3D" parent="Camera3D/Hands/ItemPivot"]
 cast_shadow = 0

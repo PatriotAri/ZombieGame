@@ -105,7 +105,7 @@ func is_hostile_to_player() -> bool:
 
 ## Hits from weapons (player or NPC). Same signature zombies use, so attackers
 ## don't need to care what they hit.
-func take_hit(damage: float, _from_pos: Vector3, _knockback: float, attacker: Node3D = null) -> void:
+func take_hit(damage: float, _from_pos: Vector3, _knockback: float, attacker: Node3D = null, _hit_pos := Vector3.INF) -> void:
 	if attacker != null and attacker.is_in_group("player") and not player_can_hurt:
 		return
 	take_damage(damage)
