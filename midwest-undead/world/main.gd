@@ -386,6 +386,9 @@ func _load_town() -> void:
 		door.transform = town.transform * xform
 		door_holder.add_child(door, true)
 	nav_region.add_child(town)
+	Ground.deepest = INF # the game reaches down to the lowest mine floor
+	for mine in town.find_children("*", "KitMine", true, false):
+		Ground.deepest = minf(Ground.deepest, (mine as KitMine).lowest_floor())
 	StaticMerge.merge(town) # buildings and kit pieces as a few big meshes (fewer draw calls)
 	Instancer.batch(self) # the same doors, windows and furniture drawn together (GPU instancing)
 	var start := _spawn_point("player")
@@ -590,11 +593,13 @@ func _build_environment() -> void:
 	var sun := DirectionalLight3D.new()
 	# Its shadows (off, medium, high) are the Shadows setting: Settings.apply_graphics.
 	sun.add_to_group("sun")
+	sun.light_cull_mask &= ~GameData.RENDER_UNDERGROUND # not in the mines (kit_mine.gd)
 	add_child(sun)
 
 	var moon := DirectionalLight3D.new()
 	moon.light_color = Color(0.6, 0.7, 1.0)
 	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY # don't draw a second sun disk
+	moon.light_cull_mask &= ~GameData.RENDER_UNDERGROUND
 	add_child(moon)
 
 	day_night = DayNight.new()

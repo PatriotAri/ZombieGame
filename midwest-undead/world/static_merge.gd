@@ -16,12 +16,12 @@ const PATCH := 48.0 # meters: small enough that off-screen patches aren't drawn
 const FAR := 700.0
 const ViewDistance := preload("res://core/view_distance.gd")
 const MERGED_SCRIPTS := ["building.gd", "kit_wall.gd", "kit_floor.gd", "kit_stairs.gd", "kit_box.gd", "kit_prop.gd",
-		"kit_sign.gd", "kit_steeple.gd", "kit_silo.gd"]
+		"kit_sign.gd", "kit_steeple.gd", "kit_silo.gd", "kit_mine.gd"]
 
 
 ## Combines town's static meshes. Returns how many meshes it hid.
 static func merge(town: Node3D) -> int:
-	var buckets := {} # [patch x, patch z, material, shadows] -> Bucket
+	var buckets := {} # [patch x, patch z, material, shadows, render layers] -> Bucket
 	var hidden := 0
 	var to_local := town.global_transform.affine_inverse()
 	for node in town.find_children("*", "MeshInstance3D", true, false):
@@ -33,7 +33,7 @@ static func merge(town: Node3D) -> int:
 		var patch := Vector2i(floori(center.x / PATCH), floori(center.z / PATCH))
 		for s in mesh_inst.mesh.get_surface_count():
 			var mat := _material(mesh_inst, s)
-			var key := [patch.x, patch.y, mat, mesh_inst.cast_shadow]
+			var key := [patch.x, patch.y, mat, mesh_inst.cast_shadow, mesh_inst.layers] # (a mine's are underground)
 			if not buckets.has(key):
 				buckets[key] = Bucket.new()
 			(buckets[key] as Bucket).add(mesh_inst.mesh.surface_get_arrays(s), xform)
@@ -47,6 +47,7 @@ static func merge(town: Node3D) -> int:
 		merged.mesh = (buckets[key] as Bucket).commit()
 		merged.material_override = key[2]
 		merged.cast_shadow = key[3]
+		merged.layers = key[4]
 		holder.add_child(merged)
 		ViewDistance.limit(merged, FAR)
 	return hidden

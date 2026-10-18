@@ -23,6 +23,11 @@ extends EditorPlugin
 ## back the last corner, or removes the inner wall, stairs, opening, room,
 ## chimney, dormer, porch or cellar door under the mouse. Its walls' numbers
 ## show while it's selected. Apply opens the ground for its basement.
+## Mines: select a KitMine and pick a tool in the Mines section; the 3D view
+## then draws on the Level set there (its plan shows through the hill):
+## tunnels (click each corner; Esc or Enter ends one), chambers (click two
+## opposite corners), and entrances (click a tunnel's end). Right-click takes
+## back the last corner, or removes the tunnel or chamber under the mouse.
 
 const TerrainEdit := preload("res://world/map/terrain_edit.gd")
 const Road := preload("res://world/map/road.gd")
@@ -39,6 +44,7 @@ const PlantPainter := preload("res://world/map/plant_painter.gd")
 const Zone := preload("res://world/markers/zone.gd")
 const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
 const Building := preload("res://world/building.gd")
+const MINE_TOOLS := ["Off", "Draw tunnel", "Draw chamber", "Mark entrance"]
 const BUILDING_TOOLS := ["Off", "Draw outline", "Draw inner wall", "Place stairs", "Add door", "Add window", "Add doorway",
 		"Add garage door", "Paint room", "Place chimney", "Place dormer", "Add porch", "Add cellar door"]
 ## Openings the tools add: [width, bottom, top]. Doors and doorways are as wide
@@ -85,6 +91,12 @@ var _draft := PackedVector2Array() # the outline being drawn, in click order
 var _stair_start := Vector2.INF # Place stairs: where the flight starts, before the second click
 var _wall_start := Vector2.INF # Draw inner wall: its first end, before the second click
 var _numbered: Node # the building showing its wall numbers
+var _mine_tool: OptionButton
+var _mine_level: SpinBox
+var _mine_rails: CheckBox
+var _planned: Node # the mine showing its plan
+var _tunnel: MineTunnel # Draw tunnel: the one being drawn, or null
+var _chamber_start := Vector3i.MAX # Draw chamber: its first corner, before the second click
 
 
 func _enter_tree() -> void:
@@ -186,6 +198,33 @@ func _build_panel() -> Control:
 	floor_row.add_child(_building_floor)
 	buildings.add_child(floor_row)
 
+	var mines := _section(root, "Mines")
+	_button(mines, "New mine", "Adds a mine in front of the camera: a tunnel into the hill from an entrance. Draw more with the tools below; Apply opens the hill.", _new_kit_mine)
+	_mine_tool = OptionButton.new()
+	for t: String in MINE_TOOLS:
+		_mine_tool.add_item(t)
+	_mine_tool.tooltip_text = "What clicking in the 3D view does to the selected mine."
+	_mine_tool.item_selected.connect(_on_mine_tool)
+	mines.add_child(_mine_tool)
+	var level_row := HBoxContainer.new()
+	var level_label := Label.new()
+	level_label.text = "Level"
+	level_row.add_child(level_label)
+	_mine_level = SpinBox.new()
+	_mine_level.min_value = -10
+	_mine_level.max_value = 3
+	_mine_level.tooltip_text = "The level the tools draw on (0: the mine's own height, -1: 4 m under it...)."
+	_mine_level.value_changed.connect(func(v: float) -> void:
+		if _selected is KitMine:
+			_selected.set("plan_level", int(v)))
+	level_row.add_child(_mine_level)
+	mines.add_child(level_row)
+	_mine_rails = CheckBox.new()
+	_mine_rails.text = "Rails"
+	_mine_rails.tooltip_text = "New tunnels get rails (each tunnel's Rails and Carts are in the Inspector, Tunnels)."
+	_mine_rails.button_pressed = true
+	mines.add_child(_mine_rails)
+
 	var places := _section(root, "Zones and camps")
 	_button(places, "New zone", "Adds a zone (a named area) in front of the camera. Name it in the Inspector, then Draw points around its edge.", _new_zone)
 	_button(places, "Police station camp", "Adds the police station's base camp marker in front of the camera (one per map). Drag its Logbook, Board and Crate markers where they go.", _new_base_camp)
@@ -197,7 +236,7 @@ func _build_panel() -> Control:
 	_draw.text = "Draw points"
 	_draw.tooltip_text = "Click on the ground in the 3D view to add points to the selected road, creek, crop field or zone. Right-click removes the last point."
 	selected.add_child(_draw)
-	_apply = _button(selected, "Apply", "Shapes, paints or opens the ground for the selected road, creek, crop field, mine entrance or building with a basement. Ctrl+Z undoes it.", _apply_selected)
+	_apply = _button(selected, "Apply", "Shapes, paints or opens the ground for the selected road, creek, crop field, mine, mine entrance or building with a basement. Ctrl+Z undoes it.", _apply_selected)
 
 	_help = Label.new()
 	_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -269,8 +308,22 @@ func _on_selection_changed() -> void:
 	var nodes := EditorInterface.get_selection().get_selected_nodes()
 	_selected = null
 	if nodes.size() == 1 and (nodes[0] is Road or nodes[0] is Creek or nodes[0] is Pond or nodes[0] is CropField
-			or nodes[0] is Rock or nodes[0] is MineEntrance or nodes[0] is PlantsLayer or nodes[0] is Zone or nodes[0] is Building):
+			or nodes[0] is Rock or nodes[0] is MineEntrance or nodes[0] is PlantsLayer or nodes[0] is Zone or nodes[0] is Building
+			or nodes[0] is KitMine):
 		_selected = nodes[0]
+	if _planned != _selected:
+		if is_instance_valid(_planned):
+			_planned.set("show_plan", false)
+			_planned.set("draft", [] as Array[Vector3i])
+		_planned = _selected if _selected is KitMine else null
+		_tunnel = null
+		_chamber_start = Vector3i.MAX
+		if _planned:
+			_planned.set("plan_level", int(_mine_level.value))
+			_planned.set("show_plan", true)
+	_mine_tool.disabled = not _selected is KitMine
+	if not _selected is KitMine and _mine_tool.selected != 0:
+		_mine_tool.select(0)
 	if _numbered != _selected:
 		if is_instance_valid(_numbered):
 			_numbered.set("show_numbers", false)
@@ -284,7 +337,8 @@ func _on_selection_changed() -> void:
 	_draw.disabled = not path
 	if not path:
 		_draw.button_pressed = false
-	_apply.disabled = not ((path and not _selected is Zone) or _selected is MineEntrance or _selected is Building)
+	_apply.disabled = not ((path and not _selected is Zone) or _selected is MineEntrance or _selected is Building
+			or _selected is KitMine)
 	_add_span.disabled = not _selected is Road
 	_add_falls.disabled = not _selected is Creek
 	if not _selected is PlantsLayer and _brush.selected != 0:
@@ -305,6 +359,9 @@ func _on_selection_changed() -> void:
 	elif _selected is Building:
 		_selected_label.text = "%s (%s)" % [_selected.name, BUILDING_TOOLS[_building_tool.selected]]
 		_help.text = _building_help()
+	elif _selected is KitMine:
+		_selected_label.text = "%s (%s, level %d)" % [_selected.name, MINE_TOOLS[_mine_tool.selected], int(_mine_level.value)]
+		_help.text = _mine_help()
 	elif _selected is MineEntrance:
 		_selected_label.text = "%s" % _selected.name
 		_help.text = "Turn it so the tunnel runs into a steep hillside and set its floor at the ground, then press Apply to open the hill."
@@ -521,6 +578,19 @@ func _new_mine() -> void:
 	_add(mine, _group("Mines"), "New mine entrance")
 
 
+func _new_kit_mine() -> void:
+	var mine := KitMine.new()
+	mine.name = "Mine"
+	mine.position = _in_view()
+	var ahead := _view_ahead()
+	mine.rotation.y = atan2(ahead.x, ahead.z) # its tunnel (-Z) runs away from you
+	var points: Array[Vector3i] = [Vector3i(0, 0, 0), Vector3i(0, 0, -6)]
+	var tunnel := MineTunnel.make(points, _mine_rails.button_pressed)
+	tunnel.entrance_at_start = true
+	mine.tunnels = [tunnel]
+	_add(mine, _group("Mines"), "New mine")
+
+
 func _view_ahead() -> Vector3:
 	var camera := EditorInterface.get_editor_viewport_3d(0).get_camera_3d()
 	var dir := -camera.global_basis.z
@@ -533,7 +603,7 @@ func _view_ahead() -> Vector3:
 func _apply_selected() -> void:
 	var terrain := _terrain()
 	if terrain == null or not _selected or not _selected.has_method("apply"):
-		push_warning("Select a road, creek, crop field, mine entrance or building in the map scene (world/map/map.tscn) to apply.")
+		push_warning("Select a road, creek, crop field, mine, mine entrance or building in the map scene (world/map/map.tscn) to apply.")
 		return
 	var node := _selected as Node3D
 	var rect: Rect2
@@ -679,7 +749,7 @@ func _show_ring(on: bool, at := Vector3.ZERO) -> void:
 
 func _handles(object: Object) -> bool:
 	return object is Road or object is Creek or object is CropField or object is PlantsLayer or object is Zone \
-			or object is Building
+			or object is Building or object is KitMine
 
 
 func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
@@ -687,6 +757,8 @@ func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 		return _brush_input(camera, event)
 	if _selected is Building and _building_tool.selected != 0:
 		return _building_input(camera, event)
+	if _selected is KitMine and _mine_tool.selected != 0:
+		return _mine_input(camera, event)
 	if not _draw.button_pressed or not (_selected is Road or _selected is Creek or _selected is CropField or _selected is Zone):
 		return AFTER_GUI_INPUT_PASS
 	var mb := event as InputEventMouseButton
@@ -1116,4 +1188,154 @@ func _set_list(building: Node3D, property: String, value: Array, action: String)
 	ur.create_action(action)
 	ur.add_do_property(building, property, typed)
 	ur.add_undo_property(building, property, building.get(property))
+	ur.commit_action()
+
+
+# --- Mines ---------------------------------------------------------------------------------
+
+func _on_mine_tool(_index: int) -> void:
+	_tunnel = null
+	_chamber_start = Vector3i.MAX
+	if _selected is KitMine:
+		_selected.set("draft", [] as Array[Vector3i])
+	_on_selection_changed()
+
+
+func _mine_help() -> String:
+	match MINE_TOOLS[_mine_tool.selected]:
+		"Draw tunnel":
+			return "Click where the tunnel starts, then each corner (straight lines, on the 2.5 m grid). Esc or Enter ends it; the next click starts another. Start or end on another tunnel or a chamber to join them. Right-click takes back the last corner, or removes the tunnel under the mouse. Rails and Carts: in the Inspector (Tunnels)."
+		"Draw chamber":
+			return "Click one corner of the chamber, then the opposite one. Its Height is in the Inspector (Chambers): taller than 4 m, a tunnel on the level above that reaches it opens onto a ledge. Right-click removes the chamber under the mouse."
+		"Mark entrance":
+			return "Click the end of a tunnel that comes out of the hill: no wall there, a timber portal and the floor running on 1.5 m. Again: back to a dead end. Then set the ground level with the floor where it ends, and press Apply."
+	return "Pick a tool to draw tunnels and chambers on the Level set here (the plan shows through the hill: this level yellow, others blue, entrances green). Put the node where the entrance meets the hillside and press Apply to open the hill. Everything's also in the Inspector."
+
+
+## Where the mouse points on the mine's Level, as a cell, or Vector3i.MAX.
+func _mine_cell(camera: Camera3D, at: Vector2, mine: KitMine) -> Vector3i:
+	var level := int(_mine_level.value)
+	var plane := Plane(mine.global_basis.y.normalized(), mine.global_transform * Vector3(0, level * KitMine.LEVEL, 0))
+	var hit: Variant = plane.intersects_ray(camera.project_ray_origin(at), camera.project_ray_normal(at))
+	if hit == null:
+		return Vector3i.MAX
+	return KitMine.cell_at(mine.to_local(hit), level)
+
+
+## The corner a click makes after `last`: straight on from it, along whichever way is further.
+static func _straight(last: Vector3i, cell: Vector3i) -> Vector3i:
+	if absi(cell.x - last.x) >= absi(cell.z - last.z):
+		return Vector3i(cell.x, cell.y, last.z)
+	return Vector3i(last.x, cell.y, cell.z)
+
+
+func _mine_input(camera: Camera3D, event: InputEvent) -> int:
+	var mine := _selected as KitMine
+	var tool: String = MINE_TOOLS[_mine_tool.selected]
+	if _tunnel and not _tunnel in mine.tunnels:
+		_tunnel = null # its start was undone
+	var key := event as InputEventKey
+	if key and key.pressed and key.keycode in [KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER] and (_tunnel or _chamber_start != Vector3i.MAX):
+		_tunnel = null
+		_chamber_start = Vector3i.MAX
+		mine.draft = [] as Array[Vector3i]
+		return AFTER_GUI_INPUT_STOP
+	var mouse := event as InputEventMouse
+	if mouse == null:
+		return AFTER_GUI_INPUT_PASS
+	var cell := _mine_cell(camera, mouse.position, mine)
+	if cell == Vector3i.MAX:
+		return AFTER_GUI_INPUT_PASS
+	if event is InputEventMouseMotion: # what a click would add
+		var preview: Array[Vector3i] = [cell]
+		if tool == "Draw tunnel" and _tunnel and not _tunnel.points.is_empty():
+			preview = MineTunnel.make([_tunnel.points[-1], _straight(_tunnel.points[-1], cell)] as Array[Vector3i]).cells()
+		elif tool == "Draw chamber" and _chamber_start != Vector3i.MAX:
+			preview = MineChamber.make(_chamber_start, cell).cells()
+		mine.draft = preview
+		return AFTER_GUI_INPUT_PASS
+	var mb := event as InputEventMouseButton
+	if mb == null or not mb.pressed or not mb.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
+		return AFTER_GUI_INPUT_PASS
+	var right := mb.button_index == MOUSE_BUTTON_RIGHT
+	var ur := get_undo_redo()
+	match tool:
+		"Draw tunnel":
+			if right and _tunnel:
+				var points := _tunnel.points.duplicate()
+				points.pop_back()
+				if points.is_empty():
+					_remove_from(mine, "tunnels", _tunnel, "Remove tunnel")
+					_tunnel = null
+				else:
+					ur.create_action("Take back tunnel corner")
+					ur.add_do_property(_tunnel, "points", points)
+					ur.add_undo_property(_tunnel, "points", _tunnel.points)
+					ur.commit_action()
+			elif right:
+				for tunnel in mine.tunnels:
+					if tunnel and cell in tunnel.cells():
+						_remove_from(mine, "tunnels", tunnel, "Remove tunnel")
+						break
+			elif _tunnel == null:
+				_tunnel = MineTunnel.make([cell] as Array[Vector3i], _mine_rails.button_pressed)
+				var list := mine.tunnels.duplicate()
+				list.append(_tunnel)
+				ur.create_action("Start tunnel")
+				ur.add_do_property(mine, "tunnels", list)
+				ur.add_undo_property(mine, "tunnels", mine.tunnels)
+				ur.commit_action()
+			else:
+				var corner := _straight(_tunnel.points[-1], cell)
+				if corner != _tunnel.points[-1]:
+					var points := _tunnel.points.duplicate()
+					points.append(corner)
+					ur.create_action("Add tunnel corner")
+					ur.add_do_property(_tunnel, "points", points)
+					ur.add_undo_property(_tunnel, "points", _tunnel.points)
+					ur.commit_action()
+		"Draw chamber":
+			if right and _chamber_start != Vector3i.MAX:
+				_chamber_start = Vector3i.MAX
+			elif right:
+				for chamber in mine.chambers:
+					if chamber and cell in chamber.cells():
+						_remove_from(mine, "chambers", chamber, "Remove chamber")
+						break
+			elif _chamber_start == Vector3i.MAX:
+				_chamber_start = cell
+			else:
+				var list := mine.chambers.duplicate()
+				list.append(MineChamber.make(_chamber_start, cell))
+				ur.create_action("Add chamber")
+				ur.add_do_property(mine, "chambers", list)
+				ur.add_undo_property(mine, "chambers", mine.chambers)
+				ur.commit_action()
+				_chamber_start = Vector3i.MAX
+		"Mark entrance":
+			if right:
+				return AFTER_GUI_INPUT_STOP
+			for tunnel in mine.tunnels:
+				if tunnel == null or tunnel.points.size() < 2:
+					continue
+				var cells := tunnel.cells()
+				var property := "entrance_at_start" if cells[0] == cell else "entrance_at_end" if cells[-1] == cell else ""
+				if property != "":
+					ur.create_action("Mark entrance" if not tunnel.get(property) else "Unmark entrance")
+					ur.add_do_property(tunnel, property, not tunnel.get(property))
+					ur.add_undo_property(tunnel, property, tunnel.get(property))
+					ur.commit_action()
+					break
+	mine.draft = [cell] as Array[Vector3i]
+	return AFTER_GUI_INPUT_STOP
+
+
+## Takes a tunnel or chamber out of the mine's list, with undo.
+func _remove_from(mine: KitMine, property: String, item: Resource, action: String) -> void:
+	var list: Array = (mine.get(property) as Array).duplicate()
+	list.erase(item)
+	var ur := get_undo_redo()
+	ur.create_action(action)
+	ur.add_do_property(mine, property, list)
+	ur.add_undo_property(mine, property, mine.get(property))
 	ur.commit_action()

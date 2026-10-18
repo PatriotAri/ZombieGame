@@ -196,6 +196,7 @@ const MORE_FURNITURE := [
 	["flagpole", Vector3(1.7, 7.5, 0.3), false, "", "", ""], # (its box takes in the flag)
 	["swing_set", Vector3(3.2, 2.3, 1.6), false, "", "", ""],
 	["slide", Vector3(0.7, 1.8, 3.0), false, "", "", ""],
+	["mine_cart", Vector3(0.9, 1.0, 1.3), true, "", "", ""], # (on a mine's rails: kit_mine.gd)
 ]
 
 
@@ -439,6 +440,23 @@ func _more_furniture() -> void:
 	for i in 5: # the ladder's rungs
 		_box(s, Vector3(0.5, 0.04, 0.04), Vector3(0, 0.3 + i * 0.32, -1.38), _c(STEEL))
 	_more("slide")
+
+	s = _start("MineCart") # a rusty ore car: a tub on a frame, four wheels on the rails' gauge
+	var rust := _mat("rust")
+	_box(s, Vector3(0.84, 0.06, 1.24), Vector3(0, 0.3, 0), rust) # floor
+	for x: float in [-0.42, 0.42]:
+		_box(s, Vector3(0.05, 0.6, 1.3), Vector3(x * 1.04, 0.62, 0), rust, "Paint" if x < 0 else "", 0.0, 0.0, 0.12 * signf(x))
+	for z: float in [-0.62, 0.62]:
+		_box(s, Vector3(0.9, 0.6, 0.05), Vector3(0, 0.62, z), rust)
+	_box(s, Vector3(0.95, 0.06, 0.08), Vector3(0, 0.94, -0.62), _c(IRON)) # rims
+	_box(s, Vector3(0.95, 0.06, 0.08), Vector3(0, 0.94, 0.62), _c(IRON))
+	for z: float in [-0.4, 0.4]:
+		_box(s, Vector3(0.7, 0.08, 0.08), Vector3(0, 0.2, z), _c(IRON)) # axles
+		for x: float in [-0.3, 0.3]:
+			_cyl(s, 0.15, 0.06, Vector3(x, 0.15, z), _c(IRON), Vector3(0, 0, PI / 2.0))
+	_box(s, Vector3(0.3, 0.06, 0.12), Vector3(0, 0.25, 0.7), _c(IRON)) # couplings
+	_box(s, Vector3(0.3, 0.06, 0.12), Vector3(0, 0.25, -0.7), _c(IRON))
+	_more("mine_cart")
 
 
 ## Saves the stand-in just made, and its furniture scene if there isn't one yet:

@@ -12,6 +12,7 @@ extends RefCounted
 const GROUND_LEVEL_TOLERANCE := 1.0
 
 static var terrain: Node = null # Terrain3D, or null (then the ground is y = 0)
+static var deepest := INF # the lowest mine floor (main.gd sets it): height_range() reaches down to it
 
 
 ## The terrain's height under a point (y = 0 without a terrain, or off its edge).
@@ -47,8 +48,10 @@ static func map_rect() -> Rect2:
 	return rect
 
 
-## The lowest and highest ground on the map (Vector2(min, max)).
+## The lowest and highest ground on the map (Vector2(min, max)), the lowest
+## taking in the mines (anything under that has fallen out of the world).
 static func height_range() -> Vector2:
 	if terrain == null or not is_instance_valid(terrain):
-		return Vector2.ZERO
-	return terrain.data.get_height_range()
+		return Vector2(minf(0.0, deepest), 0.0)
+	var heights: Vector2 = terrain.data.get_height_range()
+	return Vector2(minf(heights.x, deepest), heights.y)

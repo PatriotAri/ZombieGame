@@ -7,7 +7,7 @@ extends Node3D
 ## ground, and press Apply: the hillside is opened up where the tunnel comes
 ## through it (holes in the terrain), and stays closed over the tunnel deeper
 ## in. Move it and Apply again any time (Ctrl+Z undoes).
-## (The tunnels behind the cave-in, to explore, are a job of their own.)
+## (A mine to explore, tunnels and all, is a KitMine: world/map/kit_mine.gd.)
 
 const TerrainEdit := preload("res://world/map/terrain_edit.gd")
 const Rock := preload("res://world/map/rock.gd")

@@ -18,14 +18,14 @@ const META := &"batched" # on a batched mesh: [MultiMeshInstance3D, index]
 
 ## Batches the looks under root. Returns how many meshes it took in.
 static func batch(root: Node3D) -> int:
-	var groups := {} # [mesh, override, shadows, range, patch x, patch z] -> [MeshInstance3D]
+	var groups := {} # [mesh, override, shadows, range, render layers, patch x, patch z] -> [MeshInstance3D]
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mesh_inst := node as MeshInstance3D
 		if not _batchable(mesh_inst):
 			continue
 		var at := mesh_inst.global_position
 		var key := [mesh_inst.mesh, mesh_inst.material_override, mesh_inst.cast_shadow, mesh_inst.visibility_range_end,
-				floori(at.x / PATCH), floori(at.z / PATCH)]
+				mesh_inst.layers, floori(at.x / PATCH), floori(at.z / PATCH)]
 		if not groups.has(key):
 			groups[key] = []
 		(groups[key] as Array).append(mesh_inst)
@@ -46,6 +46,7 @@ static func batch(root: Node3D) -> int:
 		instance.multimesh = multi
 		instance.material_override = first.material_override
 		instance.cast_shadow = first.cast_shadow
+		instance.layers = first.layers
 		holder.add_child(instance)
 		if first.has_meta("view_meters"):
 			# The patch is drawn as one: as far as its far side is in range.

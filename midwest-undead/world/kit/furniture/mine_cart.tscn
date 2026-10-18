@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_ml2ka"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/mine_cart.tscn" id="2_d6ucc"]
+
+[node name="MineCart" type="StaticBody3D" unique_id=876962890]
+script = ExtResource("1_ml2ka")
+size = Vector3(0.9, 1, 1.3)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_d6ucc")])

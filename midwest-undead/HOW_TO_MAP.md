@@ -15,7 +15,7 @@ one step before starting the next; come back and change anything at any time.
 6. [Forests and plants](#6-forests-and-plants)
 7. [Crop fields](#7-crop-fields)
 8. [Cliffs and rocks](#8-cliffs-and-rocks)
-9. [Mine entrances](#9-mine-entrances)
+9. [Mines](#9-mines)
 10. [Buildings on hills](#10-buildings-on-hills)
 11. [The edge of the map](#11-the-edge-of-the-map)
 12. [Putting the story back: markers](#12-putting-the-story-back-markers)
@@ -48,8 +48,8 @@ to jump to it.
   appears when you select the **Terrain** node. It sculpts and paints the
   ground.
 - The **Map Tools** panel is a tab along the bottom of the editor, next to
-  Output. It adds roads, creeks, ponds, plants, fields, rocks, mine
-  entrances and buildings (drawing their outlines, stairs, doors and windows:
+  Output. It adds roads, creeks, ponds, plants, fields, rocks, mines
+  and buildings (drawing their outlines, stairs, doors and windows:
   `HOW_TO_BUILD.md`). If you can't see it, click **Map Tools** in the bottom bar.
 
 **Saving.** Ctrl+S saves the scene *and* the terrain (heights, paint and
@@ -318,21 +318,53 @@ Rocks are solid, and zombies path around them.
 
 ---
 
-## 9. Mine entrances
+## 9. Mines
+
+A mine is one node (a **KitMine**) holding all its tunnels and chambers,
+laid out on a grid of 2.5 m squares (**cells**) under the hills. Tunnels are
+one cell wide and 3 m high, held up by timber frames; **chambers** are big
+rooms, taller than a tunnel. **Levels** are 4 m apart: level 0 is the node's
+own height, -1 the one under it, and so on. It's dark inside (no sun or moon
+gets in, and the sky's light stops a few meters in from each entrance), so
+bring a flashlight.
 
 1. Make a steep hillside (section 2).
-2. Click **New mine entrance**. It appears where you're looking, facing away
-   from you.
-3. Move it to the **foot** of the hillside, with its floor at the ground, and
-   turn it so the tunnel (the side away from the timber frame) runs into the
-   hill.
-4. Press **Apply**. The hillside is opened where the tunnel comes through it;
-   deeper in, the hill stays closed over the tunnel.
-5. **Length**, **Width** and **Height** in the Inspector; Apply again after
-   changing them or moving it.
+2. In Map Tools' **Mines** section click **New mine**. It appears where
+   you're looking: an entrance and a tunnel running away from you.
+3. Move the node to the **foot** of the hillside, its floor at the ground,
+   and turn it so the tunnel runs into the hill (the green line in its plan
+   is the entrance).
+4. Pick a tool (the mine must be selected). Its plan shows over everything,
+   through the hill: the **Level** you're drawing on in yellow, the other
+   levels faint blue, entrances green, and what a click would add in orange.
+   - **Draw tunnel**: click where it starts, then each corner. It runs
+     straight from corner to corner along the grid. **Esc** or **Enter**
+     ends it; the next click starts another. Start or end on another tunnel
+     or a chamber to join them. Right-click takes back the last corner, or
+     (when you're not drawing one) removes the tunnel under the mouse.
+   - **Draw chamber**: click one corner, then the opposite one. Right-click
+     removes the chamber under the mouse. Its **Height** is in the Inspector
+     (Chambers); taller than 4 m, a tunnel on the level above that reaches
+     its side opens onto a ledge over it.
+   - **Mark entrance**: click the end of a tunnel that comes out of the
+     hill (again to take it back). A mine can have as many as you like.
+5. **Rails** (in the Mines section) gives new tunnels rails; each tunnel's
+   **Rails** and **Carts** are in the Inspector (Tunnels). Carts stand at
+   the end of the rails where a tunnel stops dead (anywhere else they'd
+   block the way). Everything the tools do can also be typed in there.
+6. At each entrance the floor runs on 1.5 m past the timber portal. Make the
+   ground **level with the floor** where that ends, rising into the hill
+   over the portal.
+7. Press **Apply**. The hillside is opened where the mine comes through it
+   (wherever the ground is inside a tunnel or chamber, or less than a meter
+   over its ceiling); under plenty of hill it stays closed. Apply again after
+   moving it, drawing more, or re-sculpting the ground over it.
 
-For now the tunnel ends in a cave-in a few meters in. Mines to explore are a
-separate job, still to come.
+Anything you put under the mine node (crates, lockers, carts of your own) is
+drawn in the dark with it.
+
+The older **New mine entrance** (Fields and features) is still there: a
+single short tunnel that ends in a cave-in.
 
 ---
 
@@ -545,6 +577,11 @@ If it slows down:
   want to draw (Draw points), or pick a brush (plants). If the panel is
   missing: Project > Project Settings > Plugins, and make sure **Map Tools**
   and **Terrain3D** are enabled.
+- **A mine's tunnel shows through the hill, or there's a hole in the
+  ground beside it:** the ground there is within a meter of the tunnel's
+  ceiling. Raise the hill over it (or lower the mine a level) and Apply again.
+- **I can't get into a mine:** the ground where the floor ends outside an
+  entrance must be level with the floor (section 9, step 6). Apply again.
 - **The terrain didn't save:** it saves with Ctrl+S on the map scene. Saved
   tiles are listed in the Output panel.
 - **The first time the project opens** Godot sets up the Terrain3D plugin; if
