@@ -10,6 +10,8 @@ extends Resource
 ## What they do at the base besides working a station. "machinist": makes
 ## benches (once the woodworker's at the station) instead of working one.
 @export_enum("none", "machinist") var job := "none"
+## Their own model (HOW_TO_MODEL.md). Empty: the one survivor.tscn has.
+@export var model: PackedScene
 @export var outfit_color := Color(0.4, 0.4, 0.4)
 @export var skin_color := Color(0.7, 0.55, 0.45)
 

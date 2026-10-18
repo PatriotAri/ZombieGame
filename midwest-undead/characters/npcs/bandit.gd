@@ -55,8 +55,6 @@ var _wander_timer := 0.0
 var _day_night: Node
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
-@onready var gun: Node3D = $Gun
-@onready var muzzle_flash: OmniLight3D = $Gun/MuzzleFlash
 
 
 func _npc_ready() -> void:
@@ -75,7 +73,6 @@ func _npc_physics(delta: float) -> void:
 		_reload_left -= delta
 		if _reload_left <= 0.0:
 			rounds = magazine_size
-			gun.rotation_degrees = Vector3.ZERO
 
 	_sense_timer -= delta
 	if _sense_timer <= 0.0:
@@ -88,6 +85,7 @@ func _npc_physics(delta: float) -> void:
 		State.COMBAT:
 			var dist := global_position.distance_to(target.global_position)
 			_face(target.global_position)
+			_aim_at(target.global_position + Vector3(0, 1.1, 0))
 			if dist > fire_range * 0.8:
 				move_to = target.global_position # close the distance (within the leash)
 			if dist <= fire_range and _cooldown <= 0.0 and _reload_left <= 0.0:
@@ -107,6 +105,16 @@ func _npc_physics(delta: float) -> void:
 			move_speed_now = move_speed * 0.4
 
 	_walk(move_to, move_speed_now)
+
+
+## The rifle up in a fight (walking with it low when moving), low otherwise.
+func _animation() -> Array:
+	var pace := Vector2(velocity.x, velocity.z).length()
+	if state != State.COMBAT:
+		body.aim_pitch = 0.0
+	if pace > 0.15:
+		return ["rifle_walk", clampf(pace / WALK_PACE, 0.4, 2.2)]
+	return ["rifle_aim" if state == State.COMBAT else "rifle_idle", 1.0]
 
 
 ## Zombies, the player, and other bandits all call this through the
@@ -216,9 +224,6 @@ func _shoot_at(enemy: Node3D) -> void:
 		return
 	_cooldown = fire_interval * randf_range(0.8, 1.25)
 	var aim := enemy.global_position + Vector3(0, 1.1, 0)
-	var to_aim := aim - gun.global_position
-	if to_aim.length() > 0.1:
-		gun.look_at(aim, Vector3.FORWARD if absf(to_aim.normalized().y) > 0.99 else Vector3.UP)
 
 	var end := aim
 	var dist := global_position.distance_to(enemy.global_position)
@@ -234,16 +239,16 @@ func _shoot_at(enemy: Node3D) -> void:
 	else:
 		end += Vector3(randf_range(-1.2, 1.2), randf_range(-0.5, 0.9), randf_range(-1.2, 1.2))
 
-	_tracer(gun.global_transform * Vector3(0, 0, -0.35), end)
-	Sound.play_at(self, "gunshot", gun.global_position, -2.0, 70.0, 0.08)
-	muzzle_flash.visible = true
-	get_tree().create_timer(0.05).timeout.connect(func() -> void: muzzle_flash.visible = false)
+	_tracer(muzzle(), end)
+	Sound.play_at(self, "gunshot", muzzle(), -2.0, 70.0, 0.08)
+	_flash_muzzle()
+	body.one_shot("rifle_shoot")
 	get_tree().call_group("noise_listeners", "hear_noise", global_position, noise_radius)
 
 	rounds -= 1
 	if rounds <= 0:
 		_reload_left = reload_time
-		gun.rotation_degrees = Vector3(-50, 0, 0)
+		body.one_shot("rifle_reload", reload_time)
 
 
 # --- Movement ----------------------------------------------------------------

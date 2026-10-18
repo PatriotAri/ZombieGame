@@ -136,6 +136,8 @@ Every new zombie, at the start and arriving later, rolls a kind:
   - `none`: they work a garden plot or a bench at their camp, or stand guard on
     a guard post.
   - `machinist`: they make benches once the woodworker's at the station.
+- **Model:** optional, their own model (see `HOW_TO_MODEL.md`). Empty: the one
+  every survivor has.
 - **Outfit Color, Skin Color.**
 - **Talk:**
   - **Join Talk:** a conversation, the same as in quests (see `QUESTS.md`).

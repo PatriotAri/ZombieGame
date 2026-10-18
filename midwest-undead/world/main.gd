@@ -488,6 +488,7 @@ func _discoverable_places() -> Array[Dictionary]:
 ## (trading, building...) it's a choice. With nothing about quests, they do
 ## their own thing.
 func _on_npc_interacted(npc: HumanNPC) -> void:
+	npc.talking = true # (until your menus close)
 	if npc is Woodworker and (npc as Woodworker).state == Woodworker.State.CAPTIVE:
 		woodworker_rescue.untie() # (the rescue itself is the woodworker's own scene)
 		return

@@ -1,12 +1,12 @@
 # How to add models and animations
 
-Weapons in your hands and zombies work with or without a model. Without one, a
-weapon is today's box gun and a zombie is the mannequin: a plain stand-in with
-a real skeleton and rough animations. You can swap a model in whenever you have
-one, and nothing else has to change.
+Weapons in your hands, zombies and people work with or without a model.
+Without one, a weapon is today's box gun, and a zombie or a person is the
+mannequin: a plain stand-in with a real skeleton and rough animations. You can
+swap a model in whenever you have one, and nothing else has to change.
 
-So far this covers **weapons in your hands** (first person) and **zombies**.
-NPCs, props and buildings come later.
+So far this covers **weapons in your hands** (first person), **zombies** and
+**people** (everyone who isn't a zombie). Props and buildings come later.
 
 ## The rules every model follows
 
@@ -219,6 +219,71 @@ godot --headless --path . -s res://characters/mannequin/make_mannequin.gd
   - how far it's drawn.
 - `world/zombie_population.gd`: **BODY_CLEANUP_DISTANCE**. Bodies are cleared
   away once you're this far and not looking.
+
+## People
+
+Survivors, guards, traders, the police chief, the woodworker and bandits.
+A person's model is built and imported exactly like a zombie's (see **What a
+character model needs** and **Getting it in** above; put people's models in
+`characters/npcs/models/`).
+
+### Whose model is whose
+Every person has a **Model** setting (Inspector, **Look** group). The most
+specific one wins:
+1. **One person:** a survivor's file (`characters/npcs/survivors/`) has its
+   own **Model**. People with their own scene (the police chief, the
+   woodworker, the shopkeeper, the wagon trader) set it in their scene.
+2. **A kind:** `guard.tscn`, `bandit.tscn`, `survivor.tscn`...
+3. **Everyone:** `characters/npcs/human_npc.tscn`. Set it here for one
+   default model for everybody. Left empty: the mannequin.
+
+A survivor posted on a guard post keeps their own model.
+
+### Animations
+Played by name. A model's own come first; for any it doesn't have, it borrows
+the mannequin's people animations (`characters/mannequin/people_animations.tres`,
+not the zombie ones).
+
+| Name | When | Notes |
+|---|---|---|
+| `idle` | standing around | loops |
+| `walk` | walking | loops; one cycle (two steps) covers 1.4 m, sped up or slowed to match |
+| `run` | running (over 3.2 m/s) | loops; one cycle covers 2.8 m |
+| `talk` | while you're talking to them | loops |
+| `hit_head`, `hit_body`, `hit_legs` | flinching from a hit there | plays once (about 0.4 s) |
+| `rifle_idle` | guards and bandits, nothing to shoot | loops; the rifle held low |
+| `rifle_walk` | bandits walking about | loops; 1.4 m per cycle |
+| `rifle_aim` | aiming | loops; aim level ahead (the game tips the spine up or down at the target) |
+| `rifle_shoot` | each shot | plays once (about 0.4 s) |
+| `rifle_reload` | reloading | plays once, fitted to the reload time |
+| `work_dig` | a survivor working a garden plot | loops |
+| `work_bench` | a survivor working an ammo, shell or rifle bench | loops |
+
+### The rifle
+Guards and bandits carry the rifle's held model (`items/data/rifle.tres`, the
+same one you hold) in the **RightHand** bone. Its **MuzzleFlash** is where
+their shots come from. If it sits wrong in your model's hand, select the
+guard or bandit scene's root and change **Rifle > Rifle Hold** (where the rifle
+sits in the hand bone's space).
+
+### Hats and other extras
+Anything else under a person's **Visual** node (the chief's hat, the bandits'
+bandanas) is moved onto the nearest bone when they appear, so it moves with
+the head. Put it where it belongs on the mannequin (or your model) standing in
+its T-pose.
+
+### What happens on its own
+- **Colors:** the mannequin's shirt and pants take the person's **Outfit
+  Color** (the pants a bit darker), its skin their **Skin Color**. A real model
+  keeps its own textures.
+- **Ragdoll and blood:** like zombies. Shot people bleed where they're hit,
+  flinch, and fall limp when they die. The rifle falls with the hand.
+- **Detail by distance:** the same as zombies.
+
+### Tuning
+- `characters/npcs/human_npc.gd`: **WALK_PACE**, **RUN_PACE**, **RUN_FROM**.
+- The mannequin's people animations are made by the same script as the
+  zombies' (`characters/mannequin/make_mannequin.gd`, the **People** part).
 
 ## Free models
 

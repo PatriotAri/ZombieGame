@@ -19,3 +19,10 @@ var guard_post: Node3D = null # the guard post they're on, or null
 
 func interact_prompt() -> String:
 	return "" if state == State.TRAVELLING else "talk to " + display_name
+
+
+## At work: bent over the garden, or at a bench.
+func _animation() -> Array:
+	if working and not talking and is_instance_valid(work_piece):
+		return ["work_dig" if work_piece.get("kind") == "garden_plot" else "work_bench", 1.0]
+	return super()

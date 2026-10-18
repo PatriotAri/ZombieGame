@@ -33,9 +33,7 @@ var rounds := 5
 
 var _cooldown := 0.0
 var _reload_left := 0.0
-
-@onready var rifle: Node3D = $Rifle
-@onready var muzzle_flash: OmniLight3D = $Rifle/MuzzleFlash
+var _aim_left := 0.0 # seconds it keeps the rifle up after its last target
 
 
 ## One of your survivors on a guard post (world/camps.gd) can be talked to.
@@ -49,11 +47,11 @@ func _npc_ready() -> void:
 
 
 func _npc_physics(delta: float) -> void:
+	_aim_left -= delta
 	if _reload_left > 0.0:
 		_reload_left -= delta
 		if _reload_left <= 0.0:
 			rounds = magazine_size
-			rifle.rotation_degrees = Vector3.ZERO
 		return
 	_cooldown -= delta
 	if _cooldown > 0.0:
@@ -64,6 +62,14 @@ func _npc_physics(delta: float) -> void:
 		return
 	_cooldown = fire_interval * randf_range(0.85, 1.15)
 	_fire_at(target)
+
+
+## Rifle up while there's been something to shoot lately, else held low.
+func _animation() -> Array:
+	if _aim_left > 0.0:
+		return ["rifle_aim", 1.0]
+	body.aim_pitch = 0.0
+	return ["rifle_idle", 1.0]
 
 
 func _eye() -> Vector3:
@@ -115,27 +121,25 @@ func _fire_at(target: Node3D) -> void:
 	var flat := Vector3(aim.x - global_position.x, 0.0, aim.z - global_position.z)
 	if flat.length() > 0.1:
 		look_at(global_position + flat, Vector3.UP)
-	var to_aim := aim - rifle.global_position
-	if to_aim.length() > 0.1:
-		rifle.look_at(aim, Vector3.FORWARD if absf(to_aim.normalized().y) > 0.99 else Vector3.UP)
+	_aim_at(aim)
+	_aim_left = 3.0
 
 	var end := aim
 	if randf() < hit_chance:
 		var headshot := randf() < headshot_chance
 		var hit_pos: Vector3 = target.call("head_point") if headshot and target.has_method("head_point") else aim
-		target.call("take_hit", damage * (2.5 if headshot else 1.0), rifle.global_position, 1.0, self, hit_pos)
+		target.call("take_hit", damage * (2.5 if headshot else 1.0), muzzle(), 1.0, self, hit_pos)
 	else:
 		end += Vector3(randf_range(-1.5, 1.5), randf_range(-0.6, 1.0), randf_range(-1.5, 1.5))
 
-	var muzzle := rifle.global_transform * Vector3(0, 0, -0.9)
-	_tracer(muzzle, end)
-	Sound.play_at(self, "rifle_shot", muzzle, 0.0, 90.0, 0.06)
-	muzzle_flash.visible = true
-	get_tree().create_timer(0.05).timeout.connect(func() -> void: muzzle_flash.visible = false)
+	_tracer(muzzle(), end)
+	Sound.play_at(self, "rifle_shot", muzzle(), 0.0, 90.0, 0.06)
+	_flash_muzzle()
+	body.one_shot("rifle_shoot")
 	get_tree().call_group("noise_listeners", "hear_noise", global_position, noise_radius)
 
 	rounds -= 1
 	if rounds <= 0:
 		# Out of rounds: lower the rifle and reload. A gap the zombies can exploit.
 		_reload_left = reload_time
-		rifle.rotation_degrees = Vector3(-50, 0, 0)
+		body.one_shot("rifle_reload", reload_time)

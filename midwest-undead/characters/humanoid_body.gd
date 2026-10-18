@@ -1,17 +1,19 @@
 extends Node3D
 ## A character's body: its model (a real one, or the mannequin stand-in), its
 ## animations, ragdoll, blood marks and colors. zombie.gd puts one in each
-## zombie and says what it's doing; this does the showing. (NPCs can use it too.)
+## zombie and person (characters/npcs/human_npc.gd) and says what it's doing;
+## this does the showing.
 ##
 ## The model: any character scene with a humanoid skeleton named like Godot's
 ## humanoid profile (Hips, Spine, Chest, Head, LeftUpperArm...), the way the
 ## importer leaves a model imported with the Humanoid bone map. With none it's
 ## the mannequin (characters/mannequin/). See HOW_TO_MODEL.md.
 ##
-## Animations: by name (idle, walk, run, attack, bash, hit_head, hit_body,
-## hit_legs, climb; crawl_idle, crawl, crawl_attack, crawl_hit for crawlers).
-## The model's own are used when it has them; for any it hasn't, the
-## mannequin's. Distance matters: up close they move every frame, further away
+## Animations: by name (zombies: idle, walk, run, attack, bash, hit_head,
+## hit_body, hit_legs, climb; crawl_idle, crawl, crawl_attack, crawl_hit for
+## crawlers. People: see human_npc.gd). The model's own are used when it has
+## them; for any it hasn't, the mannequin's (zombies' or people's, as setup()
+## is told). aim_pitch tips the spine up or down on top (aiming at something). Distance matters: up close they move every frame, further away
 ## or out of sight less often (nobody can tell, and it saves a lot with a horde):
 ##   under NEAR_DISTANCE: every frame; under MID_DISTANCE: every MID_EVERY
 ##   frames; beyond, or off screen: every FAR_EVERY frames.
@@ -30,6 +32,7 @@ signal settled # the ragdoll has come to rest (frozen)
 const Blood := preload("res://effects/blood.gd")
 const MANNEQUIN := preload("res://characters/mannequin/mannequin.tscn")
 const MANNEQUIN_ANIMATIONS := preload("res://characters/mannequin/mannequin_animations.tres")
+const PEOPLE_ANIMATIONS := preload("res://characters/mannequin/people_animations.tres")
 const BODY_SHADER := preload("res://characters/mannequin/body.gdshader")
 const FALLBACK_LIBRARY := "mannequin"
 
@@ -78,6 +81,8 @@ var animator: AnimationPlayer
 ## A CollisionShape3D to keep on the head (the owner's headshot hitbox), or null.
 var head_shape: CollisionShape3D
 var current := "" # the looping animation playing
+## Radians, up positive: the spine tips this far on top of the animation.
+var aim_pitch := 0.0
 var is_ragdoll := false
 var is_settled := false # ragdoll frozen
 var _one_shot_left := 0.0 # > 0: a one-off (flinch, climb) is playing; set_action waits
@@ -93,10 +98,14 @@ var _ragdoll_time := 0.0
 var _still_time := 0.0
 var _wounds: Array[Node3D] = []
 var _attachments := {} # bone index -> BoneAttachment3D
+var _spine := -1
+var _spine_unaimed := Quaternion.IDENTITY # its rotation before aim_pitch went on
+var _aimed := false
 
 
-## scene: the model (null: the mannequin).
-func setup(scene: PackedScene) -> void:
+## scene: the model (null: the mannequin). library: the mannequin's animations
+## it borrows from (the zombies', or PEOPLE_ANIMATIONS).
+func setup(scene: PackedScene, library: AnimationLibrary = MANNEQUIN_ANIMATIONS) -> void:
 	model = (scene if scene else MANNEQUIN).instantiate()
 	add_child(model)
 	skeleton = model.get_node_or_null("%GeneralSkeleton") as Skeleton3D
@@ -106,13 +115,16 @@ func setup(scene: PackedScene) -> void:
 	if animator == null:
 		animator = AnimationPlayer.new()
 		model.add_child(animator)
-	# The mannequin's animations for whatever the model hasn't got (the mannequin
-	# itself already has them).
+	# The mannequin's animations for whatever the model hasn't got. The mannequin
+	# comes with the zombies'; borrowing people's, those go.
 	var has_them := false
-	for library in animator.get_animation_library_list():
-		has_them = has_them or animator.get_animation_library(library) == MANNEQUIN_ANIMATIONS
+	for name in animator.get_animation_library_list():
+		var own := animator.get_animation_library(name)
+		if own == MANNEQUIN_ANIMATIONS and library != MANNEQUIN_ANIMATIONS:
+			animator.remove_animation_library(name)
+		has_them = has_them or own == library
 	if not has_them:
-		animator.add_animation_library(FALLBACK_LIBRARY, MANNEQUIN_ANIMATIONS)
+		animator.add_animation_library(FALLBACK_LIBRARY, library)
 	animator.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	for node in model.find_children("*", "MeshInstance3D", true, false):
 		var mesh := node as MeshInstance3D
@@ -122,6 +134,7 @@ func setup(scene: PackedScene) -> void:
 				(mesh.mesh.surface_get_material(0) if mesh.mesh and mesh.mesh.get_surface_count() > 0 else null)
 		if mat is ShaderMaterial and (mat as ShaderMaterial).shader == BODY_SHADER:
 			_tinted.append(mesh)
+	_spine = skeleton.find_bone("Spine")
 	_notifier = VisibleOnScreenNotifier3D.new()
 	_notifier.aabb = AABB(Vector3(-0.7, 0.0, -0.9), Vector3(1.4, 2.0, 1.8))
 	add_child(_notifier)
@@ -196,9 +209,26 @@ func _process(delta: float) -> void:
 	var every := _update_every()
 	if every > 1 and (_frame + _phase) % every != 0:
 		return
+	if _aimed: # back to the animation's own, so the tip doesn't add up
+		skeleton.set_bone_pose_rotation(_spine, _spine_unaimed)
+		_aimed = false
 	animator.advance(_pending)
 	_pending = 0.0
+	_aim()
 	_place_head_shape()
+
+
+## Tips the spine by aim_pitch (about the body's left-right axis), whatever its
+## animation is doing.
+func _aim() -> void:
+	if is_zero_approx(aim_pitch) or _spine < 0:
+		return
+	_spine_unaimed = skeleton.get_bone_pose_rotation(_spine)
+	var parent := skeleton.get_bone_parent(_spine)
+	var parent_basis := skeleton.get_bone_global_pose(parent).basis if parent >= 0 else Basis.IDENTITY
+	var tipped := Basis(Vector3.RIGHT, -aim_pitch) * skeleton.get_bone_global_pose(_spine).basis
+	skeleton.set_bone_pose_rotation(_spine, (parent_basis.inverse() * tipped).get_rotation_quaternion())
+	_aimed = true
 
 
 ## How many frames between animation steps, by distance from the camera.
@@ -283,17 +313,23 @@ func set_flash(amount: float) -> void:
 		mesh.set_instance_shader_parameter("flash", amount)
 
 
-## A blood mark where a hit landed, stuck to the nearest bone so it moves with it.
-func wound(at: Vector3, normal: Vector3) -> void:
-	var bone := nearest_bone(at)
-	if bone < 0:
-		return
+## A node that follows a bone (index) around: its animation, the ragdoll.
+## Things added to it go with the bone (blood marks, a hat, a rifle in the hand).
+func attachment(bone: int) -> BoneAttachment3D:
 	if not _attachments.has(bone):
 		var attach := BoneAttachment3D.new()
 		attach.bone_idx = bone
 		skeleton.add_child(attach)
 		_attachments[bone] = attach
-	var mark := Blood.body_mark(_attachments[bone], at, normal)
+	return _attachments[bone]
+
+
+## A blood mark where a hit landed, stuck to the nearest bone so it moves with it.
+func wound(at: Vector3, normal: Vector3) -> void:
+	var bone := nearest_bone(at)
+	if bone < 0:
+		return
+	var mark := Blood.body_mark(attachment(bone), at, normal)
 	if mark == null:
 		return
 	_wounds.append(mark)

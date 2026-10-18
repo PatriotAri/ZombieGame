@@ -356,6 +356,8 @@ func post_guard(survivor: Survivor, piece: StructurePiece) -> void:
 	piece.worker = survivor
 	var guard := GuardScene.instantiate() as Guard
 	guard.display_name = survivor.display_name
+	if survivor.model:
+		guard.model = survivor.model
 	guard.outfit_color = survivor.outfit_color
 	guard.skin_color = survivor.skin_color
 	guard.zombies_target = false # out of reach up there: they don't get eaten
