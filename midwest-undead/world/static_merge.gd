@@ -71,9 +71,10 @@ static func _material(mesh_inst: MeshInstance3D, surface: int) -> Material:
 	return mat if mat else mesh_inst.mesh.surface_get_material(surface)
 
 
-## One merged surface being built: vertices, normals, UVs and tangents, moved
-## into the map's space.
+## One merged surface being built: vertices, normals, UVs, tangents and colors
+## (a flattened stand-in's, kit_prop.gd), moved into the map's space.
 class Bucket:
+	var colors := PackedColorArray()
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
@@ -86,6 +87,7 @@ class Bucket:
 		var uv = arrays[Mesh.ARRAY_TEX_UV]
 		var t = arrays[Mesh.ARRAY_TANGENT]
 		var idx = arrays[Mesh.ARRAY_INDEX]
+		var c = arrays[Mesh.ARRAY_COLOR]
 		var start := verts.size()
 		var basis := xform.basis
 		var normal_basis := basis.inverse().transposed() # right for stretched pieces too
@@ -93,6 +95,7 @@ class Bucket:
 			verts.append(xform * v[i])
 			normals.append((normal_basis * (n[i] as Vector3)).normalized() if n != null else Vector3.UP)
 			uvs.append(uv[i] if uv != null else Vector2.ZERO)
+			colors.append(c[i] if c != null else Color.WHITE)
 			if t != null:
 				var tangent := (basis * Vector3(t[i * 4], t[i * 4 + 1], t[i * 4 + 2])).normalized()
 				tangents.append_array([tangent.x, tangent.y, tangent.z, t[i * 4 + 3]])
@@ -112,6 +115,7 @@ class Bucket:
 		arrays[Mesh.ARRAY_NORMAL] = normals
 		arrays[Mesh.ARRAY_TEX_UV] = uvs
 		arrays[Mesh.ARRAY_TANGENT] = tangents
+		arrays[Mesh.ARRAY_COLOR] = colors
 		arrays[Mesh.ARRAY_INDEX] = indices
 		var mesh := ArrayMesh.new()
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)

@@ -24,6 +24,7 @@ const DEFAULTS := {
 	"shadows": 1,
 	"view_distance": 1.0,
 	"render_scale": 1.0,
+	"occlusion_culling": true,
 }
 
 ## Multipliers on the player's tuned look speeds (player.tscn), so 1.0 is the
@@ -42,10 +43,13 @@ static var sfx_volume := 1.0
 ## Graphics. Shadows: 0 off, 1 medium, 2 high (SHADOW_QUALITY). View distance:
 ## how far small things are drawn (core/view_distance.gd), as a multiplier.
 ## Render scale: the 3D world's resolution, as a fraction of the window's (the
-## menus and HUD stay sharp).
+## menus and HUD stay sharp). Occlusion culling: what's hidden behind buildings
+## isn't drawn (a little work for the processor; much less for the graphics
+## card in a town).
 static var shadows := 1
 static var view_distance := 1.0
 static var render_scale := 1.0
+static var occlusion_culling := true
 
 
 static func load_settings() -> void:
@@ -91,6 +95,7 @@ static func get_value(key: String) -> Variant:
 		"shadows": return shadows
 		"view_distance": return view_distance
 		"render_scale": return render_scale
+		"occlusion_culling": return occlusion_culling
 	return null
 
 
@@ -108,6 +113,7 @@ static func set_value(key: String, value: Variant) -> void:
 		"shadows": shadows = clampi(int(value), 0, 2)
 		"view_distance": view_distance = clampf(float(value), 0.5, 1.5)
 		"render_scale": render_scale = clampf(float(value), 0.5, 1.0)
+		"occlusion_culling": occlusion_culling = bool(value)
 	_apply_volume()
 	apply_graphics()
 
@@ -121,6 +127,7 @@ static func apply_graphics() -> void:
 		return
 	ViewDistance.set_scale(tree, view_distance)
 	tree.root.scaling_3d_scale = render_scale
+	tree.root.use_occlusion_culling = occlusion_culling
 	for node in tree.get_nodes_in_group("sun"):
 		var sun := node as DirectionalLight3D
 		sun.shadow_enabled = shadows > 0

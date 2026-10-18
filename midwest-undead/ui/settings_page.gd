@@ -30,6 +30,7 @@ func _init() -> void:
 	_add_slider("Shadows", "shadows", 0.0, 2.0, 1.0, _shadow_name)
 	_add_slider("View distance", "view_distance", 0.5, 1.5, 0.05, _percent)
 	_add_slider("Resolution", "render_scale", 0.5, 1.0, 0.05, _percent)
+	_add_check("Hide what's behind buildings (occlusion culling)", "occlusion_culling")
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 12)
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER

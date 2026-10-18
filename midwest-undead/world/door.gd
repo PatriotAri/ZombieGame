@@ -198,6 +198,8 @@ func bash(damage: float) -> void:
 	if now < _next_bash_ms:
 		return
 	_next_bash_ms = now + int(BASH_INTERVAL * 1000.0)
+	if _look:
+		_look.unbatch() # (it jumps)
 	Sound.play_at(self, "door_bash", global_position + Vector3.UP, 0.0, 30.0, 0.12)
 	if _bash_tween:
 		_bash_tween.kill()
@@ -285,6 +287,8 @@ func _swung() -> void:
 
 
 func _apply_amount(amount: float) -> void:
+	if _look and amount != _amount:
+		_look.unbatch() # it's moving: drawn on its own (world/instancer.gd)
 	_amount = amount
 	transform = _closed * Transform3D(Basis(open_axis, open_yaw * amount), open_shift * amount)
 	if clear_path_when_closing and _closing and is_inside_tree():

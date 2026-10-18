@@ -173,6 +173,36 @@ func add_to(body: Node3D, mesh_name := "Mesh") -> Array[Node]:
 	return added
 
 
+## What hides what's behind it, for occlusion culling: the mesh's big opaque
+## faces (walls, floors, roofs; not trim, edges or glass). Null if none.
+static func occluder_of(m: ArrayMesh, min_area := 0.6) -> ArrayOccluder3D:
+	if m == null:
+		return null
+	var verts := PackedVector3Array()
+	var indices := PackedInt32Array()
+	for s in m.get_surface_count():
+		var mat := m.surface_get_material(s) as BaseMaterial3D
+		if mat and mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+			continue
+		var arrays := m.surface_get_arrays(s)
+		var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(v.size()))
+		for i in range(0, idx.size(), 3):
+			var a := v[idx[i]]
+			var b := v[idx[i + 1]]
+			var c := v[idx[i + 2]]
+			if (b - a).cross(c - a).length() / 2.0 < min_area:
+				continue
+			var start := verts.size()
+			verts.append_array([a, b, c])
+			indices.append_array([start, start + 1, start + 2])
+	if verts.is_empty():
+		return null
+	var occluder := ArrayOccluder3D.new()
+	occluder.set_arrays(verts, indices)
+	return occluder
+
+
 # --- Slabs of any outline ----------------------------------------------------------
 # An outline is a PackedVector2Array of (x, z) corners. A hole is a rectangle
 # that can be turned: {"xform": Transform2D (its middle; x along it), "size": Vector2}.

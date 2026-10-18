@@ -745,7 +745,16 @@ func _rebuild() -> void:
 	body.name = "Shell"
 	add_child(body, false, Node.INTERNAL_MODE_BACK)
 	_generated.append(body)
-	km.add_to(body)
+	var shell := km.add_to(body)
+	if not Engine.is_editor_hint() and not shell.is_empty() and shell[0] is MeshInstance3D:
+		# What it hides from view (occlusion culling): its walls, floors, roof.
+		var occluder := KitMesh.occluder_of((shell[0] as MeshInstance3D).mesh)
+		if occluder:
+			var hides := OccluderInstance3D.new()
+			hides.name = "Occluder"
+			hides.occluder = occluder
+			add_child(hides, false, Node.INTERNAL_MODE_BACK)
+			_generated.append(hides)
 	for node in made:
 		add_child(node, false, Node.INTERNAL_MODE_BACK)
 		_generated.append(node)
