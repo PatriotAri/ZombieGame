@@ -1,0 +1,58 @@
+[gd_resource type="Resource" script_class="LootTable" format=3]
+
+[ext_resource type="Script" path="res://items/loot_roll.gd" id="1_cphua"]
+[ext_resource type="Script" path="res://items/loot_pick.gd" id="2_brjpj"]
+[ext_resource type="Script" path="res://items/loot_table.gd" id="3_k5ph5"]
+
+[sub_resource type="Resource" id="Resource_0p840"]
+script = ExtResource("2_brjpj")
+item = "shotgun_shells"
+max_amount = 4
+
+[sub_resource type="Resource" id="Resource_6bvue"]
+script = ExtResource("1_cphua")
+chance = 0.3
+items = Array[ExtResource("2_brjpj")]([SubResource("Resource_0p840")])
+
+[sub_resource type="Resource" id="Resource_x1lqq"]
+script = ExtResource("2_brjpj")
+item = "canned_food"
+max_amount = 2
+
+[sub_resource type="Resource" id="Resource_5h2gn"]
+script = ExtResource("1_cphua")
+chance = 0.25
+items = Array[ExtResource("2_brjpj")]([SubResource("Resource_x1lqq")])
+
+[sub_resource type="Resource" id="Resource_nl7g4"]
+script = ExtResource("2_brjpj")
+item = "planks"
+max_amount = 2
+
+[sub_resource type="Resource" id="Resource_qnqcq"]
+script = ExtResource("1_cphua")
+chance = 0.3
+items = Array[ExtResource("2_brjpj")]([SubResource("Resource_nl7g4")])
+
+[sub_resource type="Resource" id="Resource_cjv6i"]
+script = ExtResource("2_brjpj")
+item = "scrap_metal"
+max_amount = 2
+
+[sub_resource type="Resource" id="Resource_5fb84"]
+script = ExtResource("1_cphua")
+chance = 0.3
+items = Array[ExtResource("2_brjpj")]([SubResource("Resource_cjv6i")])
+
+[sub_resource type="Resource" id="Resource_dk0dm"]
+script = ExtResource("2_brjpj")
+item = "rifle"
+
+[sub_resource type="Resource" id="Resource_p8rwq"]
+script = ExtResource("1_cphua")
+chance = 0.03
+items = Array[ExtResource("2_brjpj")]([SubResource("Resource_dk0dm")])
+
+[resource]
+script = ExtResource("3_k5ph5")
+rolls = Array[ExtResource("1_cphua")]([SubResource("Resource_6bvue"), SubResource("Resource_5h2gn"), SubResource("Resource_qnqcq"), SubResource("Resource_5fb84"), SubResource("Resource_p8rwq")])

@@ -46,6 +46,12 @@ const BUILDING_TOOLS := ["Off", "Draw outline", "Draw inner wall", "Place stairs
 const OPENING_SIZES := {"door": [1.6, 0.0, 2.4], "window": [1.2, 0.9, 2.3], "doorway": [1.6, 0.0, 2.4],
 		"garage door": [2.8, 0.0, 2.3]}
 const GARAGE_WHITE := Color(0.85, 0.85, 0.82)
+## The silos New from template adds: [radius, height, wall material, roof material].
+const SILOS := {
+	"Concrete": [3.0, 12.0, "concrete_block", "metal_gray"],
+	"Metal": [3.5, 9.0, "metal_siding", "metal_gray"],
+	"Tall": [3.0, 18.0, "concrete_slab", "metal_gray"],
+}
 const GRID := 0.5
 const ROADS_DIR := "res://world/map/roads/"
 const APPLY_MARGIN := 40.0 # meters around a path that an Apply's undo step covers
@@ -58,6 +64,7 @@ var _selected_label: Label
 var _help: Label
 var _draw: CheckButton
 var _apply: Button
+var _template_list: OptionButton
 var _add_span: Button
 var _add_falls: Button
 var _brush: OptionButton
@@ -146,6 +153,22 @@ func _build_panel() -> Control:
 
 	var buildings := _section(root, "Buildings")
 	_button(buildings, "New building", "Adds a 10 x 10 m building with a door and windows in front of the camera. Then reshape it with the tools below or the Inspector.", _new_building)
+	_template_list = OptionButton.new()
+	_template_list.add_item("New from template...")
+	_template_list.set_item_disabled(0, true)
+	for t: String in KitTemplates.NAMES:
+		_template_list.add_separator(t)
+		for v: String in KitTemplates.VARIANTS[t]:
+			_template_list.add_item("%s: %s" % [t, v])
+			_template_list.set_item_metadata(_template_list.item_count - 1, [t, KitTemplates.VARIANTS[t].find(v)])
+	_template_list.add_separator("Silo")
+	for v: String in SILOS:
+		_template_list.add_item("Silo: " + v)
+		_template_list.set_item_metadata(_template_list.item_count - 1, ["Silo", SILOS.keys().find(v)])
+	_template_list.tooltip_text = "Adds a ready-made building in front of the camera (its Template settings in the Inspector change it later). Furnish its rooms with Furnish rooms."
+	_template_list.item_selected.connect(_new_from_template)
+	buildings.add_child(_template_list)
+	_button(buildings, "Furnish rooms", "Puts furniture in the selected building's rooms that have a Kind (Paint room, or a template's). Again: replaces what it put in. Ctrl+Z undoes it.", _furnish_selected)
 	_building_tool = OptionButton.new()
 	for t: String in BUILDING_TOOLS:
 		_building_tool.add_item(t)
@@ -459,6 +482,36 @@ func _new_building() -> void:
 	_add(building, _group("Buildings"), "New building")
 
 
+func _new_from_template(index: int) -> void:
+	var picked: Array = _template_list.get_item_metadata(index)
+	_template_list.select(0)
+	if picked[0] == "Silo":
+		var spec: Array = SILOS.values()[picked[1]]
+		var silo := KitSilo.new()
+		silo.name = "Silo"
+		silo.position = _in_view()
+		silo.radius = spec[0]
+		silo.height = spec[1]
+		silo.wall_material = load("res://world/kit/materials/%s.tres" % spec[2])
+		silo.roof_material = load("res://world/kit/materials/%s.tres" % spec[3])
+		_add(silo, _group("Buildings"), "New silo")
+		return
+	var building := Building.new()
+	building.name = (picked[0] as String).to_pascal_case()
+	building.position = _in_view()
+	building.template = picked[0]
+	building.template_variant = picked[1]
+	building.apply_template() # (not in the scene yet: the add below is the undo step)
+	_add(building, _group("Buildings"), "New " + picked[0])
+
+
+func _furnish_selected() -> void:
+	if not _selected is Building:
+		push_warning("Select a building in the map scene to furnish.")
+		return
+	_selected.call("furnish_rooms")
+
+
 func _new_mine() -> void:
 	var mine := MineEntrance.new()
 	mine.name = "MineEntrance"
@@ -718,7 +771,7 @@ func _building_help() -> String:
 		"Draw inner wall":
 			return "Click one end of the wall, then the other (on the Floor set here; right angles, Shift for any). Ends snap to a 0.5 m grid: start and end on an outside wall or another inner wall to close off a room. Right-click removes the inner wall under the mouse. Then add doorways with Add doorway."
 		"Paint room":
-			return "Click inside a room (on the Floor set here): it's marked and opens in the Inspector, to give its walls and floor their own materials. Right-click on a room removes its mark."
+			return "Click inside a room (on the Floor set here): it's marked and opens in the Inspector, to set its Kind (what Furnish rooms puts in it) and give its walls and floor their own materials. Right-click on a room removes its mark."
 		"Place chimney":
 			return "Click where it goes (clicks land at the top of the walls). It stands from the ground up through the roof. Right-click removes the one under the mouse."
 		"Place dormer":

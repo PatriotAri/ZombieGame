@@ -98,6 +98,22 @@ const GarageDoorLook := preload("res://world/props/garage_door.tscn")
 const CellarDoorLook := preload("res://world/props/cellar_door.tscn")
 const ScreenDoorLook := preload("res://world/props/screen_door.tscn")
 
+@export_group("Template")
+## A ready-made building to start from (world/kit/kit_templates.gd): pick one
+## and a Variant, then press Apply Template. It replaces all its settings
+## (and what's outside it from a template before: a canopy, a sign...), and
+## takes out the furniture Furnish Rooms put in. Ctrl+Z undoes it.
+@export_enum("Farmhouse", "Ranch house", "Cottage", "Trailer", "Corner store", "Gas station", "Diner", "Church",
+		"School", "Police station", "Barn", "Machine shed") var template := "Farmhouse":
+	set(value):
+		template = value
+		template_variant = 0
+		notify_property_list_changed()
+@export var template_variant := 0
+## Apply Template picks the outside's colour at random (from ones that suit it).
+@export var random_colours := false
+@export_tool_button("Apply Template", "Reload") var template_button := apply_template
+
 @export_group("Size")
 ## How far back from the front wall it goes (local +x), in meters. (A drawn
 ## Footprint replaces this and Width.)
@@ -255,12 +271,18 @@ const ScreenDoorLook := preload("res://world/props/screen_door.tscn")
 		inner_walls = value
 		_changed()
 ## Rooms with their own wall and floor materials (the space round each one's
-## point, closed off by walls). Map Tools (Buildings > Paint room) adds them.
+## point, closed off by walls), and what they're for (Kind). Map Tools
+## (Buildings > Paint room) adds them.
 @export var rooms: Array[KitRoom] = []:
 	set(value):
 		_watch(rooms, value)
 		rooms = value
 		_changed()
+## Puts furniture in every room with a Kind (world/kit/kit_furnish.gd): pieces
+## added as ordinary children of the building, yours to move, change or
+## delete. Pressing it again takes out what it put in before (only that) and
+## furnishes afresh. Ctrl+Z undoes it.
+@export_tool_button("Furnish Rooms", "Add") var furnish_button := furnish_rooms
 
 @export_group("Materials")
 ## Empty = the kit's default. Any material works; the ones in
@@ -330,6 +352,13 @@ func _notification(what: int) -> void:
 func ensure_built() -> void:
 	if _dirty:
 		_rebuild()
+
+
+## Template Variant: the chosen template's variants by name.
+func _validate_property(property: Dictionary) -> void:
+	if property["name"] == "template_variant":
+		property["hint"] = PROPERTY_HINT_ENUM
+		property["hint_string"] = ",".join(KitTemplates.VARIANTS.get(template, ["Standard"]))
 
 
 # --- Its shape ------------------------------------------------------------------
@@ -871,6 +900,8 @@ func _opening_nodes(wall_name: String, level: int, list: Array, fy: float, outsi
 	var boardable := outside and level == 0
 	var prefix := ("Floor%d" % (level + 1) if level > 0 else "") + wall_name
 	for entry: Dictionary in list: # sorted along the wall by km.wall()
+		if not entry.has("frame"):
+			continue # off the end of the wall (a warning says so)
 		var op: KitOpening = entry["source"]
 		if op.kind == "doorway" or (op.kind == "garage door" and not outside):
 			continue # just a gap
@@ -914,6 +945,118 @@ func _garage_door(entry: Dictionary, color: Color) -> Door:
 	door.boardable = false
 	door.in_navigation = true
 	return door
+
+
+# --- Templates ----------------------------------------------------------------------
+
+## What a template sets (and puts back to the default when it doesn't say).
+const TEMPLATE_PROPERTIES := ["size_depth", "size_width", "footprint", "floors", "floor_y", "foundation", "basement",
+		"upper_height", "openings", "painted_windows", "boarded_painted_windows", "stairs", "stairs_side", "roof_shape",
+		"roof_pitch", "roof_overhang", "shed_slopes_to", "attic", "chimneys", "dormers", "porches", "cellar_doors",
+		"inner_walls", "rooms", "exterior_material", "interior_material", "floor_material", "ceiling_material",
+		"roof_material"]
+
+
+## See template_button. Returns the extras it put outside.
+func apply_template() -> Array[Node]:
+	var values := _template_values()
+	if values.is_empty():
+		return []
+	var fresh: Node = (get_script() as Script).new()
+	var old: Array[Node] = get_children().filter(func(n: Node) -> bool: return n.has_meta("template_extra") or n.has_meta("furnished"))
+	var added: Array[Node] = values["extras"]
+	if Engine.is_editor_hint() and Engine.has_singleton("EditorInterface") and is_inside_tree():
+		var editor: Object = Engine.get_singleton("EditorInterface")
+		var scene_root: Node = editor.call("get_edited_scene_root")
+		var undo: Object = editor.call("get_editor_undo_redo")
+		undo.call("create_action", "Apply Template: " + template)
+		for property: String in TEMPLATE_PROPERTIES:
+			undo.call("add_do_property", self, property, values.get(property, fresh.get(property)))
+			undo.call("add_undo_property", self, property, get(property))
+		for node in old:
+			undo.call("add_do_method", self, "remove_child", node)
+			undo.call("add_undo_method", self, "add_child", node, true)
+			undo.call("add_undo_method", node, "set_owner", scene_root)
+			undo.call("add_undo_reference", node)
+		for node in added:
+			undo.call("add_do_method", self, "add_child", node, true)
+			undo.call("add_do_method", node, "set_owner", scene_root)
+			undo.call("add_do_reference", node)
+			undo.call("add_undo_method", self, "remove_child", node)
+		undo.call("commit_action")
+	else:
+		for property: String in TEMPLATE_PROPERTIES:
+			set(property, values.get(property, fresh.get(property)))
+		for node in old:
+			remove_child(node)
+			node.queue_free()
+		for node in added:
+			add_child(node, true)
+	fresh.free()
+	return added
+
+
+## The chosen template's settings, and its extras ready to add (named, marked).
+func _template_values() -> Dictionary:
+	var rng: RandomNumberGenerator = null
+	if random_colours:
+		rng = RandomNumberGenerator.new()
+		rng.randomize()
+	var values := KitTemplates.settings(template, template_variant, rng)
+	if values.is_empty():
+		return {}
+	var extras: Array[Node] = []
+	for node: Node3D in values.get("extras", []):
+		node.set_meta("template_extra", true)
+		if node is KitSign:
+			node.name = (node.get("text") as String).capitalize() + "Sign"
+		elif str(node.name).is_empty(): # (made in code)
+			node.name = (node.get_script() as Script).get_global_name() if node.get_script() else node.get_class()
+		extras.append(node)
+	values["extras"] = extras
+	return values
+
+
+# --- Furnishing ----------------------------------------------------------------------
+
+## See furnish_button. Returns the pieces it added.
+func furnish_rooms() -> Array[Node]:
+	var old: Array[Node] = get_children().filter(func(n: Node) -> bool: return n.has_meta("furnished"))
+	var added: Array[Node] = []
+	for room in rooms:
+		if room == null or room.kind == "None":
+			continue
+		for item in KitFurnish.plan(self, room):
+			var node: Node3D = KitFurnish.scene_of(item["piece"]).instantiate()
+			node.transform = item["xform"]
+			node.name = room.kind.to_pascal_case() + node.name
+			node.set_meta("furnished", true)
+			if node.get("loot_table") == "standard" and KitFurnish.ROOM_LOOT.has(room.kind):
+				node.set("loot_table", KitFurnish.ROOM_LOOT[room.kind])
+			added.append(node)
+	if Engine.is_editor_hint() and Engine.has_singleton("EditorInterface"):
+		var editor: Object = Engine.get_singleton("EditorInterface")
+		var scene_root: Node = editor.call("get_edited_scene_root")
+		var undo: Object = editor.call("get_editor_undo_redo")
+		undo.call("create_action", "Furnish Rooms")
+		for node in old:
+			undo.call("add_do_method", self, "remove_child", node)
+			undo.call("add_undo_method", self, "add_child", node, true)
+			undo.call("add_undo_method", node, "set_owner", scene_root)
+			undo.call("add_undo_reference", node)
+		for node in added:
+			undo.call("add_do_method", self, "add_child", node, true)
+			undo.call("add_do_method", node, "set_owner", scene_root)
+			undo.call("add_do_reference", node)
+			undo.call("add_undo_method", self, "remove_child", node)
+		undo.call("commit_action")
+	else:
+		for node in old:
+			remove_child(node)
+			node.queue_free()
+		for node in added:
+			add_child(node, true)
+	return added
 
 
 # --- Porches ------------------------------------------------------------------------

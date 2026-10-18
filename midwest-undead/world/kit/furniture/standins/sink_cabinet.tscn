@@ -1,0 +1,46 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://world/kit/materials/cabinet.tres" id="1_kq7w7"]
+[ext_resource type="Material" path="res://world/kit/materials/concrete_slab.tres" id="2_2iv1c"]
+[ext_resource type="Material" path="res://world/kit/materials/steel.tres" id="3_8dkdi"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_n2fdg"]
+material = ExtResource("1_kq7w7")
+size = Vector3(1.2, 0.86, 0.6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_yggio"]
+material = ExtResource("2_2iv1c")
+size = Vector3(1.24, 0.04, 0.64)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ailr1"]
+material = ExtResource("3_8dkdi")
+size = Vector3(0.6, 0.02, 0.38)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_16b05"]
+albedo_color = Color(0.7, 0.7, 0.72, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_dnadv"]
+material = SubResource("StandardMaterial3D_16b05")
+top_radius = 0.02
+bottom_radius = 0.02
+height = 0.25
+radial_segments = 12
+rings = 1
+
+[node name="SinkCabinet" type="Node3D" unique_id=1840135098]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=1101425154]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.43, 0)
+mesh = SubResource("BoxMesh_n2fdg")
+
+[node name="@MeshInstance3D@175" type="MeshInstance3D" parent="." unique_id=1864855411]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.88, 0)
+mesh = SubResource("BoxMesh_yggio")
+
+[node name="@MeshInstance3D@176" type="MeshInstance3D" parent="." unique_id=2101106965]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.905, 0.02)
+mesh = SubResource("BoxMesh_ailr1")
+
+[node name="@MeshInstance3D@177" type="MeshInstance3D" parent="." unique_id=1360607877]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -0.22)
+mesh = SubResource("CylinderMesh_dnadv")

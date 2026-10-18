@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_i1k7d"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/fridge.tscn" id="2_fhf2e"]
+
+[node name="Fridge" type="StaticBody3D" unique_id=1258195300]
+script = ExtResource("1_i1k7d")
+label = "Fridge"
+loot_table = "kitchen"
+size = Vector3(0.8, 1.8, 0.75)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_fhf2e")])

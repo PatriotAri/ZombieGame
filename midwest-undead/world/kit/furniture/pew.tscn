@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_5apku"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/pew.tscn" id="2_i6nny"]
+
+[node name="Pew" type="StaticBody3D" unique_id=2063988887]
+script = ExtResource("1_5apku")
+size = Vector3(2.4, 0.95, 0.6)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_i6nny")])
+metadata/salvage_label = "Pew"

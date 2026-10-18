@@ -1,0 +1,43 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://world/kit/materials/metal_dark.tres" id="1_5e4sn"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_mj3h1"]
+material = ExtResource("1_5e4sn")
+size = Vector3(1, 1.9, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8710y"]
+albedo_color = Color(0.1, 0.1, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_wc2tq"]
+material = SubResource("StandardMaterial3D_8710y")
+size = Vector3(0.02, 1.8, 0.02)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1lxki"]
+albedo_color = Color(0.7, 0.7, 0.72, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_qh7mk"]
+material = SubResource("StandardMaterial3D_1lxki")
+size = Vector3(0.03, 0.25, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_nny82"]
+material = SubResource("StandardMaterial3D_1lxki")
+size = Vector3(0.03, 0.25, 0.04)
+
+[node name="GunLocker" type="Node3D" unique_id=420810496]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=1328177533]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)
+mesh = SubResource("BoxMesh_mj3h1")
+
+[node name="@MeshInstance3D@200" type="MeshInstance3D" parent="." unique_id=877245875]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0.255)
+mesh = SubResource("BoxMesh_wc2tq")
+
+[node name="@MeshInstance3D@201" type="MeshInstance3D" parent="." unique_id=133254705]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.08, 1, 0.27)
+mesh = SubResource("BoxMesh_qh7mk")
+
+[node name="@MeshInstance3D@202" type="MeshInstance3D" parent="." unique_id=1662309067]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.08, 1, 0.27)
+mesh = SubResource("BoxMesh_nny82")

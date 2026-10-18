@@ -1,0 +1,44 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4s7iu"]
+albedo_color = Color(0.9, 0.9, 0.87, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_uduwn"]
+material = SubResource("StandardMaterial3D_4s7iu")
+size = Vector3(0.8, 1.8, 0.75)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gdxk5"]
+albedo_color = Color(0.6, 0.6, 0.6, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ckpyr"]
+material = SubResource("StandardMaterial3D_gdxk5")
+size = Vector3(0.78, 0.02, 0.02)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2rj1h"]
+albedo_color = Color(0.7, 0.7, 0.72, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_71mhi"]
+material = SubResource("StandardMaterial3D_2rj1h")
+size = Vector3(0.03, 0.3, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_egrui"]
+material = SubResource("StandardMaterial3D_2rj1h")
+size = Vector3(0.03, 0.3, 0.04)
+
+[node name="Fridge" type="Node3D" unique_id=410875747]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=1373850349]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("BoxMesh_uduwn")
+
+[node name="@MeshInstance3D@166" type="MeshInstance3D" parent="." unique_id=140706997]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, 0.38)
+mesh = SubResource("BoxMesh_ckpyr")
+
+[node name="@MeshInstance3D@167" type="MeshInstance3D" parent="." unique_id=2070091540]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.33, 1, 0.4)
+mesh = SubResource("BoxMesh_71mhi")
+
+[node name="@MeshInstance3D@168" type="MeshInstance3D" parent="." unique_id=758414337]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.33, 1.5, 0.4)
+mesh = SubResource("BoxMesh_egrui")

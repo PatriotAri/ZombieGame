@@ -1,0 +1,53 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://world/kit/materials/wood_planks.tres" id="1_eseqq"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_m1u77"]
+material = ExtResource("1_eseqq")
+size = Vector3(0.45, 0.05, 0.45)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lvhax"]
+material = ExtResource("1_eseqq")
+size = Vector3(0.45, 0.45, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_akgqc"]
+material = ExtResource("1_eseqq")
+size = Vector3(0.04, 0.45, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_le1rl"]
+material = ExtResource("1_eseqq")
+size = Vector3(0.04, 0.45, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_fqedl"]
+material = ExtResource("1_eseqq")
+size = Vector3(0.04, 0.45, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_geeph"]
+material = ExtResource("1_eseqq")
+size = Vector3(0.04, 0.45, 0.04)
+
+[node name="Chair" type="Node3D" unique_id=823488506]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=473040792]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.46, 0)
+mesh = SubResource("BoxMesh_m1u77")
+
+[node name="@MeshInstance3D@96" type="MeshInstance3D" parent="." unique_id=354174267]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.68, -0.2)
+mesh = SubResource("BoxMesh_lvhax")
+
+[node name="@MeshInstance3D@97" type="MeshInstance3D" parent="." unique_id=146030400]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.19, 0.22, -0.19)
+mesh = SubResource("BoxMesh_akgqc")
+
+[node name="@MeshInstance3D@98" type="MeshInstance3D" parent="." unique_id=76904231]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.19, 0.22, 0.19)
+mesh = SubResource("BoxMesh_le1rl")
+
+[node name="@MeshInstance3D@99" type="MeshInstance3D" parent="." unique_id=1202654764]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.19, 0.22, -0.19)
+mesh = SubResource("BoxMesh_fqedl")
+
+[node name="@MeshInstance3D@100" type="MeshInstance3D" parent="." unique_id=1725346875]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.19, 0.22, 0.19)
+mesh = SubResource("BoxMesh_geeph")

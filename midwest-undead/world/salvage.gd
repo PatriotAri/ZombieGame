@@ -1,8 +1,9 @@
 extends Node
 ## Stripping things for building materials, with the crowbar: hold interact on a
-## wrecked car for scrap metal, or on furniture (dressers, kitchen cabinets,
-## counters, shelves, beds) for plywood. Each thing can only be stripped once.
-## It's loud work. player.gd does the holding; this knows what gives what.
+## wrecked car, a fridge, stove or tractor for scrap metal, or on wooden
+## furniture (dressers, cabinets, shelves, beds, pews...) for plywood or
+## planks. Each thing can only be stripped once. It's loud work. player.gd
+## does the holding; this knows what gives what.
 ## Saved: which things have been stripped (by their place in the map scene, the
 ## "town_id" main.gd gives them).
 
@@ -14,6 +15,18 @@ const YIELDS := {
 	"Shelf": ["plywood", 2],
 	"Grocery shelf": ["plywood", 2],
 	"Bed": ["plywood", 1],
+	"Nightstand": ["plywood", 1],
+	"Bookcase": ["plywood", 2],
+	"Sink cabinet": ["plywood", 1],
+	"Workbench": ["plywood", 2],
+	"Pew": ["planks", 2],
+	"Fridge": ["scrap_metal", 2],
+	"Stove": ["scrap_metal", 2],
+	"Washer": ["scrap_metal", 2],
+	"Filing cabinet": ["scrap_metal", 1],
+	"Gun locker": ["sheet_metal", 1],
+	"Gas pump": ["scrap_metal", 2],
+	"Tractor": ["scrap_metal", 4],
 }
 const TIME := 2.5 # seconds of holding interact
 const NOISE := 18.0 # meters: tearing a car apart carries

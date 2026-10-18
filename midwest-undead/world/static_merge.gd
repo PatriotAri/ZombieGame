@@ -11,7 +11,8 @@ extends RefCounted
 ## of the kit's scripts.
 
 const PATCH := 48.0 # meters: small enough that off-screen patches aren't drawn
-const MERGED_SCRIPTS := ["building.gd", "kit_wall.gd", "kit_floor.gd", "kit_stairs.gd", "kit_box.gd", "kit_prop.gd"]
+const MERGED_SCRIPTS := ["building.gd", "kit_wall.gd", "kit_floor.gd", "kit_stairs.gd", "kit_box.gd", "kit_prop.gd",
+		"kit_sign.gd", "kit_steeple.gd", "kit_silo.gd"]
 
 
 ## Combines town's static meshes. Returns how many meshes it hid.

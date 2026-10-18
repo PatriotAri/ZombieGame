@@ -1,0 +1,32 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://world/kit/materials/wood_planks.tres" id="1_yejq6"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_m8a5u"]
+albedo_color = Color(0.16, 0.24, 0.18, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_8hog5"]
+material = SubResource("StandardMaterial3D_m8a5u")
+size = Vector3(2.4, 1.2, 0.05)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ar2ty"]
+material = ExtResource("1_yejq6")
+size = Vector3(2.5, 0.06, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ik1ix"]
+material = ExtResource("1_yejq6")
+size = Vector3(2.5, 0.06, 0.06)
+
+[node name="Chalkboard" type="Node3D" unique_id=1900399548]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=1777498516]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+mesh = SubResource("BoxMesh_8hog5")
+
+[node name="@MeshInstance3D@207" type="MeshInstance3D" parent="." unique_id=1578595745]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.88, 0.02)
+mesh = SubResource("BoxMesh_ar2ty")
+
+[node name="@MeshInstance3D@208" type="MeshInstance3D" parent="." unique_id=995337897]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.13, 0)
+mesh = SubResource("BoxMesh_ik1ix")

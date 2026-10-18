@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="LootTable" format=3]
+
+[ext_resource type="Script" path="res://items/loot_roll.gd" id="1_5emyn"]
+[ext_resource type="Script" path="res://items/loot_pick.gd" id="2_op1sf"]
+[ext_resource type="Script" path="res://items/loot_table.gd" id="3_6cqrp"]
+
+[sub_resource type="Resource" id="Resource_5ueuj"]
+script = ExtResource("2_op1sf")
+item = "batteries"
+max_amount = 3
+
+[sub_resource type="Resource" id="Resource_kk7bv"]
+script = ExtResource("1_5emyn")
+chance = 0.3
+items = Array[ExtResource("2_op1sf")]([SubResource("Resource_5ueuj")])
+
+[sub_resource type="Resource" id="Resource_d5iua"]
+script = ExtResource("2_op1sf")
+item = "pistol_ammo"
+min_amount = 2
+max_amount = 5
+
+[sub_resource type="Resource" id="Resource_bpv1a"]
+script = ExtResource("1_5emyn")
+items = Array[ExtResource("2_op1sf")]([SubResource("Resource_d5iua")])
+
+[sub_resource type="Resource" id="Resource_ed24a"]
+script = ExtResource("2_op1sf")
+item = "health_pack"
+
+[sub_resource type="Resource" id="Resource_oxmxb"]
+script = ExtResource("1_5emyn")
+chance = 0.08
+items = Array[ExtResource("2_op1sf")]([SubResource("Resource_ed24a")])
+
+[resource]
+script = ExtResource("3_6cqrp")
+rolls = Array[ExtResource("1_5emyn")]([SubResource("Resource_kk7bv"), SubResource("Resource_bpv1a"), SubResource("Resource_oxmxb")])

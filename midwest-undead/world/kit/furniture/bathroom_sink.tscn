@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_wd3dc"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/bathroom_sink.tscn" id="2_0kdtq"]
+
+[node name="BathroomSink" type="StaticBody3D" unique_id=728010429]
+script = ExtResource("1_wd3dc")
+label = "Medicine cabinet"
+loot_table = "bathroom"
+size = Vector3(0.6, 1.8, 0.45)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_0kdtq")])

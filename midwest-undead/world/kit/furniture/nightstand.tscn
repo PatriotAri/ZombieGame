@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_uyf2d"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/nightstand.tscn" id="2_0kjwj"]
+
+[node name="Nightstand" type="StaticBody3D" unique_id=1790770031]
+script = ExtResource("1_uyf2d")
+label = "Nightstand"
+loot_table = "bedroom"
+size = Vector3(0.5, 0.6, 0.42)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_0kjwj")])

@@ -16,7 +16,8 @@ Save with Ctrl+S, then press F5 and start a new game to try it.
 
 The quickest way: open the map, then in the **Map Tools** panel (along the
 bottom, next to Output) click **Buildings > New building**. It adds a
-10 x 10 m building with a door and windows in front of the camera. Or:
+10 x 10 m building with a door and windows in front of the camera. Or pick a
+ready-made one from **New from template** (Template, below). Or:
 
 1. Open the map. In the FileSystem dock, drag
    `world/kit/pieces/building.tscn` (a shop) or `two_storey_house.tscn` into
@@ -26,6 +27,40 @@ bottom, next to Output) click **Buildings > New building**. It adds a
    so the front faces the street. Turn on snapping (the magnet in the toolbar)
    to rotate in exact 15° steps.
 3. Select it and use the Inspector. It rebuilds as you change things.
+
+**Template**
+
+Ready-made buildings to start from, three variants each:
+- Homes: **Farmhouse** (two storey with a porch; one storey; two storey with a
+  wraparound porch and a cellar), **Ranch house** (with an attached garage,
+  without, or with a garage and a basement), **Cottage**, **Trailer**
+  (single-wide, double-wide, with an awning).
+- Town: **Corner store** (small; large with an office; two storey with an
+  apartment upstairs), **Gas station** (with a canopy and pumps out front),
+  **Diner**, **Church** (a chapel, or with a steeple), **School** (one room,
+  two classrooms, four; a flagpole and a playground outside), **Police
+  station** (small, with a cell block, two storey).
+- Farm: **Barn** (gambrel with a hayloft, gable with a workshop, a small
+  shed), **Machine shed** (open front, garage doors, large).
+
+Pick **Template** and **Variant** and press **Apply Template**: every setting
+below is replaced (doors, windows, inner walls, rooms with their Kind,
+stairs, porches, roof, materials...), and things outside it from a template
+before (a canopy, a sign, a steeple...) and the furniture Furnish Rooms put
+in are taken out. Your own children of the building stay. **Random Colours**
+picks the outside's material at random from ones that suit it. Ctrl+Z undoes
+it. After that it's an ordinary building: change anything. Press **Furnish
+Rooms** (Rooms, below) to fill it.
+
+The template's outside things are ordinary children of the building: signs
+(**KitSign**: change **Text**), the steeple (**KitSteeple**), the canopy (boxes),
+pumps, flagpole and playground (furniture). Move or delete them like anything
+else.
+
+A **silo** isn't a Building: Map Tools' New from template adds one
+(**KitSilo**: round, a door on its -X side, a ladder up the inside to a hatch
+in its dome, which you can stand on). Set its **Radius**, **Height** and
+materials in the Inspector.
 
 **Size**
 - **Size Depth / Size Width:** how far back from the front it goes, and how
@@ -109,9 +144,25 @@ with no Stairs, which side wall the first staircase runs along.
   walls close off are rooms; start and end each wall on an outside wall or
   another inner wall to close one off.
 - **Rooms:** give a room its own **Wall Material** (its walls' inside faces)
-  and **Floor Material**. A room is the space round its **Point** on its
-  floor, as far as the walls (a doorway doesn't join two rooms). Empty
-  materials use the building's.
+  and **Floor Material**, and its **Kind**. A room is the space round its
+  **Point** on its floor, as far as the walls (a doorway doesn't join two
+  rooms). Empty materials use the building's.
+- **Kind:** what the room is for: home rooms (bedroom, kitchen, living room,
+  dining room, bathroom, laundry, garage, basement storage), town rooms
+  (store floor, stockroom, office, diner seating, diner kitchen, sanctuary,
+  classroom, police office, cells, restroom) and farm rooms (barn stalls,
+  hayloft, workshop, machine bay).
+- **Furnish Rooms:** puts furniture in every room with a Kind: a bed,
+  nightstand and dresser in a bedroom, a fridge, stove, sink, cabinets and a
+  table with chairs in a kitchen, pews in rows facing an altar, booths along
+  a diner's walls... Pieces go against walls with their backs to them, keep
+  out of doorways and off the stairs, and aren't taller than a window's sill
+  in front of a window. Rows face the room's front: the wall furthest from its
+  doors to outside. The pieces are ordinary children of the building: move,
+  change or delete any of them. Press it again and it takes out what it put
+  in (only that) and furnishes afresh; Ctrl+Z undoes it. The same room comes
+  out the same every time; move its Point for another arrangement.
+  Containers it puts in hold what suits the room (below).
 
 **Outside**
 - **Porches:** a porch along one or more outside walls, at the ground
@@ -190,6 +241,9 @@ best.
   the Inspector (Openings).
 - **Add garage door:** click on an outside wall where it goes (ground
   floor).
+- **New from template** (not a tool: a list): adds a ready-made building, or
+  a silo, in front of the camera.
+- **Furnish rooms** (a button): the selected building's Furnish Rooms.
 - **Place chimney / Place dormer:** click where it goes; clicks land at the
   top of the walls. A dormer needs a pitched Roof Shape; click near the edge
   of the roof, and it sits on the nearest slope. Right-click on one removes
@@ -214,18 +268,34 @@ Drag pieces from `world/kit/furniture/` onto the building, so they're its
 children and move with it. Furniture pieces stand on the spot you drop them
 (their **Sits On Floor** is on).
 
+The pieces: bed, nightstand, dresser, couch, armchair, chair, coffee table,
+table, TV, bookcase, desk, fridge, stove, sink cabinet, kitchen cabinet,
+counter, toilet, bathtub, bathroom sink, washer, workbench, filing cabinet,
+gun locker, shelf, grocery shelf, school desk, chalkboard, pew, altar, booth,
+stool, cell bars, hay bale, feed trough, tractor, gas pump, flagpole, swing
+set, slide, cardboard boxes, supply crate, dumpster, car. Chairs, stools,
+school desks, the flagpole and the playground pieces aren't solid (you walk
+through them), so rooms full of them don't block anyone's way.
+
 Containers are the counter, shelf, grocery shelf, kitchen cabinet, dresser,
-dumpster, cardboard boxes, supply crate and car. A container has:
+nightstand, fridge, sink cabinet, bathroom sink (its medicine cabinet),
+workbench, filing cabinet, gun locker, feed trough, dumpster, cardboard boxes,
+supply crate and car. A container has:
 
 - **Label:** what the prompt calls it. Salvaging with the crowbar goes by the
-  label: Car, Dresser, Kitchen cabinet, Counter, Shelf and Grocery shelf can
-  be stripped.
+  label (the list is in `world/salvage.gd`): wooden furniture gives plywood or
+  planks, a car, fridge, stove, washer, filing cabinet, gas pump or tractor
+  scrap metal.
 - **Fixed Items:** always in it. Add an entry; the key is an item id (the
   files in `items/data/`: `canned_food`, `health_pack`, `pistol_ammo`,
   `planks`, `crowbar`, ...), the value is how many.
 - **Loot Table:** random extras every new game. `none` means just the fixed
   items. The list shows every table in `items/loot/`; see `HOW_TO_ADD.md` to
-  change one or make a new one.
+  change one or make a new one. Furnish Rooms gives a container whose table
+  is `standard` its room's instead: `kitchen` (food), `bathroom` (first aid),
+  `bedroom`, `office`, `workshop` (materials), `police` (ammunition and guns),
+  `farm`, `grocery` or `snack`. A fridge, medicine cabinet, gun locker,
+  workbench and the like have their own table already.
 - **Look > Size, Material:** any size, any material.
 - **Model > Models:** what it looks like (a shaped stand-in to start with),
   stretched to its Size; see `HOW_TO_MODEL.md`, "Props". Empty: a plain box in

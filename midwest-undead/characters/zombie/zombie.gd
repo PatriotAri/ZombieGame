@@ -139,6 +139,7 @@ var target: Node3D = null # who it's hunting
 var day_night: Node
 var _attacking := false # biting someone this tick (for its animation)
 var _bashing := false # beating on a door, window or fence
+var _underfoot: Object # a door under its feet it's beating on (a cellar door), or null
 var _bashed_last := false # ...last tick
 var _vault_tween: Tween
 var _last_blow: Array = [] # [impulse, where]: the hit that killed it, for its fall
@@ -320,7 +321,9 @@ func _physics_process(delta: float) -> void:
 			# as close as it's going to get. Unless a fence or gate is what's in
 			# the way: then it beats on that, and doesn't lose interest meanwhile.
 			if not moving or _stuck_time >= UNSTICK_AFTER:
-				if _bash_blocker(investigate_pos, delta):
+				if _on_door():
+					pass # still beating on the door under it (below)
+				elif _bash_blocker(investigate_pos, delta):
 					pass
 				elif _through_gap(investigate_pos, speed):
 					moving = true
@@ -352,13 +355,18 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, speed)
 		velocity.z = move_toward(velocity.z, 0.0, speed)
 		# Standing still on solid ground: nothing to move, so skip the physics
-		# step. Most zombies are standing around most of the time.
-		if is_on_floor() and velocity.length_squared() < 0.0001:
+		# step. Most zombies are standing around most of the time. (Not one
+		# beating on a door under its feet: that's below.)
+		if is_on_floor() and velocity.length_squared() < 0.0001 and not _on_door():
 			return
 	var before := global_position
+	var on_door := _on_door()
+	if on_door:
+		velocity.x = 0.0 # beating on the door under its feet: it stays on it
+		velocity.z = 0.0
 	_move(_step_scale)
 	var bashing := false
-	if moving and state != State.IDLE:
+	if (moving or on_door) and state != State.IDLE:
 		bashing = _bash_doors(delta) or _bash_door_underfoot(delta)
 		bashing = _handle_window(delta) or bashing
 	_bashing = _bashing or bashing
@@ -436,16 +444,24 @@ func _bash_doors(delta: float) -> bool:
 ## over the steps): it's underfoot, not in the way, so beat on that. True if
 ## it's bashing one.
 func _bash_door_underfoot(delta: float) -> bool:
-	if not is_on_floor() or agent.get_next_path_position().y > global_position.y - 0.4:
+	if not is_on_floor() or (_underfoot == null and agent.get_next_path_position().y > global_position.y - 0.4):
 		return false
 	var from := global_position + Vector3(0, 0.2, 0)
 	var query := PhysicsRayQueryParameters3D.create(from, from - Vector3(0, 0.5, 0), GameData.LAYER_WORLD, [get_rid()])
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	var thing: Object = hit.get("collider")
+	_underfoot = null
 	if thing and thing.has_method("can_be_bashed") and thing.call("can_be_bashed"):
 		thing.call("bash", door_damage_per_second * delta)
+		_underfoot = thing
 		return true
 	return false
+
+
+## Started on a door under its feet (_bash_door_underfoot) that's still shut:
+## it keeps at it, its path or not.
+func _on_door() -> bool:
+	return state != State.IDLE and _underfoot != null and is_instance_valid(_underfoot) and _underfoot.call("can_be_bashed")
 
 
 # --- Windows -------------------------------------------------------------------

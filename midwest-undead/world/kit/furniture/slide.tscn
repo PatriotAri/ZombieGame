@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_mp6hx"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/slide.tscn" id="2_pgtmr"]
+
+[node name="Slide" type="StaticBody3D" unique_id=699168905]
+script = ExtResource("1_mp6hx")
+size = Vector3(0.7, 1.8, 3)
+sits_on_floor = true
+solid = false
+models = Array[PackedScene]([ExtResource("2_pgtmr")])
