@@ -27,8 +27,8 @@ const MAX_ZOOM := 8.0 # 1 = the whole map fits
 const WHEEL_ZOOM := 1.25 # per wheel notch
 const STICK_ZOOM := 2.0 # doublings per second, stick all the way
 const PAN_SPEED := 0.8 # map widths per second, key held or stick all the way
-const HELP_KEYBOARD := "Wheel zoom  ·  Drag / WASD pan  ·  Space center  ·  %s zones  ·  %s close"
-const HELP_GAMEPAD := "R stick zoom  ·  L stick pan  ·  A center  ·  %s zones  ·  %s close"
+const HELP_KEYBOARD := "Wheel zoom  ·  Drag / WASD pan  ·  %s center  ·  %s zones  ·  %s close"
+const HELP_GAMEPAD := "R stick zoom  ·  L stick pan  ·  %s center  ·  %s zones  ·  %s close"
 
 var _player: Node3D
 var _zones: Zones
@@ -289,7 +289,7 @@ func _draw_frame() -> void:
 	var font := ThemeDB.fallback_font
 	var area := _map_rect()
 	_view.draw_string(font, Vector2(area.position.x, area.position.y - 22.0), "MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 28)
-	var help := (HELP_GAMEPAD if Controls.using_gamepad else HELP_KEYBOARD) % [Controls.hint("interact"), Controls.hint("map")]
+	var help := (HELP_GAMEPAD if Controls.using_gamepad else HELP_KEYBOARD) % [Controls.hint("jump"), Controls.hint("interact"), Controls.hint("map")]
 	_view.draw_string(font, Vector2(area.position.x, area.position.y - 22.0),
 			help, HORIZONTAL_ALIGNMENT_RIGHT, area.size.x, 15, Color(1, 1, 1, 0.7))
 	_draw_compass(font, area.position + Vector2(area.size.x - 28.0, 34.0))

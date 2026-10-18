@@ -100,8 +100,8 @@ func _refresh() -> void:
 	if focus:
 		focus.grab_focus.call_deferred()
 	_show_selected(entries)
-	_footer.text = ("A: pick   ·   Y / B: close" if Controls.using_gamepad else "Click: pick   ·   J / Esc: close") \
-			+ "   ·   ◆ tracked"
+	_footer.text = ("A: pick   ·   %s / B: close" if Controls.using_gamepad else "Click: pick   ·   %s / Esc: close") \
+			% Controls.hint("journal") + "   ·   ◆ tracked"
 
 
 func _show_selected(entries: Array[Dictionary]) -> void:

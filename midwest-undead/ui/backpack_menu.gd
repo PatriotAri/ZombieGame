@@ -67,8 +67,8 @@ func _hold(id: String) -> void:
 
 func _refresh() -> void:
 	_info.text = "$%d    ·    %s" % [player.money, player.flashlight_text()]
-	_footer.text = ("A: hold it   ·   Y / B: close" if Controls.using_gamepad
-			else "Click: hold it   ·   Tab / Esc: close")
+	_footer.text = ("A: hold it   ·   %s / B: close" if Controls.using_gamepad
+			else "Click: hold it   ·   %s / Esc: close") % Controls.hint("inventory")
 	for child in _list.get_children():
 		_list.remove_child(child)
 		child.queue_free()

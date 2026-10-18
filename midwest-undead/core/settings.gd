@@ -1,5 +1,6 @@
 extends RefCounted
-## Player preferences from the pause menu's Settings page: look sensitivity,
+## Player preferences from the pause menu's Settings page: look sensitivity
+## (mouse, stick left/right and up/down, while aiming), invert look,
 ## volume and graphics. Kept in their own file (user://settings.cfg), separate from the save
 ## game, so they carry over to every playthrough. Never instanced.
 ## main.gd calls load_settings() once at startup.
@@ -13,8 +14,11 @@ const SHADOW_QUALITY := {1: [2, 60.0], 2: [4, 100.0]}
 
 const DEFAULTS := {
 	"mouse_sensitivity": 1.0,
-	"stick_sensitivity": 1.0,
-	"invert_y": false,
+	"stick_sensitivity_x": 1.0,
+	"stick_sensitivity_y": 1.0,
+	"aim_sensitivity": 1.0,
+	"invert_mouse_y": false,
+	"invert_stick_y": false,
 	"master_volume": 1.0,
 	"sfx_volume": 1.0,
 	"shadows": 1,
@@ -25,9 +29,13 @@ const DEFAULTS := {
 ## Multipliers on the player's tuned look speeds (player.tscn), so 1.0 is the
 ## designer's default and the Inspector stays the place to set the baseline.
 static var mouse_sensitivity := 1.0
-static var stick_sensitivity := 1.0
-## Flips up/down look relative to the player's invert_look_y default.
-static var invert_y := false
+static var stick_sensitivity_x := 1.0 # left / right on the stick
+static var stick_sensitivity_y := 1.0 # up / down on the stick
+## On top of those while you aim (or look down the rifle's scope), mouse and stick alike.
+static var aim_sensitivity := 1.0
+## Flip up/down look relative to the player's invert_look_y default, each on its own.
+static var invert_mouse_y := false
+static var invert_stick_y := false
 ## Linear volume, 0 (silent) to 1 (full).
 static var master_volume := 1.0
 static var sfx_volume := 1.0
@@ -44,8 +52,15 @@ static func load_settings() -> void:
 	_ensure_buses()
 	var file := ConfigFile.new()
 	var loaded := file.load(PATH) == OK # a missing file just means defaults
+	# Files from before the stick and invert settings were split: one value for both.
+	var old := {"stick_sensitivity": ["stick_sensitivity_x", "stick_sensitivity_y"],
+			"invert_y": ["invert_mouse_y", "invert_stick_y"]}
 	for key: String in DEFAULTS:
-		var value: Variant = file.get_value("settings", key, DEFAULTS[key]) if loaded else DEFAULTS[key]
+		var fallback: Variant = DEFAULTS[key]
+		for was: String in old:
+			if key in old[was] and loaded:
+				fallback = file.get_value("settings", was, fallback)
+		var value: Variant = file.get_value("settings", key, fallback) if loaded else DEFAULTS[key]
 		set_value(key, value)
 
 
@@ -66,8 +81,11 @@ static func reset_to_defaults() -> void:
 static func get_value(key: String) -> Variant:
 	match key:
 		"mouse_sensitivity": return mouse_sensitivity
-		"stick_sensitivity": return stick_sensitivity
-		"invert_y": return invert_y
+		"stick_sensitivity_x": return stick_sensitivity_x
+		"stick_sensitivity_y": return stick_sensitivity_y
+		"aim_sensitivity": return aim_sensitivity
+		"invert_mouse_y": return invert_mouse_y
+		"invert_stick_y": return invert_stick_y
 		"master_volume": return master_volume
 		"sfx_volume": return sfx_volume
 		"shadows": return shadows
@@ -80,8 +98,11 @@ static func get_value(key: String) -> Variant:
 static func set_value(key: String, value: Variant) -> void:
 	match key:
 		"mouse_sensitivity": mouse_sensitivity = clampf(float(value), 0.1, 3.0)
-		"stick_sensitivity": stick_sensitivity = clampf(float(value), 0.1, 3.0)
-		"invert_y": invert_y = bool(value)
+		"stick_sensitivity_x": stick_sensitivity_x = clampf(float(value), 0.1, 3.0)
+		"stick_sensitivity_y": stick_sensitivity_y = clampf(float(value), 0.1, 3.0)
+		"aim_sensitivity": aim_sensitivity = clampf(float(value), 0.1, 3.0)
+		"invert_mouse_y": invert_mouse_y = bool(value)
+		"invert_stick_y": invert_stick_y = bool(value)
 		"master_volume": master_volume = clampf(float(value), 0.0, 1.0)
 		"sfx_volume": sfx_volume = clampf(float(value), 0.0, 1.0)
 		"shadows": shadows = clampi(int(value), 0, 2)

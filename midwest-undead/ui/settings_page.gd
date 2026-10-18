@@ -1,29 +1,28 @@
 extends VBoxContainer
-## The Settings page (pause menu and main menu): look sensitivity, invert look,
-## volume and graphics. Changes apply as you drag; they're written to disk when
-## you leave the page. Emits `back` when you press Back (the menu showing it swaps pages).
+## The Settings page (pause menu and main menu): look sensitivity (mouse, stick
+## left/right and up/down, and a multiplier while aiming), invert look (mouse and
+## controller each), volume and graphics. Changes apply as you drag; they're
+## written to disk when you leave the page. Emits `back` when you press Back (the menu showing it swaps pages).
 
 signal back
 
 const Settings := preload("res://core/settings.gd")
 const MenuStyle := preload("res://ui/menu_style.gd")
 
-var _invert_check: CheckButton
+var _checks := {} # setting key -> CheckButton, to refresh after "Reset to defaults"
 var _sliders := {} # setting key -> HSlider, to refresh after "Reset to defaults"
 
 
 func _init() -> void:
-	add_theme_constant_override("separation", 10)
+	add_theme_constant_override("separation", 6) # tight enough to fit a 648-pixel-tall window
 	MenuStyle.add_title(self, "SETTINGS")
 	MenuStyle.add_heading(self, "Controls")
 	_add_slider("Mouse sensitivity", "mouse_sensitivity", 0.1, 3.0, 0.05, _times)
-	_add_slider("Controller sensitivity", "stick_sensitivity", 0.1, 3.0, 0.05, _times)
-	_invert_check = CheckButton.new()
-	_invert_check.text = "Invert look up/down"
-	_invert_check.add_theme_font_size_override("font_size", 18)
-	_invert_check.button_pressed = Settings.invert_y
-	_invert_check.toggled.connect(func(on: bool) -> void: Settings.set_value("invert_y", on))
-	add_child(_invert_check)
+	_add_slider("Controller left / right", "stick_sensitivity_x", 0.1, 3.0, 0.05, _times)
+	_add_slider("Controller up / down", "stick_sensitivity_y", 0.1, 3.0, 0.05, _times)
+	_add_slider("While aiming", "aim_sensitivity", 0.1, 3.0, 0.05, _times)
+	_add_check("Invert mouse up/down", "invert_mouse_y")
+	_add_check("Invert controller up/down", "invert_stick_y")
 	MenuStyle.add_heading(self, "Audio")
 	_add_slider("Master volume", "master_volume", 0.0, 1.0, 0.01, _percent)
 	_add_slider("Effects volume", "sfx_volume", 0.0, 1.0, 0.01, _percent)
@@ -54,7 +53,18 @@ func _reset() -> void:
 	Settings.reset_to_defaults()
 	for key: String in _sliders:
 		_sliders[key].value = Settings.get_value(key)
-	_invert_check.button_pressed = Settings.invert_y
+	for key: String in _checks:
+		_checks[key].button_pressed = Settings.get_value(key)
+
+
+func _add_check(text: String, key: String) -> void:
+	var check := CheckButton.new()
+	check.text = text
+	check.add_theme_font_size_override("font_size", 18)
+	check.button_pressed = Settings.get_value(key)
+	check.toggled.connect(func(on: bool) -> void: Settings.set_value(key, on))
+	add_child(check)
+	_checks[key] = check
 
 
 ## One row: name on the left, slider in the middle, current value on the right.
@@ -75,7 +85,7 @@ func _add_slider(text: String, key: String, min_value: float, max_value: float, 
 	slider.min_value = min_value
 	slider.max_value = max_value
 	slider.step = step
-	slider.custom_minimum_size = Vector2(260, 32)
+	slider.custom_minimum_size = Vector2(260, 28)
 	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(slider)
 

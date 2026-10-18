@@ -243,7 +243,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var motion := event as InputEventMouseMotion
 	if motion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		_look(motion.relative * mouse_sensitivity * Settings.mouse_sensitivity * _zoom_factor())
+		_look(motion.relative * mouse_sensitivity * Settings.mouse_sensitivity * _zoom_factor(), Settings.invert_mouse_y)
 		return
 	# A real click (not the scroll wheel) re-grabs the mouse after it was freed.
 	if event is InputEventMouseButton and event.is_pressed() \
@@ -260,7 +260,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Handled here (not polled) so the inventory/shop screens can swallow the
 		# press that closes them.
 		var target := _looked_at()
-		if _can_salvage() and not _salvage_yield(target).is_empty():
+		if event.is_action_pressed("reload") and not _has_interaction(target):
+			_start_reload() # one button for both (X on a controller): nothing to use, so it reloads
+		elif _can_salvage() and not _salvage_yield(target).is_empty():
 			_salvage_target = target # a tap still opens it; holding strips it (_update_salvage)
 			_salvage_held = 0.0
 		else:
@@ -291,10 +293,14 @@ func _unhandled_input(event: InputEvent) -> void:
 				break
 
 
-## Turn the body left/right and tilt only the head up/down.
-func _look(amount: Vector2) -> void:
+## Turn the body left/right and tilt only the head up/down. invert: that
+## device's Invert setting (mouse or controller). Aiming scales it by the
+## "While aiming" setting.
+func _look(amount: Vector2, invert: bool) -> void:
+	if aiming:
+		amount *= Settings.aim_sensitivity
 	rotate_y(-amount.x)
-	var inverted := invert_look_y != Settings.invert_y
+	var inverted := invert_look_y != invert
 	camera.rotate_x(-amount.y * (-1.0 if inverted else 1.0))
 	camera.rotation.x = clampf(camera.rotation.x, deg_to_rad(-85.0), deg_to_rad(85.0))
 
@@ -342,7 +348,8 @@ func _physics_process(delta: float) -> void:
 	# Right stick look. get_vector applies the stick deadzone for us.
 	var stick := Input.get_vector("look_left", "look_right", "look_up", "look_down")
 	if stick != Vector2.ZERO:
-		_look(stick * stick_look_speed * Settings.stick_sensitivity * delta * _zoom_factor())
+		var speed := Vector2(Settings.stick_sensitivity_x, Settings.stick_sensitivity_y)
+		_look(stick * speed * stick_look_speed * delta * _zoom_factor(), Settings.invert_stick_y)
 
 	# The use button is polled (not event-driven) so the analog trigger fires once per pull.
 	if Input.is_action_just_pressed("use_held") and not just_resumed:
@@ -762,6 +769,14 @@ func _interact() -> void:
 			npc_interacted.emit(target)
 		else:
 			object_interacted.emit(target)
+
+
+## Whether interact would do something with target: pick it up, search or open
+## it, talk to it, use it, or (holding the crowbar) salvage it.
+func _has_interaction(target: Node3D) -> bool:
+	if target is GroundItem or target is LootSpot or _offers_interaction(target):
+		return true
+	return _can_salvage() and not _salvage_yield(target).is_empty()
 
 
 ## Anything (an NPC, the logbook...) with an interact_prompt() that isn't empty.
