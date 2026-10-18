@@ -19,6 +19,7 @@ const BOARDS := preload("res://world/kit/materials/wood_planks.tres")
 enum { NX, PX, NY, PY, NZ, PZ }
 
 var shapes: Array = [] # [Transform3D, size] for each collision box
+var _faces := PackedVector3Array() # triangles for one trimesh collision shape (slabs)
 var _tools := {} # Material -> SurfaceTool
 var _order: Array[Material] = []
 
@@ -161,7 +162,119 @@ func add_to(body: Node3D, mesh_name := "Mesh") -> Array[Node]:
 		col.transform = shapes[i][0]
 		body.add_child(col, false, Node.INTERNAL_MODE_BACK)
 		added.append(col)
+	if not _faces.is_empty():
+		var trimesh := ConcavePolygonShape3D.new()
+		trimesh.set_faces(_faces)
+		var col := CollisionShape3D.new()
+		col.name = "Slabs"
+		col.shape = trimesh
+		body.add_child(col, false, Node.INTERNAL_MODE_BACK)
+		added.append(col)
 	return added
+
+
+# --- Slabs of any outline ----------------------------------------------------------
+# An outline is a PackedVector2Array of (x, z) corners. A hole is a rectangle
+# that can be turned: {"xform": Transform2D (its middle; x along it), "size": Vector2}.
+
+## A flat slab over outline, its top at `top`, `thick` deep, with holes cut out
+## (staircases). Its top, bottom, the outline's edges and the holes' edges each
+## get a material (null: not drawn). collide: also solid (one trimesh shape).
+func slab(outline: PackedVector2Array, holes: Array, top: float, thick: float, top_mat: Material,
+		bottom_mat: Material, side_mat: Material, hole_mat: Material, collide := true) -> void:
+	var bottom := top - thick
+	for piece in cut(outline, holes):
+		var tris := Geometry2D.triangulate_polygon(piece)
+		for i in range(0, tris.size(), 3):
+			for face: Array in [[top, Vector3.UP, top_mat], [bottom, Vector3.DOWN, bottom_mat]]:
+				var corners := PackedVector3Array()
+				for k in 3:
+					var p := piece[tris[i + k]]
+					corners.append(Vector3(p.x, face[0], p.y))
+				if face[2]:
+					_tri(face[2], corners, face[1])
+				if collide:
+					_faces.append_array(corners)
+	var count := outline.size()
+	for i in count:
+		_side(outline[i], outline[(i + 1) % count], top, bottom, side_mat, collide)
+	for hole: Dictionary in holes:
+		var corners := hole_corners(hole) # (going the other way round: they face into the hole)
+		for i in 4:
+			_side(corners[i], corners[(i + 1) % 4], top, bottom, hole_mat, collide)
+
+
+## Whether slab() made anything solid (its collision is one trimesh, not boxes).
+func has_slabs() -> bool:
+	return not _faces.is_empty()
+
+
+## A hole's four corners (x, z), going round the opposite way to an outline.
+static func hole_corners(hole: Dictionary) -> PackedVector2Array:
+	var xf: Transform2D = hole["xform"]
+	var h: Vector2 = hole["size"] / 2.0
+	return PackedVector2Array([xf * Vector2(-h.x, -h.y), xf * Vector2(h.x, -h.y), xf * Vector2(h.x, h.y), xf * Vector2(-h.x, h.y)])
+
+
+## outline minus the holes, as pieces (each a plain polygon, no holes in it).
+static func cut(outline: PackedVector2Array, holes: Array) -> Array[PackedVector2Array]:
+	var pieces: Array[PackedVector2Array] = [outline]
+	const FAR := 10000.0
+	for hole: Dictionary in holes:
+		var xf: Transform2D = hole["xform"]
+		var h: Vector2 = hole["size"] / 2.0
+		# Round the hole in its own frame: the strips either side of it, and in front of and behind it.
+		var regions := [Rect2(-FAR, -FAR, FAR - h.x, 2.0 * FAR), Rect2(h.x, -FAR, FAR, 2.0 * FAR),
+				Rect2(-h.x, -FAR, 2.0 * h.x, FAR - h.y), Rect2(-h.x, h.y, 2.0 * h.x, FAR)]
+		var next: Array[PackedVector2Array] = []
+		for piece in pieces:
+			var local := xf.affine_inverse() * piece
+			for r: Rect2 in regions:
+				var box := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+				for part in Geometry2D.intersect_polygons(local, box):
+					if absf(_area(part)) > 0.0001:
+						next.append(xf * part)
+		pieces = next
+	return pieces
+
+
+## Signed area (x, z): negative for the corner order buildings use (KitBuilding).
+static func _area(poly: PackedVector2Array) -> float:
+	var sum := 0.0
+	for i in poly.size():
+		var a := poly[i]
+		var b := poly[(i + 1) % poly.size()]
+		sum += a.x * b.y - b.x * a.y
+	return sum / 2.0
+
+
+## An upright face along a to b, between top and bottom, facing out of the
+## outline (corners going the way KitBuilding's do).
+func _side(a: Vector2, b: Vector2, top: float, bottom: float, mat: Material, collide: bool) -> void:
+	var along := (b - a).normalized()
+	var n := Vector3(-along.y, 0, along.x)
+	var corners := PackedVector3Array([Vector3(a.x, top, a.y), Vector3(b.x, top, b.y), Vector3(b.x, bottom, b.y),
+			Vector3(a.x, top, a.y), Vector3(b.x, bottom, b.y), Vector3(a.x, bottom, a.y)])
+	if mat:
+		_tri(mat, corners.slice(0, 3), n)
+		_tri(mat, corners.slice(3, 6), n)
+	if collide:
+		_faces.append_array(corners)
+
+
+## Triangles (corners in threes) in mat, facing n.
+func _tri(mat: Material, corners: PackedVector3Array, n: Vector3) -> void:
+	var st := _tool(mat)
+	for i in range(0, corners.size(), 3):
+		var a := corners[i]
+		var b := corners[i + 1]
+		var d := corners[i + 2]
+		# Godot draws a triangle's front where its corners run clockwise.
+		var tri := [a, d, b] if (b - a).cross(d - a).dot(n) > 0.0 else [a, b, d]
+		for p: Vector3 in tri:
+			st.set_normal(n)
+			st.set_uv(_uv(p, n))
+			st.add_vertex(p)
 
 
 func _tool(mat: Material) -> SurfaceTool:

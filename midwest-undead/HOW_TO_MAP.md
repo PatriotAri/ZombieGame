@@ -48,8 +48,9 @@ to jump to it.
   appears when you select the **Terrain** node. It sculpts and paints the
   ground.
 - The **Map Tools** panel is a tab along the bottom of the editor, next to
-  Output. It adds roads, creeks, ponds, plants, fields, rocks and mine
-  entrances. If you can't see it, click **Map Tools** in the bottom bar.
+  Output. It adds roads, creeks, ponds, plants, fields, rocks, mine
+  entrances and buildings (drawing their outlines, stairs, doors and windows:
+  `HOW_TO_BUILD.md`). If you can't see it, click **Map Tools** in the bottom bar.
 
 **Saving.** Ctrl+S saves the scene *and* the terrain (heights, paint and
 plants are kept in `world/map/terrain/`, one file per 256 m tile). Save
@@ -337,8 +338,9 @@ separate job, still to come.
 
 ## 10. Buildings on hills
 
-Buildings are made the same way as before (see `HOW_TO_BUILD.md`): drag a
-building from `world/kit/pieces/` onto the map's **Buildings** node.
+Buildings are made the same way as before (see `HOW_TO_BUILD.md`): Map Tools'
+**New building**, or drag one from `world/kit/pieces/` onto the map's
+**Buildings** node. Any shape stands on its foundation the same way.
 
 On a slope:
 

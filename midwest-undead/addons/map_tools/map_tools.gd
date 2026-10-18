@@ -12,6 +12,12 @@ extends EditorPlugin
 ## with any path.)
 ## Plant brushes: pick a brush in the Plants section; the map's "Plants" node
 ## is selected and the 3D view paints where you click and drag.
+## Buildings: select a Building and pick a tool in the Buildings section; the
+## 3D view then draws its outline (corner by corner, on a 0.5 m grid, walls at
+## right angles unless Shift is held), places stairs (click where a flight
+## starts, then which way it climbs) or puts doors and windows in its walls
+## (click on a wall). Right-click takes back the last corner, or removes the
+## stairs or opening under the mouse. Its walls' numbers show while it's selected.
 
 const TerrainEdit := preload("res://world/map/terrain_edit.gd")
 const Road := preload("res://world/map/road.gd")
@@ -27,6 +33,11 @@ const Plants := preload("res://world/map/plants.gd")
 const PlantPainter := preload("res://world/map/plant_painter.gd")
 const Zone := preload("res://world/markers/zone.gd")
 const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
+const Building := preload("res://world/building.gd")
+const BUILDING_TOOLS := ["Off", "Draw outline", "Place stairs", "Add door", "Add window", "Add doorway"]
+## Openings the tools add: [width, bottom, top].
+const OPENING_SIZES := {"door": [1.0, 0.0, 2.2], "window": [1.2, 0.9, 2.3], "doorway": [1.2, 0.0, 2.4]}
+const GRID := 0.5
 const ROADS_DIR := "res://world/map/roads/"
 const APPLY_MARGIN := 40.0 # meters around a path that an Apply's undo step covers
 const BRUSHES := ["Off", "Forest", "Paint plant", "Place one", "Erase"]
@@ -52,6 +63,11 @@ var _painting := false
 var _last_paint := Vector3.INF
 var _stroke_before := {} # region location -> its plants before this stroke
 var _ring: MeshInstance3D # the brush's circle on the ground
+var _building_tool: OptionButton
+var _building_floor: SpinBox
+var _draft := PackedVector2Array() # the outline being drawn, in click order
+var _stair_start := Vector2.INF # Place stairs: where the flight starts, before the second click
+var _numbered: Node # the building showing its wall numbers
 
 
 func _enter_tree() -> void:
@@ -117,6 +133,25 @@ func _build_panel() -> Control:
 	_button(features, "New crop field", "Adds a crop field in front of the camera. Then Draw points around its edge and press Apply to plow it.", _new_field)
 	_button(features, "New rock", "Adds a rock in front of the camera. Move, turn and scale it; change Shape for another one.", _new_rock)
 	_button(features, "New mine entrance", "Adds a mine entrance in front of the camera. Turn it into the hillside, then Apply to open the hill.", _new_mine)
+
+	var buildings := _section(root, "Buildings")
+	_button(buildings, "New building", "Adds a 10 x 10 m building with a door and windows in front of the camera. Then reshape it with the tools below or the Inspector.", _new_building)
+	_building_tool = OptionButton.new()
+	for t: String in BUILDING_TOOLS:
+		_building_tool.add_item(t)
+	_building_tool.tooltip_text = "What clicking in the 3D view does to the selected building."
+	_building_tool.item_selected.connect(_on_building_tool)
+	buildings.add_child(_building_tool)
+	var floor_row := HBoxContainer.new()
+	var floor_label := Label.new()
+	floor_label.text = "Floor"
+	floor_row.add_child(floor_label)
+	_building_floor = SpinBox.new()
+	_building_floor.min_value = 0
+	_building_floor.max_value = 19
+	_building_floor.tooltip_text = "The floor the stairs and openings go on (0: the ground floor). Stairs climb from it to the next."
+	floor_row.add_child(_building_floor)
+	buildings.add_child(floor_row)
 
 	var places := _section(root, "Zones and camps")
 	_button(places, "New zone", "Adds a zone (a named area) in front of the camera. Name it in the Inspector, then Draw points around its edge.", _new_zone)
@@ -201,8 +236,17 @@ func _on_selection_changed() -> void:
 	var nodes := EditorInterface.get_selection().get_selected_nodes()
 	_selected = null
 	if nodes.size() == 1 and (nodes[0] is Road or nodes[0] is Creek or nodes[0] is Pond or nodes[0] is CropField
-			or nodes[0] is Rock or nodes[0] is MineEntrance or nodes[0] is PlantsLayer or nodes[0] is Zone):
+			or nodes[0] is Rock or nodes[0] is MineEntrance or nodes[0] is PlantsLayer or nodes[0] is Zone or nodes[0] is Building):
 		_selected = nodes[0]
+	if _numbered != _selected:
+		if is_instance_valid(_numbered):
+			_numbered.set("show_numbers", false)
+		_numbered = _selected if _selected is Building else null
+		if _numbered:
+			_numbered.set("show_numbers", true)
+	_building_tool.disabled = not _selected is Building
+	if not _selected is Building and _building_tool.selected != 0:
+		_building_tool.select(0)
 	var path := _selected is Road or _selected is Creek or _selected is CropField or _selected is Zone
 	_draw.disabled = not path
 	if not path:
@@ -225,6 +269,9 @@ func _on_selection_changed() -> void:
 	elif path:
 		_selected_label.text = "%s (%d points)" % [_selected.name, (_selected as Path3D).curve.point_count if (_selected as Path3D).curve else 0]
 		_help.text = "Turn on Draw points and click on the ground to add points (right-click removes the last). Drag points to move them. Then press Apply. Ctrl+Z undoes an Apply."
+	elif _selected is Building:
+		_selected_label.text = "%s (%s)" % [_selected.name, BUILDING_TOOLS[_building_tool.selected]]
+		_help.text = _building_help()
 	elif _selected is MineEntrance:
 		_selected_label.text = "%s" % _selected.name
 		_help.text = "Turn it so the tunnel runs into a steep hillside and set its floor at the ground, then press Apply to open the hill."
@@ -393,6 +440,15 @@ func _new_base_camp() -> void:
 	camp._ready() # its Logbook, Board and Crate markers, now that it's in the scene
 
 
+func _new_building() -> void:
+	var building := Building.new()
+	building.name = "Building"
+	building.position = _in_view()
+	building.floor_y = 0.02
+	building.default_openings()
+	_add(building, _group("Buildings"), "New building")
+
+
 func _new_mine() -> void:
 	var mine := MineEntrance.new()
 	mine.name = "MineEntrance"
@@ -559,12 +615,15 @@ func _show_ring(on: bool, at := Vector3.ZERO) -> void:
 # --- Mouse in the 3D view ----------------------------------------------------------------
 
 func _handles(object: Object) -> bool:
-	return object is Road or object is Creek or object is CropField or object is PlantsLayer or object is Zone
+	return object is Road or object is Creek or object is CropField or object is PlantsLayer or object is Zone \
+			or object is Building
 
 
 func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 	if _selected is PlantsLayer and _brush.selected != 0:
 		return _brush_input(camera, event)
+	if _selected is Building and _building_tool.selected != 0:
+		return _building_input(camera, event)
 	if not _draw.button_pressed or not (_selected is Road or _selected is Creek or _selected is CropField or _selected is Zone):
 		return AFTER_GUI_INPUT_PASS
 	var mb := event as InputEventMouseButton
@@ -631,3 +690,147 @@ func _ground_under(camera: Camera3D, at: Vector2) -> Vector3:
 	if not hit.is_finite() or hit.distance_to(camera.global_position) > 3000.0:
 		return Vector3.INF
 	return hit
+
+
+# --- Buildings ---------------------------------------------------------------------------
+
+func _on_building_tool(_index: int) -> void:
+	_draft = PackedVector2Array()
+	_stair_start = Vector2.INF
+	_on_selection_changed()
+
+
+func _building_help() -> String:
+	match BUILDING_TOOLS[_building_tool.selected]:
+		"Draw outline":
+			return "Click its corners on the ground, going round (it closes itself). Corners snap to a 0.5 m grid and walls to right angles; hold Shift for any angle. Right-click takes back the last corner. The first click starts a new outline. Walls are numbered from the first corner."
+		"Place stairs":
+			return "Click where the bottom step goes, then click which way it climbs (right angles; Shift for any). It climbs from the Floor set here to the next. Right-click removes the stairs under the mouse."
+		"Add door", "Add window", "Add doorway":
+			return "Click on a wall (on the Floor set here) where it goes. Right-click removes the door or window under the mouse. Fine-tune it in the Inspector (Openings)."
+	return "Pick a tool to draw its outline, place stairs, or add doors and windows. Or set it all in the Inspector. Its walls' numbers show while it's selected."
+
+
+## Where the mouse points on the level of floor `level` of the building (its own x, z), or Vector2.INF.
+func _on_floor(camera: Camera3D, at: Vector2, building: Node3D, level: int) -> Vector2:
+	var height: float = building.call("floor_top", level) if level > 0 else 0.0
+	var plane := Plane(building.global_basis.y.normalized(), building.global_transform * Vector3(0, height, 0))
+	var hit: Variant = plane.intersects_ray(camera.project_ray_origin(at), camera.project_ray_normal(at))
+	if hit == null:
+		return Vector2.INF
+	var local: Vector3 = building.to_local(hit)
+	return Vector2(local.x, local.z)
+
+
+static func _snap(p: Vector2) -> Vector2:
+	return (p / GRID).round() * GRID
+
+
+func _building_input(camera: Camera3D, event: InputEvent) -> int:
+	var mb := event as InputEventMouseButton
+	if mb == null or not mb.pressed or not mb.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
+		return AFTER_GUI_INPUT_PASS
+	var building := _selected as Node3D
+	var tool: String = BUILDING_TOOLS[_building_tool.selected]
+	var level := int(_building_floor.value) if tool != "Draw outline" else 0
+	var p := _on_floor(camera, mb.position, building, level)
+	if p == Vector2.INF:
+		return AFTER_GUI_INPUT_STOP
+	var right := mb.button_index == MOUSE_BUTTON_RIGHT
+	match tool:
+		"Draw outline":
+			_outline_click(building, p, right, mb.shift_pressed)
+		"Place stairs":
+			_stairs_click(building, p, right, mb.shift_pressed, level)
+		_:
+			_opening_click(building, p, right, tool.trim_prefix("Add ").to_lower(), level)
+	return AFTER_GUI_INPUT_STOP
+
+
+func _outline_click(building: Node3D, p: Vector2, right: bool, free_angle: bool) -> void:
+	if right:
+		if _draft.is_empty():
+			return
+		_draft.remove_at(_draft.size() - 1)
+	else:
+		p = _snap(p)
+		if not _draft.is_empty() and not free_angle: # a right angle to the last wall
+			var last := _draft[_draft.size() - 1]
+			if absf(p.x - last.x) > absf(p.y - last.y):
+				p.y = last.y
+			else:
+				p.x = last.x
+		if not _draft.is_empty() and p.is_equal_approx(_draft[_draft.size() - 1]):
+			return
+		_draft.append(p)
+	var ur := get_undo_redo()
+	ur.create_action("Draw outline")
+	ur.add_do_property(building, "footprint", _draft.duplicate())
+	ur.add_undo_property(building, "footprint", building.get("footprint"))
+	ur.commit_action()
+	_help.text = _building_help() + "\n%d corners." % _draft.size()
+
+
+func _stairs_click(building: Node3D, p: Vector2, right: bool, free_angle: bool, level: int) -> void:
+	var stairs: Array = building.get("stairs")
+	if right:
+		_stair_start = Vector2.INF
+		for stair: KitStair in stairs:
+			if stair and stair.level == level and stair.start.distance_to(p) < 2.5:
+				_set_list(building, "stairs", stairs.filter(func(s: KitStair) -> bool: return s != stair), "Remove stairs")
+				return
+		return
+	if _stair_start == Vector2.INF:
+		_stair_start = _snap(p)
+		_help.text = _building_help() + "\nNow click which way it climbs."
+		return
+	var toward := p - _stair_start
+	var degrees := rad_to_deg(atan2(toward.y, toward.x))
+	if not free_angle:
+		degrees = roundf(degrees / 90.0) * 90.0
+	var added := stairs.duplicate()
+	added.append(KitStair.make(level, _stair_start, degrees))
+	_set_list(building, "stairs", added, "Place stairs")
+	_stair_start = Vector2.INF
+	_help.text = _building_help()
+
+
+func _opening_click(building: Node3D, p: Vector2, right: bool, kind: String, level: int) -> void:
+	var openings: Array = building.get("openings")
+	# The wall nearest the click: its number, and how far along from its middle.
+	var best := -1
+	var best_dist := 1.5
+	var along := 0.0
+	for n in int(building.call("edge_count")):
+		var ends: Array = building.call("edge_ends", n)
+		var on := Geometry2D.get_closest_point_to_segment(p, ends[0], ends[1])
+		if on.distance_to(p) < best_dist:
+			best = n
+			best_dist = on.distance_to(p)
+			along = (on - (ends[0] + ends[1]) / 2.0).dot((ends[1] - ends[0]).normalized())
+	if best < 0:
+		return
+	if right:
+		for op: KitOpening in openings:
+			if op and op.level == level and int(building.call("edge_of", op)) == best and absf(op.offset - along) < op.width / 2.0 + 0.2:
+				_set_list(building, "openings", openings.filter(func(o: KitOpening) -> bool: return o != op), "Remove opening")
+				return
+		return
+	var size: Array = OPENING_SIZES[kind]
+	var op := KitOpening.make_on_edge(best, kind, snappedf(along, 0.1), size[0], size[1], size[2])
+	op.level = level
+	var added := openings.duplicate()
+	added.append(op)
+	_set_list(building, "openings", added, "Add " + kind)
+
+
+## Sets one of the building's lists (stairs, openings) as one undo step.
+func _set_list(building: Node3D, property: String, value: Array, action: String) -> void:
+	var typed: Array = building.get(property).duplicate()
+	typed.clear()
+	typed.append_array(value)
+	var ur := get_undo_redo()
+	ur.create_action(action)
+	ur.add_do_property(building, property, typed)
+	ur.add_undo_property(building, property, building.get(property))
+	ur.commit_action()

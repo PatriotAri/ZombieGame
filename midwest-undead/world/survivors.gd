@@ -136,9 +136,10 @@ func move_zombies_out(zombies: Array) -> void:
 			if house == null:
 				continue
 			var local := house.global_transform.affine_inverse() * zombie.global_position
-			if local.x > 0.0 and local.x < house.size_depth and absf(local.z) < house.size_width / 2.0:
+			if house.contains_local(Vector2(local.x, local.z)):
 				# Out front, clawing at the boards.
-				zombie.global_position = house.global_transform * Vector3(-3.0, 0.1, house.front_door_z() + randf_range(-2.0, 2.0))
+				var spread := house.global_basis.z * randf_range(-2.0, 2.0)
+				zombie.global_position = house.outside_front_door(3.0) + spread + Vector3(0, 0.1, 0)
 				break
 
 

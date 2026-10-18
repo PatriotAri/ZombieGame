@@ -10,6 +10,13 @@ extends Resource
 	set(value):
 		wall = value
 		emit_changed()
+## Which wall of a drawn outline, by its number (the editor shows them on the
+## selected building: Map Tools, Buildings). -1: by Wall above (front 0, right
+## 1, back 2, left 3).
+@export_range(-1, 100) var edge := -1:
+	set(value):
+		edge = value
+		emit_changed()
 ## A doorway is an open gap where a door would be (no door in it).
 @export_enum("window", "door", "doorway") var kind := "window":
 	set(value):
@@ -21,7 +28,8 @@ extends Resource
 		level = value
 		emit_changed()
 ## Where its middle is along the wall, in meters from the wall's middle
-## (seen from outside, + is to the right).
+## (seen from outside, + is to the right; a drawn wall's + is toward its next
+## corner).
 @export var offset := 0.0:
 	set(value):
 		offset = value
@@ -69,4 +77,11 @@ static func make(on_wall: String, what: String, along: float, w: float, from: fl
 	op.width = w
 	op.bottom = from
 	op.top = to
+	return op
+
+
+## The same, on a drawn outline's wall number on_edge.
+static func make_on_edge(on_edge: int, what: String, along: float, w: float, from: float, to: float) -> KitOpening:
+	var op := make("front", what, along, w, from, to)
+	op.edge = on_edge
 	return op

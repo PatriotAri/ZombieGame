@@ -1,15 +1,19 @@
 @tool
 class_name KitBuilding
 extends Node3D
-## A building you can walk into, made from its settings: change its size,
-## floors, openings or materials in the Inspector and it rebuilds right away,
-## in the editor and in the game. See HOW_TO_BUILD.md.
+## A building you can walk into, made from its settings: change its outline,
+## floors, openings, stairs or materials in the Inspector (or draw them with
+## the Map Tools panel's Buildings section) and it rebuilds right away, in the
+## editor and in the game. See HOW_TO_BUILD.md.
 ##
 ## Local axes: x = 0 is the front wall (the street side) and +x goes into the
-## building; z runs along the front; y is up from the ground. Every floor has
-## walls on all four sides, with the doorways and windows in Openings cut into
-## them. Each floor above the ground is reached by a staircase along a side wall
-## (alternating sides going up). Over the top floor sits either a flat roof or,
+## building; z runs along the front; y is up from the ground. Its outline is a
+## rectangle (Size) or any shape drawn as Footprint corners; every floor has a
+## wall along each side of it, numbered from the first corner (a rectangle's
+## front is 0, right 1, back 2, left 3), with the doorways and windows in
+## Openings cut into them. Floors above the ground are reached by the flights
+## in Stairs (a rectangle with none gets one along a side wall per floor,
+## alternating sides going up). Over the top floor sits either a flat roof or,
 ## with Upper Height, a solid block you can't enter, with painted-on windows.
 ##
 ## On uneven ground it stands on a foundation down to the ground all round
@@ -29,11 +33,13 @@ const STOREY := 3.6 # floor to floor: a 3.4 m room under a 0.2 m slab
 ## far as walking is concerned.)
 const SIDEWALK_FLOOR_Y := 0.1
 const STAIR_WIDTH := 1.6 # wide enough that the navigation mesh fits a zombie up it
-const STAIR_START := 1.5 # how far back from the front wall a staircase starts
+const STAIR_START := 1.5 # how far back from the front wall a rectangle's own staircase starts
 const STAIR_RUN_PER_RISE := 1.6 # about 32 degrees
 const LANDING := 1.0 # floor needed past the top of a staircase
 const PAINTED_WINDOW := Vector3(0.04, 1.3, 1.1)
 const PAINTED_SPACING := 2.6
+## A rectangle's walls by name (KitOpening's Wall): their numbers.
+const WALL_NUMBERS := {"front": 0, "right": 1, "back": 2, "left": 3}
 
 const DEFAULT_EXTERIOR := preload("res://world/kit/materials/siding_white.tres")
 const DEFAULT_INTERIOR := preload("res://world/kit/materials/plaster.tres")
@@ -51,7 +57,8 @@ const TerrainEdit := preload("res://world/map/terrain_edit.gd")
 const POST_SPACING := 2.5 # wooden posts: this far apart along each side
 
 @export_group("Size")
-## How far back from the front wall it goes (local +x), in meters.
+## How far back from the front wall it goes (local +x), in meters. (A drawn
+## Footprint replaces this and Width.)
 @export_range(2.0, 100.0, 0.1, "or_greater") var size_depth := 10.0:
 	set(value):
 		size_depth = value
@@ -61,7 +68,16 @@ const POST_SPACING := 2.5 # wooden posts: this far apart along each side
 	set(value):
 		size_width = value
 		_changed()
-## Floors you can walk around on. Each one above the ground gets a staircase.
+## Its outline, any shape: corners (x, z) in the building's own meters, in
+## order round the outside. Draw it with Map Tools (Buildings > Draw outline).
+## Empty: the Size rectangle.
+@export var footprint := PackedVector2Array():
+	set(value):
+		footprint = _ordered(value)
+		_changed()
+## Turns the Size rectangle into a drawn outline (to drag its corners about).
+@export_tool_button("Outline From Size", "Edit") var outline_button := outline_from_size
+## Floors you can walk around on.
 @export_range(1, 20) var floors := 1:
 	set(value):
 		floors = maxi(value, 1)
@@ -90,13 +106,8 @@ const POST_SPACING := 2.5 # wooden posts: this far apart along each side
 ## below fills in a door and windows to start from.
 @export var openings: Array[KitOpening] = []:
 	set(value):
-		for op in openings:
-			if op and op.changed.is_connected(_changed):
-				op.changed.disconnect(_changed)
+		_watch(openings, value)
 		openings = value
-		for op in openings:
-			if op and not op.changed.is_connected(_changed):
-				op.changed.connect(_changed)
 		_changed()
 ## Replaces the openings with a front door and a few windows on every floor.
 @export_tool_button("Default Openings", "Reload") var default_openings_button := default_openings
@@ -114,8 +125,16 @@ const POST_SPACING := 2.5 # wooden posts: this far apart along each side
 		_changed()
 
 @export_group("Stairs")
-## The side wall the first staircase runs along (seen from outside); the next
-## one up runs along the other side, and so on.
+## The flights between floors: place them with Map Tools (Buildings > Place
+## stairs) or add them here. Empty on a rectangle: one per floor along a side
+## wall (Stairs Side).
+@export var stairs: Array[KitStair] = []:
+	set(value):
+		_watch(stairs, value)
+		stairs = value
+		_changed()
+## A rectangle with no Stairs: the side wall the first staircase runs along
+## (seen from outside); the next one up runs along the other side, and so on.
 @export_enum("left", "right") var stairs_side := "left":
 	set(value):
 		stairs_side = value
@@ -159,6 +178,13 @@ const POST_SPACING := 2.5 # wooden posts: this far apart along each side
 		window_models = value
 		_changed()
 
+## In the editor: its walls' numbers floating outside them (Map Tools turns
+## them on while it's selected). Never in the game.
+var show_numbers := false:
+	set(value):
+		show_numbers = value
+		_changed()
+
 var _generated: Array[Node] = []
 var _foundation_body: StaticBody3D
 var _dirty := true
@@ -184,23 +210,84 @@ func ensure_built() -> void:
 		_rebuild()
 
 
+# --- Its shape ------------------------------------------------------------------
+
+## Its outline: corners (x, z), in the order its walls are numbered.
+func outline() -> PackedVector2Array:
+	if footprint.size() >= 3:
+		return footprint
+	var half := size_width / 2.0
+	return PackedVector2Array([Vector2(0, -half), Vector2(0, half), Vector2(size_depth, half), Vector2(size_depth, -half)])
+
+
+## Corners turned to go round the way the walls need (the inside on the left,
+## seen from above with +x down the screen); Footprint's setter does this. The
+## first wall drawn (first corner to second) stays wall 0, the front.
+static func _ordered(corners: PackedVector2Array) -> PackedVector2Array:
+	if corners.size() < 3 or KitMesh._area(corners) <= 0.0:
+		return corners
+	var turned := PackedVector2Array([corners[1], corners[0]])
+	for i in range(corners.size() - 1, 1, -1):
+		turned.append(corners[i])
+	return turned
+
+
+func outline_from_size() -> void:
+	_undoable("Outline From Size", "footprint", outline())
+
+
+## Wall number n's two ends (x, z).
+func edge_ends(n: int) -> Array[Vector2]:
+	var poly := outline()
+	return [poly[n % poly.size()], poly[(n + 1) % poly.size()]]
+
+
+func edge_count() -> int:
+	return outline().size()
+
+
+## The wall an opening is in: its Edge, or (on a rectangle, or unset) its Wall's number.
+func edge_of(op: KitOpening) -> int:
+	if op.edge >= 0:
+		return op.edge
+	return WALL_NUMBERS.get(op.wall, 0)
+
+
+## Whether a point (x, z, the building's own space) is inside its outline.
+func contains_local(point: Vector2) -> bool:
+	return Geometry2D.is_point_in_polygon(point, outline())
+
+
 ## Its corners on the ground (world x, z), for the map screen.
 func ground_corners() -> PackedVector2Array:
-	var half := size_width / 2.0
 	var corners := PackedVector2Array()
-	for corner: Vector3 in [Vector3(0, 0, -half), Vector3(size_depth, 0, -half),
-			Vector3(size_depth, 0, half), Vector3(0, 0, half)]:
-		var world := global_transform * corner
+	for corner in outline():
+		var world := global_transform * Vector3(corner.x, 0, corner.y)
 		corners.append(Vector2(world.x, world.z))
 	return corners
 
 
 ## Local z of the middle of the ground-floor front door (0 if there isn't one).
+## (A rectangle's; for any shape, outside_front_door().)
 func front_door_z() -> float:
 	for op in openings:
-		if op and op.kind == "door" and op.wall == "front" and op.level == 0:
+		if op and op.kind == "door" and edge_of(op) == 0 and op.level == 0:
 			return op.offset
 	return 0.0
+
+
+## A point `distance` meters outside the middle of the ground-floor front door
+## (in the world); the front wall's middle if there's no door.
+func outside_front_door(distance: float) -> Vector3:
+	var along := 0.0
+	var n := 0
+	for op in openings:
+		if op and op.kind == "door" and op.level == 0:
+			along = op.offset
+			n = edge_of(op)
+			break
+	var frame := _wall_frame(n)
+	return global_transform * (frame * Vector3(-WALL / 2.0 - distance, 0, along))
 
 
 ## Height of a floor's surface above the node.
@@ -210,6 +297,25 @@ func floor_top(level: int) -> float:
 
 func default_openings() -> void:
 	var list: Array[KitOpening] = []
+	if footprint.size() < 3:
+		_rectangle_openings(list)
+	else:
+		# A door in the middle of wall 0, and a window in every wall long enough on each floor.
+		list.append(KitOpening.make_on_edge(0, "door", 0.0, 1.6, 0.0, 2.4))
+		for k in floors:
+			for n in edge_count():
+				var ends := edge_ends(n)
+				var length := ends[0].distance_to(ends[1])
+				if length < 3.0:
+					continue
+				var op := KitOpening.make_on_edge(n, "window", 0.0 if n != 0 or k > 0 else length / 4.0 + 0.6, 1.2, 0.9, 2.3)
+				op.level = k
+				if not (n == 0 and k == 0 and length < 5.0):
+					list.append(op)
+	_undoable("Default Openings", "openings", list)
+
+
+func _rectangle_openings(list: Array[KitOpening]) -> void:
 	var half := size_width / 2.0
 	list.append(KitOpening.make("front", "door", 0.0, 1.6, 0.0, 2.4))
 	for k in floors:
@@ -230,15 +336,29 @@ func default_openings() -> void:
 		for op in on_floor:
 			op.level = k
 			list.append(op)
+
+
+## Sets a property through the editor's undo history (Ctrl+Z puts it back);
+## outside the editor, just sets it.
+func _undoable(action: String, property: String, value: Variant) -> void:
 	if Engine.is_editor_hint() and Engine.has_singleton("EditorInterface"):
-		# Through the editor's undo history, so Ctrl+Z puts the old ones back.
 		var undo: Object = Engine.get_singleton("EditorInterface").call("get_editor_undo_redo")
-		undo.call("create_action", "Default Openings")
-		undo.call("add_do_property", self, "openings", list)
-		undo.call("add_undo_property", self, "openings", openings)
+		undo.call("create_action", action)
+		undo.call("add_do_property", self, property, value)
+		undo.call("add_undo_property", self, property, get(property))
 		undo.call("commit_action")
 	else:
-		openings = list
+		set(property, value)
+
+
+## Rebuilds when an opening or flight in a list changes.
+func _watch(old: Array, new: Array) -> void:
+	for item: Resource in old:
+		if item and item.changed.is_connected(_changed):
+			item.changed.disconnect(_changed)
+	for item: Resource in new:
+		if item and not item.changed.is_connected(_changed):
+			item.changed.connect(_changed)
 
 
 func _changed() -> void:
@@ -252,15 +372,30 @@ func _changed() -> void:
 
 func _get_configuration_warnings() -> PackedStringArray:
 	var warnings := PackedStringArray()
+	if footprint.size() > 0 and footprint.size() < 3:
+		warnings.append("The drawn outline needs at least 3 corners (it's using the Size rectangle until then).")
+	elif footprint.size() >= 3 and not Geometry2D.triangulate_polygon(footprint).size():
+		warnings.append("The drawn outline crosses itself: draw it again going round once.")
 	for k in floors - 1:
-		if not _stairs_fit(k):
-			warnings.append("Too shallow for the staircase to floor %d: it needs %.1f m of depth." % [k + 1, _stairs_needs(k)])
+		if not _flights().any(func(f: Dictionary) -> bool: return f["level"] == k):
+			warnings.append("Nothing goes up from floor %d to floor %d: place stairs (Map Tools, Buildings)." % [k, k + 1] if footprint.size() >= 3 or not stairs.is_empty()
+					else "Too shallow for the staircase to floor %d: it needs %.1f m of depth." % [k + 1, _stairs_needs(k)])
+	for flight in _flights():
+		if flight["level"] >= floors - 1:
+			warnings.append("A staircase starts on floor %d, but the building has %d floor(s)." % [flight["level"], floors])
+		elif not _flight_fits(flight):
+			warnings.append("A staircase on floor %d doesn't fit inside the building (it needs %.1f m of room ahead of its bottom step)." % [flight["level"], _run(flight["level"]) + LANDING])
 	for op in openings:
 		if op == null:
 			continue
-		var length := size_width if op.wall in ["front", "back"] else size_depth
+		var n := edge_of(op)
+		if n >= edge_count():
+			warnings.append("An opening is on wall %d, but the building has %d walls." % [n, edge_count()])
+			continue
+		var ends := edge_ends(n)
+		var length := ends[0].distance_to(ends[1])
 		if absf(op.offset) + op.width / 2.0 > length / 2.0 - WALL or op.top > STOREY - 0.25 or op.bottom < 0.0:
-			warnings.append("An opening on the %s wall (floor %d) doesn't fit in the wall." % [op.wall, op.level])
+			warnings.append("An opening on wall %d (floor %d) doesn't fit in the wall." % [n, op.level])
 		if op.level >= floors:
 			warnings.append("An opening is on floor %d, but the building has %d floor(s)." % [op.level, floors])
 	return warnings
@@ -282,44 +417,36 @@ func _rebuild() -> void:
 	var floor_mat := floor_material if floor_material else DEFAULT_FLOOR
 	var ceiling := ceiling_material if ceiling_material else DEFAULT_CEILING
 	var roof := roof_material if roof_material else DEFAULT_ROOF
-	var d := size_depth
-	var w := size_width
-	var half := w / 2.0
+	var poly := outline()
 	var km := KitMesh.new()
 	var made: Array[Node] = [] # glass and doors, added once the shell is in
+	var flights := _flights().filter(func(f: Dictionary) -> bool: return f["level"] < floors - 1 and _flight_fits(f))
 
 	if floor_y > 0.001:
-		km.box(Vector3(d, floor_y, w), _at(Vector3(d / 2.0, floor_y / 2.0, 0)), [null, null, null, floor_mat, null, null])
+		km.slab(poly, [], floor_y, floor_y, floor_mat, null, null, null)
 	for k in floors:
 		var y0 := k * STOREY
 		var y1 := (k + 1) * STOREY
 		var fy := floor_top(k)
-		for wall_name: String in ["front", "back", "left", "right"]:
+		for n in poly.size():
+			var ends := edge_ends(n)
 			var list := []
 			for op in openings:
-				if op and op.wall == wall_name and op.level == k:
+				if op and edge_of(op) == n and op.level == k:
 					list.append({"kind": op.kind, "along": op.offset, "width": op.width, "bottom": fy + op.bottom,
 							"top": fy + op.top, "boarded_up": op.boarded_up, "source": op})
-			var frame := _wall_frame(wall_name)
-			km.wall(frame, w if wall_name in ["front", "back"] else d, y0, y1, fy, list, ext, inside)
-			made.append_array(_opening_nodes(wall_name, k, list, fy))
+			km.wall(_wall_frame(n), ends[0].distance_to(ends[1]), y0, y1, fy, list, ext, inside)
+			made.append_array(_opening_nodes(n, k, list, fy))
 		# The slab over this floor: its ceiling, and the next floor's floor (with
-		# a hole where the staircase comes up).
+		# holes where staircases come up).
 		var upstairs := k + 1 < floors
-		var hole := _stairs_hole(k) if upstairs and _stairs_fit(k) else Rect2()
-		_slab(km, y1, hole, floor_mat if upstairs else roof, ceiling, inside)
-		if hole.has_area():
-			_stairs(km, k, floor_mat, inside)
+		var here := flights.filter(func(f: Dictionary) -> bool: return f["level"] == k)
+		var holes := here.map(func(f: Dictionary) -> Dictionary: return _hole(f))
+		km.slab(poly, holes, y1, 0.2, floor_mat if upstairs else roof, ceiling, null, inside)
+		for flight in here:
+			_stairs(km, flight, floor_mat, inside)
 	if upper_height > 0.0:
-		var top := floors * STOREY
-		km.box(Vector3(d, upper_height, w), _at(Vector3(d / 2.0, top + upper_height / 2.0, 0)), [ext, ext, null, roof, ext, ext])
-		if painted_windows and upper_height > 1.8:
-			var count := int((w - 1.0) / PAINTED_SPACING)
-			for i in count:
-				var z := -half + 0.5 + PAINTED_SPACING * (i + 0.5) + ((w - 1.0) - PAINTED_SPACING * count) / 2.0
-				var mat: Material = BOARDS if i in boarded_painted_windows else WINDOW_DARK
-				km.box(PAINTED_WINDOW, _at(Vector3(-PAINTED_WINDOW.x / 2.0, top + upper_height / 2.0, z)),
-						[mat, null, mat, mat, mat, mat], false)
+		_upper_block(km, poly, ext, roof)
 
 	var body := StaticBody3D.new()
 	body.name = "Shell"
@@ -329,10 +456,49 @@ func _rebuild() -> void:
 	for node in made:
 		add_child(node, false, Node.INTERNAL_MODE_BACK)
 		_generated.append(node)
+	if show_numbers and Engine.is_editor_hint():
+		_number_walls()
 	if is_inside_tree():
 		_build_foundation()
 	if Engine.is_editor_hint():
 		update_configuration_warnings()
+
+
+## The solid block over the top floor: walls round the outline, a roof on top,
+## and painted-on windows along the front (wall 0).
+func _upper_block(km: KitMesh, poly: PackedVector2Array, ext: Material, roof: Material) -> void:
+	var top := floors * STOREY
+	for n in poly.size():
+		var ends := edge_ends(n)
+		km.wall(_wall_frame(n), ends[0].distance_to(ends[1]), top, top + upper_height, top, [], ext, ext)
+	km.slab(poly, [], top + upper_height, 0.2, roof, null, ext, null)
+	if not painted_windows or upper_height <= 1.8:
+		return
+	var ends := edge_ends(0)
+	var length := ends[0].distance_to(ends[1])
+	var frame := _wall_frame(0)
+	var count := int((length - 1.0) / PAINTED_SPACING)
+	for i in count:
+		var along := -length / 2.0 + 0.5 + PAINTED_SPACING * (i + 0.5) + ((length - 1.0) - PAINTED_SPACING * count) / 2.0
+		var mat: Material = BOARDS if i in boarded_painted_windows else WINDOW_DARK
+		var at := frame * Transform3D(Basis.IDENTITY, Vector3(-WALL / 2.0 - PAINTED_WINDOW.x / 2.0, top + upper_height / 2.0, along))
+		km.box(PAINTED_WINDOW, at, [mat, null, mat, mat, mat, mat], false)
+
+
+## Each wall's number, floating outside its middle (in the editor, while Map Tools has it selected).
+func _number_walls() -> void:
+	var height := floors * STOREY + upper_height + 1.0
+	for n in edge_count():
+		var label := Label3D.new()
+		label.text = "Wall %d" % n
+		label.font_size = 96
+		label.pixel_size = 0.01
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.no_depth_test = true
+		label.modulate = Color(1.0, 0.85, 0.3)
+		label.position = _wall_frame(n) * Vector3(-1.0, height, 0)
+		add_child(label, false, Node.INTERNAL_MODE_BACK)
+		_generated.append(label)
 
 
 ## The foundation, on its own (see `foundation`): main.gd builds buildings before
@@ -344,7 +510,7 @@ func _build_foundation() -> void:
 		_foundation_body = null
 	var km := KitMesh.new()
 	_foundation(km)
-	if km.shapes.is_empty():
+	if km.shapes.is_empty() and not km.has_slabs():
 		return
 	_foundation_body = StaticBody3D.new()
 	_foundation_body.name = "Foundation"
@@ -358,64 +524,65 @@ func _foundation(km: KitMesh) -> void:
 	var terrain := TerrainEdit.find_terrain(self) if is_inside_tree() else null
 	if terrain == null:
 		return
-	var d := size_depth
-	var w := size_width
+	var poly := outline()
 	var lowest := 0.0 # the ground's lowest point under the walls, from the base
-	var steps := maxi(2, int(ceil(maxf(d, w))))
-	for i in steps + 1:
-		var t := float(i) / steps
-		for local: Vector3 in [Vector3(t * d, 0, -w / 2.0), Vector3(t * d, 0, w / 2.0),
-				Vector3(0, 0, (t - 0.5) * w), Vector3(d, 0, (t - 0.5) * w)]:
-			var world := global_transform * local
+	for n in poly.size():
+		var ends := edge_ends(n)
+		var steps := maxi(2, int(ceil(ends[0].distance_to(ends[1]))))
+		for i in steps + 1:
+			var p := ends[0].lerp(ends[1], float(i) / steps)
+			var world := global_transform * Vector3(p.x, 0, p.y)
 			lowest = minf(lowest, TerrainEdit.height_at(terrain, world) - world.y)
 	if lowest > -0.05:
 		return # level ground: nothing shows
 	var depth := -lowest + 0.3 # a little into the ground
 	var mat: Material = FOUNDATION_MATERIALS.get(foundation, FOUNDATION_MATERIALS["Concrete block"])
 	if foundation != "Wooden posts":
-		km.box(Vector3(d, depth, w), _at(Vector3(d / 2.0, -depth / 2.0, 0)), [mat, mat, null, null, mat, mat])
+		km.slab(poly, [], 0.0, depth, null, null, mat, null)
 		return
-	var along_x := maxi(1, int(ceil(d / POST_SPACING)))
-	var along_z := maxi(1, int(ceil(w / POST_SPACING)))
-	for i in along_x + 1:
-		for j in along_z + 1:
-			if i != 0 and i != along_x and j != 0 and j != along_z:
-				continue # round the edge only
-			var pos := Vector3(0.15 + (d - 0.3) * i / along_x, -depth / 2.0, -w / 2.0 + 0.15 + (w - 0.3) * j / along_z)
-			km.box(Vector3(0.25, depth, 0.25), _at(pos), [mat, mat, null, null, mat, mat])
+	# Posts round the edge: at each corner, and every POST_SPACING or so between.
+	for n in poly.size():
+		var ends := edge_ends(n)
+		var along := (ends[1] - ends[0]).normalized()
+		var inward := Vector2(along.y, -along.x) * 0.15
+		var count := maxi(1, int(ceil(ends[0].distance_to(ends[1]) / POST_SPACING)))
+		for i in count: # (the next wall's first post is this one's last)
+			var p := ends[0].lerp(ends[1], float(i) / count) + inward + along * (0.15 if i == 0 else 0.0)
+			km.box(Vector3(0.25, depth, 0.25), _at(Vector3(p.x, -depth / 2.0, p.y)), [mat, mat, null, null, mat, mat])
 
 
 static func _at(pos: Vector3) -> Transform3D:
 	return Transform3D(Basis.IDENTITY, pos)
 
 
-## A wall's frame (see kit_mesh.gd): its middle at the foot, outside toward -X,
-## running along +Z (to the right, seen from outside).
-func _wall_frame(wall_name: String) -> Transform3D:
-	var half := size_width / 2.0
-	match wall_name:
-		"back":
-			return Transform3D(Basis(Vector3.UP, PI), Vector3(size_depth - WALL / 2.0, 0, 0))
-		"left":
-			return Transform3D(Basis(Vector3.UP, -PI / 2.0), Vector3(size_depth / 2.0, 0, -(half - WALL / 2.0)))
-		"right":
-			return Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(size_depth / 2.0, 0, half - WALL / 2.0))
-	return Transform3D(Basis.IDENTITY, Vector3(WALL / 2.0, 0, 0))
+## Wall n's frame (see kit_mesh.gd): its middle at the foot, outside toward -X,
+## running along +Z from its first corner toward the next.
+func _wall_frame(n: int) -> Transform3D:
+	var ends := edge_ends(n)
+	var along := (ends[1] - ends[0]).normalized()
+	var z := Vector3(along.x, 0, along.y)
+	var x := Vector3(along.y, 0, -along.x) # into the building
+	var middle := (ends[0] + ends[1]) / 2.0
+	return Transform3D(Basis(x, Vector3.UP, z), Vector3(middle.x, 0, middle.y) + x * (WALL / 2.0))
 
 
 ## Glass and doors for one wall of one floor, named for saving ("FrontDoor",
-## "BackWindow2", "Floor2FrontWindow"...). Only the ground floor's can be boarded up.
-func _opening_nodes(wall_name: String, level: int, list: Array, fy: float) -> Array[Node]:
+## "BackWindow2", "Floor2FrontWindow", "Wall5Door"...). Only the ground floor's
+## can be boarded up.
+func _opening_nodes(n: int, level: int, list: Array, fy: float) -> Array[Node]:
 	var nodes: Array[Node] = []
 	var counts := {"door": 0, "window": 0}
-	var prefix := ("Floor%d" % (level + 1) if level > 0 else "") + wall_name.capitalize()
+	var wall_name := "Wall%d" % n
+	if footprint.size() < 3:
+		wall_name = WALL_NUMBERS.find_key(n).capitalize()
+	var prefix := ("Floor%d" % (level + 1) if level > 0 else "") + wall_name
 	for entry: Dictionary in list: # sorted along the wall by km.wall()
 		var op: KitOpening = entry["source"]
 		if op.kind == "doorway":
 			continue # just a gap
 		counts[op.kind] += 1
-		var n: int = counts[op.kind]
-		var node_name: String = prefix + op.kind.capitalize() + (str(n) if n > 1 else "")
+		var count: int = counts[op.kind]
+		var node_name: String = prefix + op.kind.capitalize() + (str(count) if count > 1 else "")
 		if op.kind == "door":
 			var door := KitMesh.make_door(entry, op.door_color, door_models)
 			door.name = node_name
@@ -431,31 +598,28 @@ func _opening_nodes(wall_name: String, level: int, list: Array, fy: float) -> Ar
 	return nodes
 
 
-## A 0.2 m slab with its top at `top` over the whole footprint, minus `hole`
-## (x, z). Edges show only around the hole (the walls cover the rest).
-func _slab(km: KitMesh, top: float, hole: Rect2, top_mat: Material, bottom_mat: Material, edge_mat: Material) -> void:
-	var d := size_depth
+# --- Stairs ------------------------------------------------------------------------
+# A flight: {"level", "start" (x, z of its bottom step's middle), "angle"
+# (radians it climbs toward, from +x toward +z)}.
+
+## The flights: Stairs, or a rectangle's own (one per floor, along a side wall).
+func _flights() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not stairs.is_empty() or footprint.size() >= 3:
+		for stair in stairs:
+			if stair:
+				result.append({"level": stair.level, "start": stair.start, "angle": deg_to_rad(stair.direction)})
+		return result
 	var half := size_width / 2.0
-	var pieces: Array[Rect2] = []
-	if not hole.has_area():
-		pieces.append(Rect2(0, -half, d, size_width))
-	else:
-		pieces.append(Rect2(0, -half, hole.position.x, size_width))
-		pieces.append(Rect2(hole.end.x, -half, d - hole.end.x, size_width))
-		pieces.append(Rect2(hole.position.x, -half, hole.size.x, hole.position.y + half))
-		pieces.append(Rect2(hole.position.x, hole.end.y, hole.size.x, half - hole.end.y))
-	for r in pieces:
-		if r.size.x <= 0.001 or r.size.y <= 0.001:
+	for k in floors - 1:
+		if not _stairs_fit(k):
 			continue
-		var faces := [
-			edge_mat if r.position.x > 0.001 else null, edge_mat if r.end.x < d - 0.001 else null,
-			bottom_mat, top_mat,
-			edge_mat if r.position.y > -half + 0.001 else null, edge_mat if r.end.y < half - 0.001 else null,
-		]
-		km.box(Vector3(r.size.x, 0.2, r.size.y), _at(Vector3(r.get_center().x, top - 0.1, r.get_center().y)), faces)
+		var s := _stairs_sign(k)
+		result.append({"level": k, "start": Vector2(STAIR_START, s * (half - WALL - STAIR_WIDTH / 2.0)), "angle": 0.0})
+	return result
 
 
-## Which side wall flight k (floor k to k+1) runs along: -1 left (-z), +1 right.
+## Which side wall a rectangle's own flight k runs along: -1 left (-z), +1 right.
 func _stairs_sign(k: int) -> float:
 	var first := -1.0 if stairs_side == "left" else 1.0
 	return first if k % 2 == 0 else -first
@@ -465,50 +629,79 @@ func _stairs_rise(k: int) -> float:
 	return (k + 1) * STOREY - floor_top(k)
 
 
+func _run(k: int) -> float:
+	return _stairs_rise(k) * STAIR_RUN_PER_RISE
+
+
 func _stairs_needs(k: int) -> float:
-	return STAIR_START + _stairs_rise(k) * STAIR_RUN_PER_RISE + LANDING + WALL
+	return STAIR_START + _run(k) + LANDING + WALL
 
 
 func _stairs_fit(k: int) -> bool:
 	return size_depth >= _stairs_needs(k) and size_width >= STAIR_WIDTH + 2.0 * WALL + 1.0
 
 
-## The hole flight k comes up through, in the slab over floor k: (x, z), out to the side wall.
-func _stairs_hole(k: int) -> Rect2:
-	var s := _stairs_sign(k)
-	var half := size_width / 2.0
-	var x0 := STAIR_START
-	var run := _stairs_rise(k) * STAIR_RUN_PER_RISE
-	var inner := s * (half - WALL - STAIR_WIDTH) # the room-side edge
-	var z0 := minf(inner, s * half)
-	var z1 := maxf(inner, s * half)
-	return Rect2(x0, z0, run, z1 - z0)
+## The flight's own frame on the floor (x, z): its bottom step's middle, x the way it climbs.
+func _flight_frame(flight: Dictionary) -> Transform2D:
+	return Transform2D(float(flight["angle"]), flight["start"])
 
 
-## Flight k: a ramp to walk on (and for the navigation mesh), steps to look at,
-## and a railing round the hole upstairs.
-func _stairs(km: KitMesh, k: int, tread: Material, side: Material) -> void:
-	var s := _stairs_sign(k)
-	var half := size_width / 2.0
+## The hole it comes up through, in the slab over its floor.
+func _hole(flight: Dictionary) -> Dictionary:
+	var run := _run(flight["level"])
+	return {"xform": _flight_frame(flight) * Transform2D(0.0, Vector2(run / 2.0, 0)), "size": Vector2(run, STAIR_WIDTH)}
+
+
+## Whether the flight, and the landing past its top, are inside the outline.
+func _flight_fits(flight: Dictionary) -> bool:
+	var frame := _flight_frame(flight)
+	var run := _run(flight["level"])
+	var w := STAIR_WIDTH / 2.0 - 0.01
+	for corner: Vector2 in [Vector2(0.01, -w), Vector2(0.01, w), Vector2(run + LANDING, -w), Vector2(run + LANDING, w)]:
+		if not contains_local(frame * corner):
+			return false
+	return true
+
+
+## One flight: a ramp to walk on (and for the navigation mesh), steps to look
+## at, and a railing round the hole upstairs (not where a wall already is).
+func _stairs(km: KitMesh, flight: Dictionary, tread: Material, side: Material) -> void:
+	var k: int = flight["level"]
 	var ya := floor_top(k)
 	var yb := (k + 1) * STOREY
 	var rise := yb - ya
 	var run := rise * STAIR_RUN_PER_RISE
-	var x0 := STAIR_START
-	var zc := s * (half - WALL - STAIR_WIDTH / 2.0)
+	var start: Vector2 = flight["start"]
+	var frame := Transform3D(Basis(Vector3.UP, -float(flight["angle"])), Vector3(start.x, 0, start.y))
 	var angle := atan2(rise, run)
 	var ramp_basis := Basis(Vector3(0, 0, 1), angle)
-	var center := Vector3(x0 + run / 2.0, (ya + yb) / 2.0, zc) - ramp_basis.y * 0.05
-	km.box(Vector3(sqrt(run * run + rise * rise), 0.1, STAIR_WIDTH), Transform3D(ramp_basis, center),
+	var center := Vector3(run / 2.0, (ya + yb) / 2.0, 0) - ramp_basis.y * 0.05
+	km.box(Vector3(sqrt(run * run + rise * rise), 0.1, STAIR_WIDTH), frame * Transform3D(ramp_basis, center),
 			[null, null, null, null, null, null])
 	var steps := ceili(rise / 0.2)
 	for i in steps:
 		var top := ya + rise * (i + 0.5) / steps
 		var depth := run / steps
-		km.box(Vector3(depth, top - ya, STAIR_WIDTH), _at(Vector3(x0 + depth * (i + 0.5), (ya + top) / 2.0, zc)),
+		km.box(Vector3(depth, top - ya, STAIR_WIDTH), frame * _at(Vector3(depth * (i + 0.5), (ya + top) / 2.0, 0)),
 				[tread, null, null, tread, tread, tread], false)
-	# Railing upstairs: along the room side of the hole, and across its low end.
-	var inner := s * (half - WALL - STAIR_WIDTH)
-	km.box(Vector3(run, 1.0, 0.06), _at(Vector3(x0 + run / 2.0, yb + 0.5, inner - s * 0.03)), KitMesh.all(side))
-	var hole_len := half - absf(inner)
-	km.box(Vector3(0.06, 1.0, hole_len), _at(Vector3(x0 - 0.03, yb + 0.5, s * (absf(inner) + hole_len / 2.0))), KitMesh.all(side))
+	# Railing upstairs: along each long side of the hole and across its low end,
+	# where there isn't a wall right there.
+	var h := STAIR_WIDTH / 2.0
+	var rails := [[Vector3(run, 1.0, 0.06), Vector3(run / 2.0, yb + 0.5, -h - 0.03)],
+			[Vector3(run, 1.0, 0.06), Vector3(run / 2.0, yb + 0.5, h + 0.03)],
+			[Vector3(0.06, 1.0, STAIR_WIDTH), Vector3(-0.03, yb + 0.5, 0)]]
+	for rail: Array in rails:
+		var at: Vector3 = frame * rail[1]
+		if _near_wall(Vector2(at.x, at.z)):
+			continue
+		km.box(rail[0], frame * _at(rail[1]), KitMesh.all(side))
+
+
+## Within a wall's thickness (and a little) of the outline.
+func _near_wall(p: Vector2) -> bool:
+	var poly := outline()
+	for n in poly.size():
+		var closest := Geometry2D.get_closest_point_to_segment(p, poly[n], poly[(n + 1) % poly.size()])
+		if closest.distance_to(p) < WALL + 0.1:
+			return true
+	return false

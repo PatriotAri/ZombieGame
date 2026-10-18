@@ -14,6 +14,10 @@ Save with Ctrl+S, then press F5 and start a new game to try it.
 
 ## Adding a building
 
+The quickest way: open the map, then in the **Map Tools** panel (along the
+bottom, next to Output) click **Buildings > New building**. It adds a
+10 x 10 m building with a door and windows in front of the camera. Or:
+
 1. Open the map. In the FileSystem dock, drag
    `world/kit/pieces/building.tscn` (a shop) or `two_storey_house.tscn` into
    the 3D view, onto the map's **Buildings** node.
@@ -25,11 +29,16 @@ Save with Ctrl+S, then press F5 and start a new game to try it.
 
 **Size**
 - **Size Depth / Size Width:** how far back from the front it goes, and how
-  wide the front is (meters).
-- **Floors:** floors you can walk around on. Each floor above the ground gets
-  a staircase along a side wall, alternating sides going up.
-  A staircase needs about 8.5 m of depth. If it doesn't fit, a warning icon
-  shows next to the building in the Scene dock. Hover over it to read why.
+  wide the front is (meters), for a rectangle.
+- **Footprint:** any other shape (an L, a T, a U, angled corners): its corners
+  in order round the outside. Draw it with Map Tools (below). Empty: the
+  rectangle. **Outline From Size** turns the rectangle into a Footprint, to
+  move its corners.
+- **Floors:** floors you can walk around on. A rectangle with no Stairs gets
+  a staircase along a side wall for each floor above the ground, alternating
+  sides going up (about 8.5 m of depth needed). A drawn shape needs its stairs
+  placed (Stairs, below). If something doesn't fit, a warning icon shows next
+  to the building in the Scene dock. Hover over it to read why.
 - **Floor Y:** use 0.1 when the building stands on a sidewalk, so you step
   straight in. Use 0.02 on bare ground.
 - **Foundation:** on a hillside, put the building's node at the height of the
@@ -45,7 +54,10 @@ The doors, doorways and windows. Click **Default Openings** to start from a
 front door and a few windows on every floor (Ctrl+Z undoes it). Click an
 opening in the list to change it:
 
-- **Wall:** front, back, left or right, seen from outside.
+- **Wall:** front, back, left or right, seen from outside (a rectangle).
+- **Edge:** a drawn shape's wall, by its number (shown over the walls while
+  the building is selected; the first wall you drew is 0, the front). -1: use
+  Wall.
 - **Kind:** window, door, or doorway (an open gap with no door).
 - **Level:** which floor it's on. 0 is the ground floor.
 - **Offset:** where its middle is along the wall, from the wall's middle.
@@ -64,7 +76,30 @@ opening in the list to change it:
 Only ground-floor doors and windows can be planked up by the player. Zombies
 can smash ground-floor windows and climb in.
 
-**Stairs Side:** which side wall the first staircase runs along.
+**Stairs:** the flights between floors. Each has a **Level** (the floor it
+starts on; it climbs to the next), a **Start** (where its bottom step's middle
+is: x back from the front, y along the front) and a **Direction** (0 climbs
+straight back, 90 toward the building's +z side). It needs its length (5.8 m
+for one storey) plus 1 m of floor past the top inside the building. The floor
+above gets a hole and a railing round it. **Stairs Side:** for a rectangle
+with no Stairs, which side wall the first staircase runs along.
+
+**Drawing it: Map Tools > Buildings**
+
+Select the building, then pick a tool. Clicks land on the building's floor
+(the Floor box picks which), so a view from above works best.
+- **Draw outline:** click its corners, going round (it closes itself). The
+  first click starts a new outline. Corners snap to a 0.5 m grid and each wall
+  turns at a right angle to the last; hold Shift for any angle. Right-click
+  takes back the last corner. Then use **Default Openings** for a door in
+  wall 0 and windows, or add your own.
+- **Place stairs:** click where the bottom step goes, then click the way it
+  climbs (right angles; Shift for any). It climbs from the Floor set in the
+  panel. Right-click on a flight removes it.
+- **Add door / window / doorway:** click on a wall where it goes, on the
+  Floor set in the panel. Right-click on one removes it. Change its size in
+  the Inspector (Openings).
+Everything can be undone (Ctrl+Z).
 
 **Materials:** exterior, interior, floor, ceiling, roof. Drag a material from
 `world/kit/materials/` onto a slot (see Materials below). An empty slot uses
