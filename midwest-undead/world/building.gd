@@ -23,13 +23,17 @@ extends Node3D
 ##
 ## On uneven ground it stands on a foundation down to the ground all round
 ## (Foundation: concrete block, stone or wooden posts), made from the terrain
-## under it; move it and the foundation follows.
+## under it; move it and the foundation follows. It can have a basement under
+## the ground floor (level -1), reached by stairs inside or cellar doors
+## outside, dark down there; Map Tools' Apply opens the ground for it. Outside
+## it can have porches (Porches) and garage doors (an opening kind).
 ##
 ## What it makes (walls, floors, glass, doors) isn't saved in the scene: it's
 ## made fresh from the settings every time. Furniture, containers and markers
 ## you put under the building are yours and are saved as usual.
 
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
+const Door := preload("res://world/door.gd")
 
 const WALL := KitMesh.WALL
 const STOREY := 3.6 # floor to floor: a 3.4 m room under a 0.2 m slab
@@ -66,6 +70,33 @@ const POST_SPACING := 2.5 # wooden posts: this far apart along each side
 const KitRoof := preload("res://world/kit/kit_roof.gd")
 const WindowLook := preload("res://world/props/window.tscn")
 const CHIMNEY_MATERIAL := preload("res://world/kit/materials/brick_red.tres")
+## The basement: its floor this far below the ground (the building's node), and its walls and floor.
+const BASEMENT_DEPTH := 2.8
+const BASEMENT_WALL := preload("res://world/kit/materials/concrete_block.tres")
+const BASEMENT_FLOOR := preload("res://world/kit/materials/concrete_slab.tres")
+## How dark it is down there: the ambient light a basement gets instead of the sky's.
+const BASEMENT_DARK := Color(0.012, 0.012, 0.015)
+## Cellar doors' steps: steeper than the stairs inside, with a landing at the bottom.
+const CELLAR_RUN_PER_RISE := 1.3
+const CELLAR_LANDING := 0.8
+const CELLAR_WIDE := STAIR_WIDTH + 2.0 * WALL # the stairwell, its walls included
+const CELLAR_TOP := 1.0 # its door's top edge, against the wall, above the ground
+const CELLAR_DOOR_HEIGHT := 2.1 # the doorway into the basement
+const CELLAR_PAD := 2.0 # concrete round it, over where the ground is opened (two terrain cells)
+## Porches.
+const PORCH_PITCH := 10.0 # degrees: the roof's slope away from the wall
+const PORCH_ROOF := 0.12 # the roof's thickness
+const PORCH_EAVE := 0.25 # how far the roof sticks out past the deck
+const POST := 0.14
+const RAIL_HEIGHT := 0.9
+const SCREEN_DOOR_WIDTH := 1.6 # (MIN_PASSAGE: zombies have to get through it once it's broken)
+const SCREEN_DOOR_HEIGHT := 2.1
+const DECK := preload("res://world/kit/materials/wood_planks.tres")
+const TIMBER := preload("res://world/kit/materials/timber.tres")
+const SCREEN := preload("res://world/kit/materials/screen.tres")
+const GarageDoorLook := preload("res://world/props/garage_door.tscn")
+const CellarDoorLook := preload("res://world/props/cellar_door.tscn")
+const ScreenDoorLook := preload("res://world/props/screen_door.tscn")
 
 @export_group("Size")
 ## How far back from the front wall it goes (local +x), in meters. (A drawn
@@ -104,6 +135,14 @@ const CHIMNEY_MATERIAL := preload("res://world/kit/materials/brick_red.tres")
 @export_enum("Concrete block", "Stone", "Wooden posts") var foundation := "Concrete block":
 	set(value):
 		foundation = value
+		_changed()
+## A basement under the ground floor: floor -1 (stairs, inner walls and rooms
+## can be on it), BASEMENT_DEPTH below the ground, dark inside. Reach it with
+## stairs from floor -1 or cellar doors (Outside). Press Apply in Map Tools
+## (with the building selected) to open the ground under it.
+@export var basement := false:
+	set(value):
+		basement = value
 		_changed()
 ## A solid block over the top floor (you can't go in), this many meters tall,
 ## with painted-on windows across the front. 0 = a flat roof.
@@ -191,6 +230,20 @@ const CHIMNEY_MATERIAL := preload("res://world/kit/materials/brick_red.tres")
 	set(value):
 		_watch(dormers, value)
 		dormers = value
+		_changed()
+
+@export_group("Outside")
+## Porches along its outside walls (Map Tools: Add porch).
+@export var porches: Array[KitPorch] = []:
+	set(value):
+		_watch(porches, value)
+		porches = value
+		_changed()
+## Storm-cellar doors down into the Basement (Map Tools: Add cellar door).
+@export var cellar_doors: Array[KitCellarDoor] = []:
+	set(value):
+		_watch(cellar_doors, value)
+		cellar_doors = value
 		_changed()
 
 @export_group("Rooms")
@@ -359,9 +412,25 @@ func outside_front_door(distance: float) -> Vector3:
 	return global_transform * (frame * Vector3(-WALL / 2.0 - distance, 0, along))
 
 
-## Height of a floor's surface above the node.
+## Height of a floor's surface above the node (-1: the basement's).
 func floor_top(level: int) -> float:
+	if level < 0:
+		return -BASEMENT_DEPTH
 	return floor_y if level == 0 else level * STOREY
+
+
+## The lowest floor: -1 with a basement, else 0.
+func bottom_level() -> int:
+	return -1 if basement else 0
+
+
+## A floor's walls run from the bottom of its floor's slab (the ground for the
+## ground floor, or the basement's ceiling) to the bottom of the next one's (y0, y1).
+func _wall_span(level: int) -> Vector2:
+	var ceiling := floor_y - 0.2 # the basement's
+	if level < 0:
+		return Vector2(-BASEMENT_DEPTH - 0.2, ceiling)
+	return Vector2(ceiling if level == 0 and basement else level * STOREY, (level + 1) * STOREY)
 
 
 func default_openings() -> void:
@@ -449,10 +518,15 @@ func _get_configuration_warnings() -> PackedStringArray:
 		warnings.append("A pitched roof needs walls that all meet at right angles (along x or z): this one gets a flat roof.")
 	for k in _top_level():
 		if not _flights().any(func(f: Dictionary) -> bool: return f["level"] == k):
-			warnings.append("Nothing goes up from floor %d to floor %d: place stairs (Map Tools, Buildings)." % [k, k + 1] if footprint.size() >= 3 or not stairs.is_empty()
+			warnings.append("Nothing goes up from floor %d to floor %d: place stairs (Map Tools, Buildings)." % [k, k + 1] if footprint.size() >= 3 or stairs.any(func(st: KitStair) -> bool: return st != null and st.level >= 0)
 					else "Too shallow for the staircase to floor %d: it needs %.1f m of depth." % [k + 1, _stairs_needs(k)])
+	if basement and not _flights().any(func(f: Dictionary) -> bool: return f["level"] == -1) \
+			and not cellar_doors.any(func(c: KitCellarDoor) -> bool: return c != null):
+		warnings.append("Nothing goes down to the basement: place stairs from floor -1, or add a cellar door.")
 	for flight in _flights():
-		if flight["level"] >= _top_level():
+		if flight["level"] < bottom_level():
+			warnings.append("A staircase starts on floor -1, but the building has no Basement.")
+		elif flight["level"] >= _top_level():
 			warnings.append("A staircase starts on floor %d, but there's nothing above it (%d floor(s)%s)." % [flight["level"], floors, ", and no walk-in attic" if flight["level"] == floors - 1 else ""])
 		elif flight["level"] == floors - 1 and _walk_in_attic() and _headroom(flight) < 2.0:
 			warnings.append("The stairs to the attic come up where the roof is only %.1f m above the attic floor: move them under the ridge." % _headroom(flight))
@@ -473,12 +547,16 @@ func _get_configuration_warnings() -> PackedStringArray:
 			warnings.append("An opening is on floor %d, but the building has %d floor(s)." % [op.level, floors])
 		if op.kind != "window" and op.width < MIN_PASSAGE - 0.01:
 			warnings.append("A %s on wall %d (floor %d) is under %.1f m wide: zombies can't find their way through it." % [op.kind, n, op.level, MIN_PASSAGE])
+		if op.kind == "garage door" and op.level != 0:
+			warnings.append("A garage door on wall %d is on floor %d: they go on the ground floor." % [n, op.level])
+		if op.level == 0 and _porch_on(n) and floor_top(0) + op.top > _porch_roof_y() - PORCH_ROOF:
+			warnings.append("A %s on wall %d comes up higher than the porch roof in front of it (%.1f m above the floor at most)." % [op.kind, n, _porch_roof_y() - PORCH_ROOF - floor_top(0)])
 	for i in inner_walls.size():
 		var inner := inner_walls[i]
 		if inner == null:
 			continue
-		if inner.level >= floors:
-			warnings.append("Inner wall %d is on floor %d, but the building has %d floor(s)." % [i + 1, inner.level, floors])
+		if inner.level >= floors or inner.level < bottom_level():
+			warnings.append("Inner wall %d is on floor %d, but the building has %d floor(s)%s." % [i + 1, inner.level, floors, "" if basement else " and no basement"])
 		if not contains_local(inner.start.lerp(inner.end, 0.5)):
 			warnings.append("Inner wall %d is outside the building." % (i + 1))
 		var length := inner.start.distance_to(inner.end)
@@ -489,9 +567,42 @@ func _get_configuration_warnings() -> PackedStringArray:
 				warnings.append("An opening in inner wall %d doesn't fit in the wall." % (i + 1))
 			if op.kind != "window" and op.width < MIN_PASSAGE - 0.01:
 				warnings.append("A %s in inner wall %d is under %.1f m wide: zombies can't find their way through it." % [op.kind, i + 1, MIN_PASSAGE])
+			if op.kind == "garage door":
+				warnings.append("Inner wall %d has a garage door: they only go in outside walls (it's left as a doorway)." % (i + 1))
 	for room in rooms:
 		if room and not contains_local(room.point):
 			warnings.append("A room's point (floor %d) is outside the building." % room.level)
+		elif room and room.level < bottom_level():
+			warnings.append("A room is on floor -1, but the building has no Basement.")
+	for i in cellar_doors.size():
+		var cellar := cellar_doors[i]
+		if cellar == null:
+			continue
+		if not basement:
+			warnings.append("Cellar door %d: the building has no Basement for it to go down to." % (i + 1))
+		elif cellar.wall >= edge_count():
+			warnings.append("Cellar door %d is on wall %d, but the building has %d walls." % [i + 1, cellar.wall, edge_count()])
+		else:
+			var ends := edge_ends(cellar.wall)
+			if absf(cellar.offset) + CELLAR_WIDE / 2.0 > ends[0].distance_to(ends[1]) / 2.0 - WALL:
+				warnings.append("Cellar door %d doesn't fit along wall %d." % [i + 1, cellar.wall])
+	for i in porches.size():
+		var porch := porches[i]
+		if porch == null:
+			continue
+		var walls := Array(porch.walls)
+		if walls.is_empty() or walls.any(func(n: int) -> bool: return n < 0 or n >= edge_count()):
+			warnings.append("Porch %d is on a wall the building doesn't have (it has %d)." % [i + 1, edge_count()])
+			continue
+		for k in range(1, walls.size()):
+			if walls[k] != (walls[k - 1] + 1) % edge_count():
+				warnings.append("Porch %d: its walls have to follow on round the building (%d then %d)." % [i + 1, walls[k - 1], walls[k]])
+				break
+		if porch.steps_wall >= 0 and not porch.steps_wall in walls:
+			warnings.append("Porch %d's steps are on wall %d, which it isn't along." % [i + 1, porch.steps_wall])
+		var headroom := _porch_roof_y() - (porch.depth + PORCH_EAVE) * tan(deg_to_rad(PORCH_PITCH)) - PORCH_ROOF - floor_top(0)
+		if porch.kind != "Open" and headroom < 2.0:
+			warnings.append("Porch %d's roof is only %.1f m above its deck at the edge: make it less deep, or lower Floor Y." % [i + 1, headroom])
 	return warnings
 
 
@@ -516,21 +627,33 @@ func _rebuild() -> void:
 	var made: Array[Node] = [] # glass and doors, added once the shell is in
 	var flights := _flights().filter(func(f: Dictionary) -> bool: return f["level"] < _top_level() and _flight_fits(f))
 
-	var maps: Array[Dictionary] = []
-	for k in floors:
-		maps.append(_room_map(k))
-	if floor_y > 0.001:
+	var maps := {} # level -> its room map
+	for k in range(bottom_level(), floors):
+		maps[k] = _room_map(k)
+	if basement:
+		km.slab(poly, [], -BASEMENT_DEPTH, 0.2, BASEMENT_FLOOR, null, null, null, true, _slits(-1), _floor_pick.bind(maps[-1]))
+	elif floor_y > 0.001:
 		km.slab(poly, [], floor_y, floor_y, floor_mat, null, null, null, true, _slits(0), _floor_pick.bind(maps[0]))
-	for k in floors:
+	for k in range(bottom_level(), floors):
 		var fy := floor_top(k)
+		# The basement's walls: block inside, the foundation's look outside
+		# (where the ground drops away it shows, flush with the foundation).
+		var outer_mat := ext if k >= 0 else _foundation_material()
+		var inner_mat := inside if k >= 0 else BASEMENT_WALL
 		for n in poly.size():
 			var ends := edge_ends(n)
 			var list := []
 			for op in openings:
 				if op and edge_of(op) == n and op.level == k:
 					list.append(_opening_entry(op, fy))
-			_wall_pieces(km, ends[0], ends[1], WALL / 2.0, k, list, maps[k], ext, inside, true)
-			made.append_array(_opening_nodes(_outer_name(n), k, list, fy, true))
+			if k < 0:
+				for cellar in cellar_doors:
+					if cellar and cellar.wall == n:
+						list.append({"kind": "doorway", "along": cellar.offset, "width": STAIR_WIDTH, "bottom": fy,
+								"top": fy + CELLAR_DOOR_HEIGHT, "source": cellar})
+			_wall_pieces(km, ends[0], ends[1], WALL / 2.0, k, list, maps[k], outer_mat, inner_mat, true)
+			if k >= 0: # (the basement's are the cellar doorways)
+				made.append_array(_opening_nodes(_outer_name(n), k, list, fy, true))
 		for i in inner_walls.size():
 			var inner := inner_walls[i]
 			if inner == null or inner.level != k or inner.start.distance_to(inner.end) < 0.3:
@@ -539,7 +662,7 @@ func _rebuild() -> void:
 			for op in inner.openings:
 				if op:
 					list.append(_opening_entry(op, fy))
-			_wall_pieces(km, inner.start, inner.end, 0.0, k, list, maps[k], inside, inside, false)
+			_wall_pieces(km, inner.start, inner.end, 0.0, k, list, maps[k], inner_mat, inner_mat, false)
 			made.append_array(_opening_nodes("Inner%d" % (i + 1), k, list, fy, false))
 		# The slab over this floor: its ceiling, and the next floor's floor (with
 		# holes where staircases come up).
@@ -547,14 +670,16 @@ func _rebuild() -> void:
 		var upstairs := k + 1 < floors or (k + 1 == floors and _walk_in_attic())
 		var here := flights.filter(func(f: Dictionary) -> bool: return f["level"] == k)
 		var holes := here.map(func(f: Dictionary) -> Dictionary: return _hole(f))
-		if upstairs and k + 1 < floors:
+		if k < 0: # the ground floor, over the basement
+			km.slab(poly, holes, floor_y, 0.2, floor_mat, ceiling, null, BASEMENT_WALL, true, _slits(0), _floor_pick.bind(maps[0]))
+		elif upstairs and k + 1 < floors:
 			km.slab(poly, holes, y1, 0.2, floor_mat, ceiling, null, inside, true, _slits(k + 1), _floor_pick.bind(maps[k + 1]))
 		elif upstairs: # the attic's floor
 			km.slab(poly, holes, y1, 0.2, floor_mat, ceiling, null, inside)
 		else:
 			km.slab(poly, holes, y1, 0.2, floor_mat if _pitched() else roof, ceiling, null, inside)
 		for flight in here:
-			_stairs(km, flight, floor_mat, inside)
+			_stairs(km, flight, floor_mat, inner_mat)
 	if upper_height > 0.0:
 		_upper_block(km, poly, ext, roof)
 	var peak := floors * STOREY + upper_height
@@ -578,6 +703,14 @@ func _rebuild() -> void:
 			var height := peak + 0.8
 			km.box(Vector3(chimney.size.x, height, chimney.size.y), _at(Vector3(chimney.position.x, height / 2.0, chimney.position.y)),
 					KitMesh.all(CHIMNEY_MATERIAL))
+	for porch in porches:
+		if porch:
+			_porch(km, porch, roof, made)
+	if basement:
+		for cellar in cellar_doors:
+			if cellar and cellar.wall < poly.size():
+				_cellar(km, cellar, made)
+		made.append(_darkness())
 
 	var body := StaticBody3D.new()
 	body.name = "Shell"
@@ -656,6 +789,7 @@ func _foundation(km: KitMesh) -> void:
 	if terrain == null:
 		return
 	var poly := outline()
+	_porch_posts(km, terrain)
 	var lowest := 0.0 # the ground's lowest point under the walls, from the base
 	for n in poly.size():
 		var ends := edge_ends(n)
@@ -667,6 +801,11 @@ func _foundation(km: KitMesh) -> void:
 	if lowest > -0.05:
 		return # level ground: nothing shows
 	var depth := -lowest + 0.3 # a little into the ground
+	if basement:
+		# The basement's walls are the solid part: this is only their outside
+		# face, carried on down where the ground's lower than the basement.
+		km.slab(poly, [], floor_y - 0.2, depth + floor_y - 0.2, null, null, _foundation_material(), null, false)
+		return
 	var mat: Material = FOUNDATION_MATERIALS.get(foundation, FOUNDATION_MATERIALS["Concrete block"])
 	if foundation != "Wooden posts":
 		km.slab(poly, [], 0.0, depth, null, null, mat, null)
@@ -680,6 +819,20 @@ func _foundation(km: KitMesh) -> void:
 		for i in count: # (the next wall's first post is this one's last)
 			var p := ends[0].lerp(ends[1], float(i) / count) + inward + along * (0.15 if i == 0 else 0.0)
 			km.box(Vector3(0.25, depth, 0.25), _at(Vector3(p.x, -depth / 2.0, p.y)), [mat, mat, null, null, mat, mat])
+
+
+## Posts under each porch's outer corners, down to the ground where it's lower than the deck.
+func _porch_posts(km: KitMesh, terrain: Node) -> void:
+	for porch in porches:
+		if porch == null:
+			continue
+		for side in _porch_sides(porch, porch.depth - 0.1):
+			for p: Vector2 in [side["a_out"], side["b_out"]]:
+				var world := global_transform * Vector3(p.x, 0, p.y)
+				var depth := world.y - TerrainEdit.height_at(terrain, world)
+				if depth > 0.05:
+					depth += 0.3
+					km.box(Vector3(0.2, depth, 0.2), _at(Vector3(p.x, -depth / 2.0, p.y)), KitMesh.all(TIMBER))
 
 
 static func _at(pos: Vector3) -> Transform3D:
@@ -710,21 +863,26 @@ func _outer_name(n: int) -> String:
 
 
 ## Glass and doors for one wall of one floor, named for saving ("FrontDoor",
-## "BackWindow2", "Floor2FrontWindow", "Wall5Door", "Inner2Door"...). Only the
-## ground floor's outside ones can be boarded up.
+## "BackWindow2", "Floor2FrontWindow", "Wall5Door", "Inner2Door",
+## "LeftGarageDoor"...). Only the ground floor's outside ones can be boarded up.
 func _opening_nodes(wall_name: String, level: int, list: Array, fy: float, outside: bool) -> Array[Node]:
 	var nodes: Array[Node] = []
-	var counts := {"door": 0, "window": 0}
+	var counts := {"door": 0, "window": 0, "garage door": 0}
 	var boardable := outside and level == 0
 	var prefix := ("Floor%d" % (level + 1) if level > 0 else "") + wall_name
 	for entry: Dictionary in list: # sorted along the wall by km.wall()
 		var op: KitOpening = entry["source"]
-		if op.kind == "doorway":
+		if op.kind == "doorway" or (op.kind == "garage door" and not outside):
 			continue # just a gap
 		counts[op.kind] += 1
 		var count: int = counts[op.kind]
-		var node_name: String = prefix + op.kind.capitalize() + (str(count) if count > 1 else "")
-		if op.kind == "door":
+		var node_name: String = prefix + op.kind.capitalize().replace(" ", "") + (str(count) if count > 1 else "")
+		if op.kind == "garage door":
+			var garage := _garage_door(entry, op.door_color)
+			garage.name = node_name
+			garage.start_open = op.start_open
+			nodes.append(garage)
+		elif op.kind == "door":
 			var door := KitMesh.make_door(entry, op.door_color, door_models)
 			door.name = node_name
 			door.start_open = op.start_open
@@ -737,6 +895,381 @@ func _opening_nodes(wall_name: String, level: int, list: Array, fy: float, outsi
 			pane.name = node_name
 			nodes.append(pane)
 	return nodes
+
+
+## A garage door for an opening made by km.wall(): it tips up into the
+## ceiling, hinged along its top edge; zombies can't break it, and it stays in
+## the navigation bake (door.gd).
+func _garage_door(entry: Dictionary, color: Color) -> Door:
+	var height: float = entry["top"] - entry["bottom"] - 0.02
+	var width: float = entry["width"] - 0.06
+	var frame: Transform3D = entry["frame"]
+	var door := Door.new()
+	door.setup(Vector3(0.06, height, width), Vector3(0.0, -height / 2.0, 0.0), color,
+			frame * _at(Vector3(0, (entry["top"] - entry["bottom"]) / 2.0, 0)), PI / 2.0)
+	door.open_axis = Vector3.BACK # along the top edge: the bottom swings in (+X) and up
+	door.look_scene = GarageDoorLook
+	door.label = "garage door"
+	door.breakable = false
+	door.boardable = false
+	door.in_navigation = true
+	return door
+
+
+# --- Porches ------------------------------------------------------------------------
+
+## One porch: a deck at the ground floor's height along each of its walls
+## (meeting the next one's on the diagonal at a corner), steps down, a railing
+## or screens round the edge, and a roof on posts.
+func _porch(km: KitMesh, porch: KitPorch, roof_mat: Material, made: Array[Node]) -> void:
+	var deck := floor_top(0)
+	var sides := _porch_sides(porch, porch.depth)
+	var eaves := _porch_sides(porch, porch.depth + PORCH_EAVE)
+	var roofed := porch.kind != "Open"
+	var wall_y := _porch_roof_y()
+	var slope := tan(deg_to_rad(PORCH_PITCH))
+	for i in sides.size():
+		var side: Dictionary = sides[i]
+		var a: Vector2 = side["a"]
+		var b: Vector2 = side["b"]
+		var a_out: Vector2 = side["a_out"]
+		var b_out: Vector2 = side["b_out"]
+		# The deck, down into the ground (posts under it on a slope: _foundation).
+		km.slab(PackedVector2Array([a_out, b_out, b, a]), [], deck, deck + 0.3, DECK, null, TIMBER, null)
+		if roofed:
+			var e: Dictionary = eaves[i]
+			var corners := PackedVector3Array([Vector3(a.x, wall_y, a.y), Vector3(b.x, wall_y, b.y),
+					_porch_point(e["b_out"], side, wall_y, slope), _porch_point(e["a_out"], side, wall_y, slope)])
+			if (corners[1] - corners[0]).cross(corners[2] - corners[0]).y < 0.0:
+				corners.reverse()
+			km.plate(corners, PORCH_ROOF, roof_mat, DECK, TIMBER)
+		# Round its edge: the outer side, and an end that doesn't meet another side.
+		var gap := _steps_gap(porch, side)
+		var runs := [[a_out, b_out, gap]]
+		if not side["joined_a"]:
+			runs.append([a, a_out, Vector2.INF])
+		if not side["joined_b"]:
+			runs.append([b_out, b, Vector2.INF])
+		for run: Array in runs:
+			_porch_edge(km, porch, run[0], run[1], run[2], side, wall_y, slope, made)
+		if gap != Vector2.INF:
+			_porch_steps(km, side, gap, deck)
+
+
+## A porch's sides, one per wall: {"n", "a", "b" (along the outline),
+## "a_out", "b_out" (`out` meters out, meeting the next side's on the
+## diagonal), "out" (the way out from the wall), "joined_a", "joined_b"}.
+func _porch_sides(porch: KitPorch, out_by: float) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var count := edge_count()
+	var walls := Array(porch.walls).filter(func(n: int) -> bool: return n >= 0 and n < count)
+	for i in walls.size():
+		var n: int = walls[i]
+		var ends := edge_ends(n)
+		var along := (ends[1] - ends[0]).normalized()
+		var out := Vector2(-along.y, along.x)
+		var a := ends[0]
+		var b := ends[1]
+		if walls.size() == 1 and porch.length > 0.0:
+			var middle := (ends[0] + ends[1]) / 2.0 + along * porch.offset
+			a = middle - along * porch.length / 2.0
+			b = middle + along * porch.length / 2.0
+		var joined_a: bool = i > 0 and walls[i - 1] == posmod(n - 1, count)
+		var joined_b: bool = i < walls.size() - 1 and walls[i + 1] == (n + 1) % count
+		var a_out := a + out * out_by
+		var b_out := b + out * out_by
+		if joined_a:
+			a_out = _meet(a_out, along, n - 1, out_by)
+		if joined_b:
+			b_out = _meet(b_out, along, n + 1, out_by)
+		result.append({"n": n, "a": a, "b": b, "a_out": a_out, "b_out": b_out, "out": out, "along": along,
+				"joined_a": joined_a, "joined_b": joined_b})
+	return result
+
+
+## Where a line (through p, along `along`) meets wall n's line moved `by` out.
+func _meet(p: Vector2, along: Vector2, n: int, by: float) -> Vector2:
+	var ends := edge_ends(posmod(n, edge_count()))
+	var other := (ends[1] - ends[0]).normalized()
+	var hit: Variant = Geometry2D.line_intersects_line(p, along, ends[0] + Vector2(-other.y, other.x) * by, other)
+	return hit if hit is Vector2 else p
+
+
+## A point of a porch's roof: wall_y at the wall, lower going out.
+static func _porch_point(p: Vector2, side: Dictionary, wall_y: float, slope: float) -> Vector3:
+	var away: float = (p - (side["a"] as Vector2)).dot(side["out"])
+	return Vector3(p.x, wall_y - away * slope, p.y)
+
+
+## Whether a porch runs along wall n.
+func _porch_on(n: int) -> bool:
+	return porches.any(func(p: KitPorch) -> bool: return p != null and p.kind != "Open" and n in p.walls)
+
+
+## The porch roof's height against the wall: under the main roof's eaves.
+func _porch_roof_y() -> float:
+	var y := STOREY - 0.3
+	if floors == 1 and upper_height <= 0.0 and _pitched():
+		var tan_p := tan(deg_to_rad(roof_pitch))
+		var eave := STOREY - roof_overhang * tan_p - KitRoof.THICK / cos(deg_to_rad(roof_pitch))
+		y = minf(y, eave - 0.05 + roof_overhang * tan(deg_to_rad(PORCH_PITCH)))
+	return y
+
+
+## Where the steps leave a side's outer edge: the gap's two ends (Vector2.INF: not this side).
+func _steps_gap(porch: KitPorch, side: Dictionary) -> Vector2:
+	if porch.steps_wall != side["n"]:
+		return Vector2.INF
+	var ends := edge_ends(side["n"])
+	var along: Vector2 = side["along"]
+	var middle := ((ends[0] + ends[1]) / 2.0).dot(along) + porch.steps_offset
+	var lo: float = (side["a_out"] as Vector2).dot(along) + POST
+	var hi: float = (side["b_out"] as Vector2).dot(along) - POST
+	var half := (SCREEN_DOOR_WIDTH if porch.kind == "Screened" else STAIR_WIDTH) / 2.0 + 0.05
+	middle = clampf(middle, lo + half, hi - half)
+	return Vector2(middle - half, middle + half)
+
+
+## One edge of a porch, from p to q (a gap along it, in the side's along
+## distances, left open: the steps): posts, a railing, screens, a screen door.
+func _porch_edge(km: KitMesh, porch: KitPorch, p: Vector2, q: Vector2, gap: Vector2, side: Dictionary,
+		wall_y: float, slope: float, made: Array[Node]) -> void:
+	var deck := floor_top(0)
+	var length := p.distance_to(q)
+	if length < 0.05:
+		return
+	var dir := (q - p) / length
+	var along: Vector2 = side["along"]
+	var pieces: Array[Vector2] = [] # [from, to] distances from p
+	if gap != Vector2.INF and absf(dir.dot(along)) > 0.99:
+		var g0 := (gap.x - p.dot(along)) * signf(dir.dot(along))
+		var g1 := (gap.y - p.dot(along)) * signf(dir.dot(along))
+		pieces.append(Vector2(0.0, minf(g0, g1)))
+		pieces.append(Vector2(maxf(g0, g1), length))
+	else:
+		pieces.append(Vector2(0.0, length))
+	var roofed := porch.kind != "Open"
+	var screened := porch.kind == "Screened"
+	var frame_basis := Basis(Vector3(-dir.y, 0, dir.x), Vector3.UP, Vector3(dir.x, 0, dir.y))
+	var under := func(at: Vector2) -> float: return _porch_point(at, side, wall_y, slope).y - PORCH_ROOF / cos(deg_to_rad(PORCH_PITCH))
+	for piece in pieces:
+		if piece.y - piece.x < 0.05:
+			continue
+		var from := p + dir * piece.x
+		var to := p + dir * piece.y
+		var mid := (from + to) / 2.0
+		var span := piece.y - piece.x
+		if roofed: # posts at its ends and every POST_SPACING or so between
+			var count := maxi(1, ceili(span / POST_SPACING))
+			for k in count + 1:
+				var at := from.lerp(to, float(k) / count)
+				var top: float = under.call(at)
+				km.box(Vector3(POST, top - deck, POST), _at(Vector3(at.x, (deck + top) / 2.0, at.y)), KitMesh.all(TIMBER))
+		if screened:
+			# Screen from a low rail to the roof (solid: zombies can't get through).
+			var lo := deck + 0.25
+			var corners := PackedVector3Array([Vector3(from.x, lo, from.y), Vector3(to.x, lo, to.y),
+					Vector3(to.x, under.call(to), to.y), Vector3(from.x, under.call(from), from.y)])
+			km.plate(corners, 0.02, SCREEN, SCREEN, null)
+			km.box(Vector3(0.06, 0.25, span), Transform3D(frame_basis, Vector3(mid.x, deck + 0.125, mid.y)), KitMesh.all(TIMBER))
+			km.box(Vector3(0.05, 0.06, span), Transform3D(frame_basis, Vector3(mid.x, deck + RAIL_HEIGHT, mid.y)), KitMesh.all(TIMBER), false)
+		elif porch.railing:
+			km.box(Vector3(0.07, 0.06, span), Transform3D(frame_basis, Vector3(mid.x, deck + RAIL_HEIGHT, mid.y)), KitMesh.all(TIMBER), false)
+			km.box(Vector3(0.05, 0.05, span), Transform3D(frame_basis, Vector3(mid.x, deck + 0.12, mid.y)), KitMesh.all(TIMBER), false)
+			var balusters := floori(span / 0.3)
+			for k in range(1, balusters):
+				var at := from + dir * (span * k / balusters)
+				km.box(Vector3(0.04, RAIL_HEIGHT - 0.12, 0.04), _at(Vector3(at.x, deck + 0.06 + RAIL_HEIGHT / 2.0, at.y)), KitMesh.all(TIMBER), false)
+			# Solid all the way up, unseen: nobody steps over it.
+			km.box(Vector3(0.07, RAIL_HEIGHT + 0.1, span), Transform3D(frame_basis, Vector3(mid.x, deck + (RAIL_HEIGHT + 0.1) / 2.0, mid.y)),
+					[null, null, null, null, null, null])
+	if screened and gap != Vector2.INF and pieces.size() == 2:
+		# The screen door in the gap, and screen over it.
+		var g0 := p + dir * pieces[0].y
+		var g1 := p + dir * pieces[1].x
+		var top := minf(deck + SCREEN_DOOR_HEIGHT, minf(under.call(g0), under.call(g1)) - 0.05)
+		km.plate(PackedVector3Array([Vector3(g0.x, top, g0.y), Vector3(g1.x, top, g1.y),
+				Vector3(g1.x, under.call(g1), g1.y), Vector3(g0.x, under.call(g0), g0.y)]), 0.02, SCREEN, SCREEN, null)
+		var mid := (g0 + g1) / 2.0
+		# Its frame: X in toward the wall (it swings in, onto the porch).
+		var into := -(side["out"] as Vector2)
+		var basis := Basis(Vector3(into.x, 0, into.y), Vector3.UP, Vector3(into.x, 0, into.y).cross(Vector3.UP))
+		var width := g0.distance_to(g1)
+		var entry := {"top": top, "bottom": deck, "width": width, "frame": Transform3D(basis, Vector3(mid.x, (deck + top) / 2.0, mid.y))}
+		var door := KitMesh.make_door(entry, Color(0.55, 0.42, 0.28))
+		door.look_scene = ScreenDoorLook
+		door.label = "screen door"
+		door.name = "Porch%dScreenDoor" % (porches.find(porch) + 1)
+		made.append(door)
+
+
+## Steps from a side's outer edge (across gap) down to the ground.
+func _porch_steps(km: KitMesh, side: Dictionary, gap: Vector2, deck: float) -> void:
+	if deck < 0.12:
+		return # a step up is nothing
+	var along: Vector2 = side["along"]
+	var out: Vector2 = side["out"]
+	var edge: Vector2 = side["a_out"]
+	var start := edge + along * ((gap.x + gap.y) / 2.0 - edge.dot(along))
+	var flight := {"level": 0, "start": start + out * (deck * STAIR_RUN_PER_RISE), "angle": atan2(-out.y, -out.x)}
+	_ramp(km, flight, 0.0, deck, (gap.y - gap.x) - 0.1, DECK, TIMBER)
+
+
+# --- The basement ----------------------------------------------------------------------
+
+## What the basement's walls look like outside: the foundation's (block, if that's posts).
+func _foundation_material() -> Material:
+	var name := "Concrete block" if foundation == "Wooden posts" else foundation
+	return FOUNDATION_MATERIALS.get(name, FOUNDATION_MATERIALS["Concrete block"])
+
+
+## A cellar door's frame: on the ground at the outline, in the middle of the
+## stairwell; X out from the wall, Z along it (back toward the wall's first corner).
+func _cellar_frame(cellar: KitCellarDoor) -> Transform3D:
+	var ends := edge_ends(cellar.wall)
+	var along := (ends[1] - ends[0]).normalized()
+	var out := Vector2(-along.y, along.x)
+	var at := (ends[0] + ends[1]) / 2.0 + along * cellar.offset
+	return Transform3D(Basis(Vector3(out.x, 0, out.y), Vector3.UP, Vector3(-along.x, 0, -along.y)), Vector3(at.x, 0, at.y))
+
+
+## How far out from the wall a cellar door's stairwell reaches.
+static func _cellar_length() -> float:
+	return BASEMENT_DEPTH * CELLAR_RUN_PER_RISE + CELLAR_LANDING
+
+
+## One cellar door: a stairwell down beside the wall to the basement doorway,
+## concrete walls round it rising to a slanted door over it, and a concrete
+## pad round it all (over the ground Apply opens).
+func _cellar(km: KitMesh, cellar: KitCellarDoor, made: Array[Node]) -> void:
+	var f := _cellar_frame(cellar)
+	var length := _cellar_length()
+	var bottom := -BASEMENT_DEPTH
+	var half := STAIR_WIDTH / 2.0
+	# The landing, and the steps up to the ground away from the wall.
+	km.box(Vector3(CELLAR_LANDING, 0.2, STAIR_WIDTH), f * _at(Vector3(CELLAR_LANDING / 2.0, bottom - 0.1, 0)), KitMesh.all(BASEMENT_FLOOR))
+	var foot := f * Vector3(CELLAR_LANDING, 0, 0)
+	_ramp(km, {"level": -1, "start": Vector2(foot.x, foot.z), "angle": atan2(f.basis.x.z, f.basis.x.x)}, bottom, 0.0, STAIR_WIDTH,
+			BASEMENT_FLOOR, BASEMENT_WALL, CELLAR_RUN_PER_RISE)
+	# Its two walls: down in the ground, and their slanted tops above it.
+	var top_at := func(u: float) -> float: return lerpf(CELLAR_TOP, 0.05, u / length) - 0.04
+	for s: float in [-1.0, 1.0]:
+		var z := s * (half + WALL / 2.0)
+		km.box(Vector3(length, -bottom + 0.2, WALL), f * _at(Vector3(length / 2.0, (bottom - 0.2) / 2.0, z)),
+				[BASEMENT_WALL, BASEMENT_WALL, null, null, BASEMENT_WALL, BASEMENT_WALL])
+		var face := s * (half + WALL) # its outer face
+		var cheek := PackedVector3Array([f * Vector3(0, 0, face), f * Vector3(length, 0, face),
+				f * Vector3(length, top_at.call(length), face), f * Vector3(0, top_at.call(0.0), face)])
+		var n := (cheek[1] - cheek[0]).cross(cheek[2] - cheek[0])
+		if n.dot(f.basis.z * s) < 0.0:
+			cheek.reverse()
+		km.plate(cheek, WALL, BASEMENT_WALL, BASEMENT_WALL, BASEMENT_WALL) # (its back is the stairwell's side)
+	# The pad round it, with the stairwell cut out of it.
+	var pad := CELLAR_PAD + WALL
+	var outline := PackedVector2Array()
+	for c: Vector3 in [Vector3(0, 0, -half - pad), Vector3(length + CELLAR_PAD, 0, -half - pad),
+			Vector3(length + CELLAR_PAD, 0, half + pad), Vector3(0, 0, half + pad)]:
+		var w := f * c
+		outline.append(Vector2(w.x, w.z))
+	if KitMesh._area(outline) > 0.0:
+		outline.reverse()
+	var well_middle := f * Vector3(length / 2.0, 0, 0)
+	var well := {"xform": Transform2D(atan2(f.basis.x.z, f.basis.x.x), Vector2(well_middle.x, well_middle.z)),
+			"size": Vector2(length, STAIR_WIDTH + 2.0 * WALL)}
+	km.slab(outline, [well], 0.05, 0.4, BASEMENT_FLOOR, null, BASEMENT_FLOOR, null)
+	# The door: one slanted leaf over the stairwell, hinged along its +Z side,
+	# swinging up and over. Its frame: Y up the slope to the wall, X down into
+	# the stairwell (its outside, -X, faces up), Z across (the frame's -Z).
+	var rise := CELLAR_TOP - 0.05
+	var up_slope := (f.basis.x * -length + Vector3.UP * rise).normalized()
+	var down := (f.basis.x * -rise - Vector3.UP * length).normalized()
+	var hinge := f * Vector3(length, 0.05, half + WALL)
+	var leaf_length := sqrt(length * length + rise * rise)
+	var door := Door.new()
+	door.setup(Vector3(0.05, leaf_length, STAIR_WIDTH + 2.0 * WALL), Vector3(-0.03, leaf_length / 2.0, half + WALL),
+			Color(0.3, 0.33, 0.3), Transform3D(Basis(down, up_slope, down.cross(up_slope)), hinge), -PI * 0.6)
+	door.look_scene = CellarDoorLook
+	door.label = "cellar door"
+	door.name = "CellarDoor%d" % (cellar_doors.find(cellar) + 1)
+	made.append(door)
+
+
+## Darkness: the basement gets almost no light but what comes down the stairs
+## or in through a cellar door (a reflection probe that stands in for the sky's light).
+func _darkness() -> ReflectionProbe:
+	var poly := outline()
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for p in poly:
+		box = box.expand(p)
+	var probe := ReflectionProbe.new()
+	probe.name = "BasementDark"
+	# Up to just under the floor above: its ceiling well inside (past the
+	# blend), the ground floor's floor outside.
+	var top := floor_y - 0.05
+	var bottom := -BASEMENT_DEPTH - 0.5
+	# Its sides in the middle of the walls: their inside faces dark, their outsides not.
+	probe.size = Vector3(box.size.x - WALL, top - bottom, box.size.y - WALL)
+	probe.position = Vector3(box.get_center().x, (top + bottom) / 2.0, box.get_center().y)
+	probe.interior = true
+	probe.ambient_mode = ReflectionProbe.AMBIENT_COLOR
+	probe.ambient_color = BASEMENT_DARK
+	probe.ambient_color_energy = 1.0
+	probe.blend_distance = 0.1
+	probe.max_distance = 20.0
+	probe.intensity = 0.2
+	return probe
+
+
+## Opens the ground (the terrain) for the basement and its cellar doors (Map
+## Tools' Apply): everywhere a terrain cell lies wholly inside the outline, and
+## over each cellar door's stairwell (its pad covers the rest). Returns the
+## (x, z) area changed, in the world. Without a basement, closes it again
+## (under the building and its cellar doors' pads: nowhere else).
+func apply(terrain: Node) -> Rect2:
+	var spacing: float = terrain.vertex_spacing
+	var corners: Array[Vector3] = []
+	for c in outline():
+		corners.append(global_transform * Vector3(c.x, 0, c.y))
+	var wells: Array[Transform3D] = []
+	for cellar in cellar_doors:
+		if cellar and cellar.wall < edge_count():
+			var f := global_transform * _cellar_frame(cellar)
+			wells.append(f)
+			for u: float in [0.0, _cellar_length() + CELLAR_PAD]:
+				for z: float in [-CELLAR_WIDE / 2.0 - CELLAR_PAD, CELLAR_WIDE / 2.0 + CELLAR_PAD]:
+					corners.append(f * Vector3(u, 0, z))
+	var rect := Rect2(corners[0].x, corners[0].z, 0, 0)
+	for c in corners:
+		rect = rect.expand(Vector2(c.x, c.z))
+	rect = rect.grow(spacing * 2.0)
+	var poly := outline()
+	for x in range(floori(rect.position.x / spacing), ceili(rect.end.x / spacing) + 1):
+		for z in range(floori(rect.position.y / spacing), ceili(rect.end.y / spacing) + 1):
+			var v := Vector3(x * spacing, 0.0, z * spacing)
+			var local := to_local(Vector3(v.x, global_position.y, v.z))
+			var p := Vector2(local.x, local.z)
+			var inside := Geometry2D.is_point_in_polygon(p, poly)
+			var ours := inside # (only the ground under it and its cellar doors' pads is touched)
+			# Every cell round this corner is inside: it can go.
+			var hole := basement and inside and _distance_to_outline(p) >= spacing * 1.42
+			for f in wells:
+				var w := f.affine_inverse() * Vector3(v.x, global_position.y, v.z)
+				ours = ours or (w.x > -spacing and w.x < _cellar_length() + CELLAR_PAD and absf(w.z) < CELLAR_WIDE / 2.0 + CELLAR_PAD)
+				# Any cell round it over the stairwell: it goes (the pad hides the rest).
+				if basement and w.x > -spacing and w.x < _cellar_length() + spacing and absf(w.z) < STAIR_WIDTH / 2.0 + spacing:
+					hole = true
+			if ours:
+				terrain.data.set_control_hole(v, hole)
+	TerrainEdit.finish(terrain, rect)
+	return rect
+
+
+func _distance_to_outline(p: Vector2) -> float:
+	var poly := outline()
+	var least := INF
+	for n in poly.size():
+		least = minf(least, Geometry2D.get_closest_point_to_segment(p, poly[n], poly[(n + 1) % poly.size()]).distance_to(p))
+	return least
 
 
 # --- The roof ---------------------------------------------------------------------
@@ -803,8 +1336,7 @@ func _wall_pieces(km: KitMesh, a: Vector2, b: Vector2, shift: float, level: int,
 			if absf(off) < WALL and t > 0.05 and t < length - 0.05:
 				cuts.append(t)
 	cuts.sort()
-	var y0 := level * STOREY
-	var y1 := (level + 1) * STOREY
+	var span := _wall_span(level)
 	var fy := floor_top(level)
 	for i in cuts.size() - 1:
 		var t0 := cuts[i]
@@ -823,7 +1355,7 @@ func _wall_pieces(km: KitMesh, a: Vector2, b: Vector2, shift: float, level: int,
 				here.append(piece_op)
 		var in_room := _room_at(map, middle + into * (WALL / 2.0 + 0.3))
 		var out_room := null if outer else _room_at(map, middle - into * (WALL / 2.0 + 0.3))
-		km.wall(frame, t1 - t0, y0, y1, fy, here, _wall_mat(out_room, outside_mat), _wall_mat(in_room, inside_mat))
+		km.wall(frame, t1 - t0, span.x, span.y, fy, here, _wall_mat(out_room, outside_mat), _wall_mat(in_room, inside_mat))
 		# Back to the caller's list, with their frames (for the doors and glass).
 		for piece_op: Dictionary in here:
 			for op: Dictionary in list:
@@ -919,13 +1451,15 @@ func room_at(level: int, p: Vector2) -> KitRoom:
 # A flight: {"level", "start" (x, z of its bottom step's middle), "angle"
 # (radians it climbs toward, from +x toward +z)}.
 
-## The flights: Stairs, or a rectangle's own (one per floor, along a side wall).
+## The flights: Stairs, or a rectangle's own (one per floor, along a side wall;
+## unless Stairs has some going up from the ground floor or higher: a flight
+## down to the basement alone doesn't count).
 func _flights() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if not stairs.is_empty() or footprint.size() >= 3:
-		for stair in stairs:
-			if stair:
-				result.append({"level": stair.level, "start": stair.start, "angle": deg_to_rad(stair.direction)})
+	for stair in stairs:
+		if stair:
+			result.append({"level": stair.level, "start": stair.start, "angle": deg_to_rad(stair.direction)})
+	if footprint.size() >= 3 or stairs.any(func(st: KitStair) -> bool: return st != null and st.level >= 0):
 		return result
 	var half := size_width / 2.0
 	for k in floors - 1:
@@ -943,7 +1477,7 @@ func _stairs_sign(k: int) -> float:
 
 
 func _stairs_rise(k: int) -> float:
-	return (k + 1) * STOREY - floor_top(k)
+	return floor_top(k + 1) - floor_top(k)
 
 
 func _run(k: int) -> float:
@@ -984,23 +1518,9 @@ func _flight_fits(flight: Dictionary) -> bool:
 ## at, and a railing round the hole upstairs (not where a wall already is).
 func _stairs(km: KitMesh, flight: Dictionary, tread: Material, side: Material) -> void:
 	var k: int = flight["level"]
-	var ya := floor_top(k)
-	var yb := (k + 1) * STOREY
-	var rise := yb - ya
-	var run := rise * STAIR_RUN_PER_RISE
-	var start: Vector2 = flight["start"]
-	var frame := Transform3D(Basis(Vector3.UP, -float(flight["angle"])), Vector3(start.x, 0, start.y))
-	var angle := atan2(rise, run)
-	var ramp_basis := Basis(Vector3(0, 0, 1), angle)
-	var center := Vector3(run / 2.0, (ya + yb) / 2.0, 0) - ramp_basis.y * 0.05
-	km.box(Vector3(sqrt(run * run + rise * rise), 0.1, STAIR_WIDTH), frame * Transform3D(ramp_basis, center),
-			[null, null, null, null, null, null])
-	var steps := ceili(rise / 0.2)
-	for i in steps:
-		var top := ya + rise * (i + 0.5) / steps
-		var depth := run / steps
-		km.box(Vector3(depth, top - ya, STAIR_WIDTH), frame * _at(Vector3(depth * (i + 0.5), (ya + top) / 2.0, 0)),
-				[tread, null, null, tread, tread, tread], false)
+	var yb := floor_top(k + 1)
+	var run := _run(k)
+	var frame := _ramp(km, flight, floor_top(k), yb, STAIR_WIDTH, tread, tread)
 	# Railing upstairs: along each long side of the hole and across its low end,
 	# where there isn't a wall right there.
 	var h := STAIR_WIDTH / 2.0
@@ -1012,6 +1532,28 @@ func _stairs(km: KitMesh, flight: Dictionary, tread: Material, side: Material) -
 		if _near_wall(Vector2(at.x, at.z)):
 			continue
 		km.box(rail[0], frame * _at(rail[1]), KitMesh.all(side))
+
+
+## A flight's ramp (to walk on, and for the navigation mesh) and the steps to
+## look at, from ya at its start up to yb, `width` wide, climbing the way it
+## points; side: the steps' ends (null: not drawn). Returns its frame.
+func _ramp(km: KitMesh, flight: Dictionary, ya: float, yb: float, width: float, tread: Material, side: Material,
+		run_per_rise := STAIR_RUN_PER_RISE) -> Transform3D:
+	var rise := yb - ya
+	var run := rise * run_per_rise
+	var start: Vector2 = flight["start"]
+	var frame := Transform3D(Basis(Vector3.UP, -float(flight["angle"])), Vector3(start.x, 0, start.y))
+	var ramp_basis := Basis(Vector3(0, 0, 1), atan2(rise, run))
+	var center := Vector3(run / 2.0, (ya + yb) / 2.0, 0) - ramp_basis.y * 0.05
+	km.box(Vector3(sqrt(run * run + rise * rise), 0.1, width), frame * Transform3D(ramp_basis, center),
+			[null, null, null, null, null, null])
+	var steps := ceili(rise / 0.2)
+	for i in steps:
+		var top := ya + rise * (i + 0.5) / steps
+		var depth := run / steps
+		km.box(Vector3(depth, top - ya, width), frame * _at(Vector3(depth * (i + 0.5), (ya + top) / 2.0, 0)),
+				[tread, null, null, tread, side, side], false)
+	return frame
 
 
 ## Within a wall's thickness (and a little) of the outline.

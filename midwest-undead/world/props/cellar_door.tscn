@@ -1,0 +1,60 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/props/kit_prop.gd" id="1_kwmoa"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_uen0y"]
+albedo_color = Color(0.3, 0.33, 0.3, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_c2efp"]
+material = SubResource("StandardMaterial3D_uen0y")
+size = Vector3(0.05, 2, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pm0jj"]
+albedo_color = Color(0.25, 0.27, 0.25, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_arxjn"]
+material = SubResource("StandardMaterial3D_pm0jj")
+size = Vector3(0.03, 0.06, 0.96)
+
+[sub_resource type="BoxMesh" id="BoxMesh_o8qca"]
+material = SubResource("StandardMaterial3D_pm0jj")
+size = Vector3(0.03, 0.06, 0.96)
+
+[sub_resource type="BoxMesh" id="BoxMesh_uy1we"]
+material = SubResource("StandardMaterial3D_pm0jj")
+size = Vector3(0.03, 0.06, 0.96)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_b0ueg"]
+albedo_color = Color(0.14, 0.14, 0.15, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_c3w7m"]
+material = SubResource("StandardMaterial3D_b0ueg")
+top_radius = 0.02
+bottom_radius = 0.02
+height = 0.18
+radial_segments = 12
+rings = 1
+
+[node name="CellarDoor" type="Node3D" unique_id=1272547474]
+script = ExtResource("1_kwmoa")
+
+[node name="StandIn" type="Node3D" parent="." unique_id=40291110]
+
+[node name="Paint" type="MeshInstance3D" parent="StandIn" unique_id=1747492336]
+mesh = SubResource("BoxMesh_c2efp")
+
+[node name="@MeshInstance3D@322" type="MeshInstance3D" parent="StandIn" unique_id=800999997]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.04, -0.7, 0)
+mesh = SubResource("BoxMesh_arxjn")
+
+[node name="@MeshInstance3D@323" type="MeshInstance3D" parent="StandIn" unique_id=881021572]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.04, 0, 0)
+mesh = SubResource("BoxMesh_o8qca")
+
+[node name="@MeshInstance3D@324" type="MeshInstance3D" parent="StandIn" unique_id=1688991345]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.04, 0.7, 0)
+mesh = SubResource("BoxMesh_uy1we")
+
+[node name="@MeshInstance3D@325" type="MeshInstance3D" parent="StandIn" unique_id=508297946]
+transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, -0.08, -0.85, 0.3)
+mesh = SubResource("CylinderMesh_c3w7m")

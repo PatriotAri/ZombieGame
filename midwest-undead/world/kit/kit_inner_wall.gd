@@ -9,8 +9,8 @@ extends Resource
 ## Openings (Offset from the wall's middle, + toward End; Wall and Edge don't
 ## matter here).
 
-## The floor it's on (0: the ground floor). It reaches from that floor to the ceiling.
-@export_range(0, 19) var level := 0:
+## The floor it's on (0: the ground floor, -1: the basement). It reaches from that floor to the ceiling.
+@export_range(-1, 19) var level := 0:
 	set(value):
 		level = value
 		emit_changed()

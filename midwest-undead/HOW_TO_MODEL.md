@@ -304,6 +304,7 @@ the same). Empty, it's the stand-in.
 | Furniture and containers (bed, table, car, dumpster...) | the scene in `world/kit/furniture/` for all of them, or one placed on the map for just that one | stretched to the piece's **Size**; the first model is its stand-in (`world/kit/furniture/standins/`) |
 | A building's doors and windows | the **Building** (or **KitWall**), **Models** group: **Door Models**, **Window Models** | stretched to each opening |
 | Every building's doors and windows | the root of `world/props/door.tscn` or `window.tscn` | used by buildings whose own lists are empty |
+| Garage doors, cellar doors, porch screen doors | the root of `world/props/garage_door.tscn`, `cellar_door.tscn` or `screen_door.tscn` | stretched to each one; a cellar door's leaf runs up its slope along Y (its top face toward -X) |
 | Things you build | the root of its scene in `world/props/`: `scaffold`, `guard_post`, `fence`, `fence_plating`, `fence_wreck` (a broken fence or gate), `gate_posts`, `gate_leaf`, `gate_plating`, `garden_plot`, `ammo_bench`, `shell_bench`, `rifle_bench`, `ladder` (stretched to its height) | at their own size |
 | A camp | `campfire`, `tent`, `camp_table` (with the chair and radio), `logbook`, `bulletin_board` in `world/props/`; the crate is the furniture supply crate | at their own size |
 | Planks and barricades | `window_planks`, `door_planks` (stretched to the opening), `barricade` in `world/props/` | |

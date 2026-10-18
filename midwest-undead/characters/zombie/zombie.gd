@@ -359,7 +359,7 @@ func _physics_process(delta: float) -> void:
 	_move(_step_scale)
 	var bashing := false
 	if moving and state != State.IDLE:
-		bashing = _bash_doors(delta)
+		bashing = _bash_doors(delta) or _bash_door_underfoot(delta)
 		bashing = _handle_window(delta) or bashing
 	_bashing = _bashing or bashing
 	if bashing: # held up by a door or window it's breaking: that's not stuck
@@ -429,6 +429,22 @@ func _bash_doors(delta: float) -> bool:
 		if thing and thing.has_method("can_be_bashed") and thing.call("can_be_bashed"):
 			thing.call("bash", door_damage_per_second * delta)
 			return true
+	return false
+
+
+## Standing on a shut door its path goes down through (a cellar door, slanted
+## over the steps): it's underfoot, not in the way, so beat on that. True if
+## it's bashing one.
+func _bash_door_underfoot(delta: float) -> bool:
+	if not is_on_floor() or agent.get_next_path_position().y > global_position.y - 0.4:
+		return false
+	var from := global_position + Vector3(0, 0.2, 0)
+	var query := PhysicsRayQueryParameters3D.create(from, from - Vector3(0, 0.5, 0), GameData.LAYER_WORLD, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var thing: Object = hit.get("collider")
+	if thing and thing.has_method("can_be_bashed") and thing.call("can_be_bashed"):
+		thing.call("bash", door_damage_per_second * delta)
+		return true
 	return false
 
 

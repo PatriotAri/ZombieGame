@@ -333,8 +333,9 @@ func _ready() -> void:
 
 ## Puts the map scene under nav_region and finds what the game needs in it.
 ## Doors move out first, under main, so the navigation bake ignores them (zombie
-## paths run through doorways; see door.gd). Everything that's saved gets its
-## "town_id" before that, while it still has its place in the map.
+## paths run through doorways; see door.gd); garage doors stay in it.
+## Everything that's saved gets its "town_id" before that, while it still has
+## its place in the map.
 func _load_town() -> void:
 	town = map_scene.instantiate() as Node3D
 	for node in town.find_children("*", "", true, false):
@@ -370,6 +371,8 @@ func _load_town() -> void:
 		if node.has_meta("salvage_label") and not node is LootSpot:
 			salvage_others.append(node)
 	for door in doors:
+		if door.in_navigation:
+			continue # a garage door stays put, in the bake (door.gd)
 		# Where it is in the map (the map's own nodes aren't in the tree yet).
 		var xform := door.transform
 		var parent := door.get_parent()

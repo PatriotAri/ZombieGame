@@ -19,6 +19,11 @@ extends AnimatableBody3D
 ## A door made in code (a building's) looks like world/props/door.tscn, or one
 ## of the building's Door Models, stretched to the doorway (HOW_TO_MODEL.md,
 ## "Props"); it's solid where the model's collision shapes are, else the panel.
+##
+## A garage door (in_navigation) is different: it stays where it is, in the
+## navigation bake, so zombies path round it while it's shut and through it
+## while it's open (the bake round it is redone each time it moves); and it
+## can't be bashed.
 
 const Sound := preload("res://core/sound.gd")
 const ViewDistance := preload("res://core/view_distance.gd")
@@ -46,6 +51,9 @@ const BODY_CLEARANCE := 0.45 # zombie / player radius plus a little, for clear_p
 ## Opening turns it this much (radians) about the hinge and slides it this far,
 ## both in its closed frame: a swinging door turns, a sliding gate leaf slides.
 @export var open_yaw := PI / 2.0
+## The hinge's axis, in its closed frame: up for a swinging door, along the top
+## edge for one that tips up (a garage door).
+@export var open_axis := Vector3.UP
 @export var open_shift := Vector3.ZERO
 ## Other leaves of the same gate: they open and close together.
 @export var linked: Array[Node] = []
@@ -56,6 +64,10 @@ const BODY_CLEARANCE := 0.45 # zombie / player radius plus a little, for clear_p
 ## on (the outside if dead center). Without this the leaves slide through bodies
 ## and the physics engine pops them out on a random side, sometimes inside.
 @export var clear_path_when_closing := false
+## Stays in the navigation bake (see the top): a garage door.
+@export var in_navigation := false
+## What it looks like (a KitProp scene); null: world/props/door.tscn.
+var look_scene: PackedScene
 var max_health := 150.0
 var health := 150.0
 var is_open := false
@@ -122,7 +134,7 @@ func _build() -> void:
 		made.albedo_color = color
 		_colors[color] = made
 	_material = _colors[color] # its color, on the look's Paint meshes
-	_look = KitProp.make(DOOR_PROP, _models, leaf_size, leaf_offset)
+	_look = KitProp.make(look_scene if look_scene else DOOR_PROP, _models, leaf_size, leaf_offset)
 	_look.name = "Look"
 	add_child(_look)
 	_look.paint(_material)
@@ -253,17 +265,28 @@ func _set_open_one(value: bool, animate: bool, duration := OPEN_TIME) -> void:
 	var goal := 1.0 if value else 0.0
 	if not animate or not is_inside_tree():
 		_apply_amount(goal)
+		_swung()
 		return
 	# Physics-step tween: an AnimatableBody should move in step with physics so it
 	# pushes whoever is in its way instead of jumping through them.
 	_move_tween = create_tween().set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
 	_move_tween.tween_method(_apply_amount, _amount, goal, duration * absf(goal - _amount)) \
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_move_tween.tween_callback(_swung)
+
+
+## Finished opening or shutting: an in_navigation door has the bake round it
+## redone (fortifications.gd; nothing before the game's first bake).
+func _swung() -> void:
+	if not in_navigation or not is_inside_tree():
+		return
+	await get_tree().physics_frame # the bake reads the door where the physics has it: a step on
+	get_tree().call_group("fortifications", "rebake", global_position)
 
 
 func _apply_amount(amount: float) -> void:
 	_amount = amount
-	transform = _closed * Transform3D(Basis(Vector3.UP, open_yaw * amount), open_shift * amount)
+	transform = _closed * Transform3D(Basis(open_axis, open_yaw * amount), open_shift * amount)
 	if clear_path_when_closing and _closing and is_inside_tree():
 		_clear_path()
 

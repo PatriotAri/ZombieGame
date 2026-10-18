@@ -6,7 +6,7 @@ extends Resource
 ## materials instead of the building's. Mark one with Map Tools (Buildings >
 ## Paint room: click inside it) or add it to the Building's Rooms list.
 
-@export_range(0, 19) var level := 0:
+@export_range(-1, 19) var level := 0:
 	set(value):
 		level = value
 		emit_changed()

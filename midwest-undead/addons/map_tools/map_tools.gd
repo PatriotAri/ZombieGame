@@ -19,8 +19,10 @@ extends EditorPlugin
 ## doors and windows in its walls, outside or inner (click on a wall), or marks
 ## a room to give it its own materials (click inside it), or places chimneys
 ## and dormers (click on the roof's level: a dormer goes on the slope nearest
-## the click). Right-click takes back the last corner, or removes the inner
-## wall, stairs, opening, room, chimney or dormer under the mouse. Its walls' numbers show while it's selected.
+## the click), porches and cellar doors (click on a wall). Right-click takes
+## back the last corner, or removes the inner wall, stairs, opening, room,
+## chimney, dormer, porch or cellar door under the mouse. Its walls' numbers
+## show while it's selected. Apply opens the ground for its basement.
 
 const TerrainEdit := preload("res://world/map/terrain_edit.gd")
 const Road := preload("res://world/map/road.gd")
@@ -38,10 +40,12 @@ const Zone := preload("res://world/markers/zone.gd")
 const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
 const Building := preload("res://world/building.gd")
 const BUILDING_TOOLS := ["Off", "Draw outline", "Draw inner wall", "Place stairs", "Add door", "Add window", "Add doorway",
-		"Paint room", "Place chimney", "Place dormer"]
+		"Add garage door", "Paint room", "Place chimney", "Place dormer", "Add porch", "Add cellar door"]
 ## Openings the tools add: [width, bottom, top]. Doors and doorways are as wide
 ## as zombies need to path through (Building.MIN_PASSAGE).
-const OPENING_SIZES := {"door": [1.6, 0.0, 2.4], "window": [1.2, 0.9, 2.3], "doorway": [1.6, 0.0, 2.4]}
+const OPENING_SIZES := {"door": [1.6, 0.0, 2.4], "window": [1.2, 0.9, 2.3], "doorway": [1.6, 0.0, 2.4],
+		"garage door": [2.8, 0.0, 2.3]}
+const GARAGE_WHITE := Color(0.85, 0.85, 0.82)
 const GRID := 0.5
 const ROADS_DIR := "res://world/map/roads/"
 const APPLY_MARGIN := 40.0 # meters around a path that an Apply's undo step covers
@@ -153,9 +157,9 @@ func _build_panel() -> Control:
 	floor_label.text = "Floor"
 	floor_row.add_child(floor_label)
 	_building_floor = SpinBox.new()
-	_building_floor.min_value = 0
+	_building_floor.min_value = -1
 	_building_floor.max_value = 19
-	_building_floor.tooltip_text = "The floor the stairs and openings go on (0: the ground floor). Stairs climb from it to the next."
+	_building_floor.tooltip_text = "The floor the stairs and openings go on (0: the ground floor, -1: the basement). Stairs climb from it to the next."
 	floor_row.add_child(_building_floor)
 	buildings.add_child(floor_row)
 
@@ -170,7 +174,7 @@ func _build_panel() -> Control:
 	_draw.text = "Draw points"
 	_draw.tooltip_text = "Click on the ground in the 3D view to add points to the selected road, creek, crop field or zone. Right-click removes the last point."
 	selected.add_child(_draw)
-	_apply = _button(selected, "Apply", "Shapes, paints or opens the ground for the selected road, creek, crop field or mine entrance. Ctrl+Z undoes it.", _apply_selected)
+	_apply = _button(selected, "Apply", "Shapes, paints or opens the ground for the selected road, creek, crop field, mine entrance or building with a basement. Ctrl+Z undoes it.", _apply_selected)
 
 	_help = Label.new()
 	_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -257,7 +261,7 @@ func _on_selection_changed() -> void:
 	_draw.disabled = not path
 	if not path:
 		_draw.button_pressed = false
-	_apply.disabled = not ((path and not _selected is Zone) or _selected is MineEntrance)
+	_apply.disabled = not ((path and not _selected is Zone) or _selected is MineEntrance or _selected is Building)
 	_add_span.disabled = not _selected is Road
 	_add_falls.disabled = not _selected is Creek
 	if not _selected is PlantsLayer and _brush.selected != 0:
@@ -476,7 +480,7 @@ func _view_ahead() -> Vector3:
 func _apply_selected() -> void:
 	var terrain := _terrain()
 	if terrain == null or not _selected or not _selected.has_method("apply"):
-		push_warning("Select a road, creek, crop field or mine entrance in the map scene (world/map/map.tscn) to apply.")
+		push_warning("Select a road, creek, crop field, mine entrance or building in the map scene (world/map/map.tscn) to apply.")
 		return
 	var node := _selected as Node3D
 	var rect: Rect2
@@ -723,6 +727,12 @@ func _building_help() -> String:
 			return "Click where the bottom step goes, then click which way it climbs (right angles; Shift for any). It climbs from the Floor set here to the next. Right-click removes the stairs under the mouse."
 		"Add door", "Add window", "Add doorway":
 			return "Click on a wall, outside or inner (on the Floor set here), where it goes. Right-click removes the door or window under the mouse. Fine-tune it in the Inspector (Openings)."
+		"Add garage door":
+			return "Click on an outside wall of the ground floor where it goes (2.8 m wide; set Width in the Inspector, Openings, for a double). It tips up into the ceiling; zombies can't break it. Right-click removes the one under the mouse. A detached garage is a building of its own with one."
+		"Add porch":
+			return "Click on a wall for a roofed porch along it (it opens in the Inspector: Kind, Depth, Length, steps). Click the next wall round from a porch to wrap it round the corner. Right-click on a porch's wall removes it from the porch."
+		"Add cellar door":
+			return "Turn on Basement first. Click on a wall where the cellar door goes (beside the wall, outside). Then press Apply (Selected) to open the ground for the basement and the steps down. Right-click removes the one under the mouse."
 	return "Pick a tool to draw its outline, place stairs, or add doors and windows. Or set it all in the Inspector. Its walls' numbers show while it's selected."
 
 
@@ -767,6 +777,10 @@ func _building_input(camera: Camera3D, event: InputEvent) -> int:
 			_point_click(building, "chimneys", p, right, func(at: Vector2) -> Resource: return KitChimney.make(at), "chimney")
 		"Place dormer":
 			_point_click(building, "dormers", p, right, func(at: Vector2) -> Resource: return KitDormer.make(at), "dormer")
+		"Add porch":
+			_porch_click(building, p, right)
+		"Add cellar door":
+			_cellar_click(building, p, right)
 		_:
 			_opening_click(building, p, right, tool.trim_prefix("Add ").to_lower(), level)
 	return AFTER_GUI_INPUT_STOP
@@ -888,6 +902,9 @@ func _opening_click(building: Node3D, p: Vector2, right: bool, kind: String, lev
 			best_dist = on.distance_to(p)
 			along = (on - (wall.start + wall.end) / 2.0).dot((wall.end - wall.start).normalized())
 	if best_inner:
+		if kind == "garage door":
+			push_warning("Garage doors go in outside walls.")
+			return
 		_inner_opening_click(best_inner, along, right, kind)
 		return
 	if best < 0:
@@ -901,9 +918,101 @@ func _opening_click(building: Node3D, p: Vector2, right: bool, kind: String, lev
 	var size: Array = OPENING_SIZES[kind]
 	var op := KitOpening.make_on_edge(best, kind, snappedf(along, 0.1), size[0], size[1], size[2])
 	op.level = level
+	if kind == "garage door":
+		op.door_color = GARAGE_WHITE
 	var added := openings.duplicate()
 	added.append(op)
 	_set_list(building, "openings", added, "Add " + kind)
+
+
+## The outside wall nearest p (within 1.5 m), and how far along from its
+## middle: [wall number, along], or [-1, 0].
+func _nearest_wall(building: Node3D, p: Vector2) -> Array:
+	var best := -1
+	var best_dist := 1.5
+	var along := 0.0
+	for n in int(building.call("edge_count")):
+		var ends: Array = building.call("edge_ends", n)
+		var on := Geometry2D.get_closest_point_to_segment(p, ends[0], ends[1])
+		if on.distance_to(p) < best_dist:
+			best = n
+			best_dist = on.distance_to(p)
+			along = (on - (ends[0] + ends[1]) / 2.0).dot((ends[1] - ends[0]).normalized())
+	return [best, along]
+
+
+## A porch on the clicked wall: a new one, or the porch on the wall before or
+## after it wrapped round onto it. Right-click: that wall comes off its porch
+## (the porch goes when it's on no walls).
+func _porch_click(building: Node3D, p: Vector2, right: bool) -> void:
+	var n: int = _nearest_wall(building, p)[0]
+	if n < 0:
+		return
+	var count := int(building.call("edge_count"))
+	var porches: Array = building.get("porches")
+	var ur := get_undo_redo()
+	for porch: KitPorch in porches:
+		if porch == null:
+			continue
+		var walls := porch.walls
+		if n in walls:
+			if not right:
+				EditorInterface.edit_resource(porch)
+				return
+			if walls.size() == 1:
+				_set_list(building, "porches", porches.filter(func(q: KitPorch) -> bool: return q != porch), "Remove porch")
+				return
+			if n != walls[0] and n != walls[walls.size() - 1]:
+				push_warning("Take a wall off a porch from either end of it.")
+				return
+			var fewer := walls.duplicate()
+			fewer.remove_at(walls.find(n))
+			ur.create_action("Shorten porch")
+			ur.add_do_property(porch, "walls", fewer)
+			ur.add_undo_property(porch, "walls", walls)
+			ur.commit_action()
+			return
+	if right:
+		return
+	for porch: KitPorch in porches:
+		if porch == null or porch.walls.is_empty():
+			continue
+		var walls := porch.walls
+		var more := walls.duplicate()
+		if walls[walls.size() - 1] == posmod(n - 1, count):
+			more.append(n)
+		elif walls[0] == (n + 1) % count:
+			more.insert(0, n)
+		else:
+			continue
+		ur.create_action("Wrap porch round")
+		ur.add_do_property(porch, "walls", more)
+		ur.add_do_property(porch, "length", 0.0)
+		ur.add_undo_property(porch, "walls", walls)
+		ur.add_undo_property(porch, "length", porch.length)
+		ur.commit_action()
+		return
+	var porch := KitPorch.make(PackedInt32Array([n]))
+	var added := porches.duplicate()
+	added.append(porch)
+	_set_list(building, "porches", added, "Add porch")
+	EditorInterface.edit_resource(porch)
+
+
+func _cellar_click(building: Node3D, p: Vector2, right: bool) -> void:
+	var hit := _nearest_wall(building, p)
+	var cellars: Array = building.get("cellar_doors")
+	if right:
+		for cellar: KitCellarDoor in cellars:
+			if cellar and cellar.wall == hit[0] and absf(cellar.offset - hit[1]) < 1.5:
+				_set_list(building, "cellar_doors", cellars.filter(func(c: KitCellarDoor) -> bool: return c != cellar), "Remove cellar door")
+				return
+		return
+	if hit[0] < 0:
+		return
+	var added := cellars.duplicate()
+	added.append(KitCellarDoor.make(hit[0], snappedf(hit[1], 0.1)))
+	_set_list(building, "cellar_doors", added, "Add cellar door")
 
 
 ## Chimneys and dormers: one added where clicked (on the 0.5 m grid), or the

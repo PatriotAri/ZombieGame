@@ -7,8 +7,8 @@ extends Resource
 ## and set them here. The floor above gets a hole over it and a railing round
 ## the hole.
 
-## The floor it starts on (0: the ground floor); it climbs to the next one.
-@export_range(0, 19) var level := 0:
+## The floor it starts on (0: the ground floor, -1: the basement); it climbs to the next one.
+@export_range(-1, 19) var level := 0:
 	set(value):
 		level = value
 		emit_changed()

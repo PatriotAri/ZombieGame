@@ -17,8 +17,10 @@ extends Resource
 	set(value):
 		edge = value
 		emit_changed()
-## A doorway is an open gap where a door would be (no door in it).
-@export_enum("window", "door", "doorway") var kind := "window":
+## A doorway is an open gap where a door would be (no door in it). A garage
+## door tips up into the ceiling; zombies can't break it, and only get past it
+## while it's open (outside walls, ground floor).
+@export_enum("window", "door", "doorway", "garage door") var kind := "window":
 	set(value):
 		kind = value
 		emit_changed()

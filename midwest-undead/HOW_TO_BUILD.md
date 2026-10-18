@@ -44,6 +44,15 @@ bottom, next to Output) click **Buildings > New building**. It adds a
 - **Foundation:** on a hillside, put the building's node at the height of the
   highest ground under it; it stands on a foundation down to the ground all
   round: Concrete block, Stone, or Wooden posts (`HOW_TO_MAP.md`, section 10).
+- **Basement:** a floor under the ground floor (floor -1), 2.8 m down, with
+  block walls and a concrete floor. It's dark down there (bring a
+  flashlight): only what comes down the stairs or in at a cellar door lights
+  it. Reach it with stairs placed on floor -1 (they climb to the ground
+  floor) and/or cellar doors (Outside, below). Inner walls and rooms can go
+  on floor -1 too. The ground has to be opened for it: select the building
+  and press **Apply** in Map Tools (Selected). Press it again after moving
+  the building or changing its outline or cellar doors (Ctrl+Z undoes it).
+  Put basements on fairly level ground.
 - **Upper Height:** a solid block over the top floor that you can't enter,
   with painted-on windows. This is how the Main Street shops look taller than
   they are. Leave it at 0 for a roof straight over the top floor (a pitched
@@ -59,7 +68,12 @@ opening in the list to change it:
 - **Edge:** a drawn shape's wall, by its number (shown over the walls while
   the building is selected; the first wall you drew is 0, the front). -1: use
   Wall.
-- **Kind:** window, door, or doorway (an open gap with no door).
+- **Kind:** window, door, doorway (an open gap with no door), or garage
+  door: a door that tips up into the ceiling, on the ground floor of an
+  outside wall (2.8 m wide is one car, 5 m two). You open and shut it;
+  zombies can't break it and only get past it while it's open; it can't be
+  boarded up. A detached garage is a small building of its own with one
+  (and a concrete floor: Floor Material, or Paint room).
 - **Level:** which floor it's on. 0 is the ground floor.
 - **Offset:** where its middle is along the wall, from the wall's middle.
   Positive is to the right, seen from outside.
@@ -99,6 +113,30 @@ with no Stairs, which side wall the first staircase runs along.
   floor, as far as the walls (a doorway doesn't join two rooms). Empty
   materials use the building's.
 
+**Outside**
+- **Porches:** a porch along one or more outside walls, at the ground
+  floor's height (so with Floor Y 0.4 or so it's a raised porch with steps).
+  - **Walls:** the walls it runs along, by number. Two or more, one after
+    another round the building (`[0, 1]`), and it wraps round the corner.
+  - **Length / Offset:** on one wall, how long it is (0 = the whole wall)
+    and where its middle is from the wall's middle (like an opening).
+  - **Depth:** how far out it comes.
+  - **Kind:** **Roofed** (a roof on posts, a railing), **Open** (a deck or
+    a stoop: no roof) or **Screened** (roofed, with screens all round and a
+    screen door at the steps; zombies can't get through the screens, but
+    can bash in the screen door, which can be boarded up).
+  - **Railing:** round the edge, except at the steps.
+  - **Steps Wall / Steps Offset:** which of its walls the steps come off,
+    and where along it (from the wall's middle); -1 for none.
+  A porch roof sits under the house's eaves; a warning says if it's too
+  low over the deck (a deep porch on a high floor), or if a door or window
+  behind it is taller than the roof.
+- **Cellar Doors:** storm-cellar doors outside, for a building with a
+  Basement: a slanted door over steps down beside a wall (**Wall**, by
+  number, and **Offset** along it), into a doorway in the basement wall,
+  with a concrete pad round it. It opens and shuts like a door; zombies can
+  bash it in, and it can be boarded up. Press Apply after adding one.
+
 **Roof**
 - **Roof Shape:** Flat, or a pitched roof worked out over the whole outline:
   **Gable** (two slopes, a triangle of wall at each end), **Hip** (sloped on
@@ -132,7 +170,8 @@ on and you slide off.
 **Drawing it: Map Tools > Buildings**
 
 Select the building, then pick a tool. Clicks land on the building's floor
-(the Floor box picks which), so a view from above works best.
+(the Floor box picks which: -1 is the basement), so a view from above works
+best.
 - **Draw outline:** click its corners, going round (it closes itself). The
   first click starts a new outline. Corners snap to a 0.5 m grid and each wall
   turns at a right angle to the last; hold Shift for any angle. Right-click
@@ -149,10 +188,20 @@ Select the building, then pick a tool. Clicks land on the building's floor
 - **Add door / window / doorway:** click on a wall, outside or inner, where
   it goes, on the Floor set in the panel. Right-click on one removes it. Change its size in
   the Inspector (Openings).
+- **Add garage door:** click on an outside wall where it goes (ground
+  floor).
 - **Place chimney / Place dormer:** click where it goes; clicks land at the
   top of the walls. A dormer needs a pitched Roof Shape; click near the edge
   of the roof, and it sits on the nearest slope. Right-click on one removes
   it.
+- **Add porch:** click on a wall: a roofed porch along it, opened in the
+  Inspector to set its kind, depth and steps. Click the next wall round from
+  a porch to wrap the porch round the corner onto it. Right-click on a
+  porch's wall takes that wall off it (from either end), or removes it.
+- **Add cellar door:** click on a wall where it goes (turn on Basement
+  first), then press Apply. Right-click on one removes it.
+- **Apply** (Selected): opens the ground under its basement and cellar
+  doors (or closes it again, with no basement).
 Everything can be undone (Ctrl+Z).
 
 **Materials:** exterior, interior, floor, ceiling, roof. Drag a material from
