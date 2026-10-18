@@ -330,9 +330,18 @@ the same). Empty, it's the stand-in.
 - **Damage and searching:** a bashed door or fence, a cracked window and a
   searched container get darker, whatever the model.
 - **The placement preview** of things you build shows the model, see-through.
-- **Drawing fewer things:** furniture that never changes is merged into big
-  meshes when a game starts, models included (`world/static_merge.gd`);
-  containers, doors and windows aren't.
+- **Drawing fewer things,** when a game starts:
+  - Each look's meshes become one (`world/props/kit_prop.gd`): parts in a plain
+    colored material (no texture, matte) all share one material, their color
+    kept in the mesh; textured parts keep their own material. Parts named
+    `Paint` or `Glass`, see-through parts, and models with an AnimationPlayer
+    are left as they are. So a model of many small parts costs no more than
+    one of a few.
+  - Furniture that never changes is merged into big meshes, models included
+    (`world/static_merge.gd`).
+  - Containers, doors, windows and strippable furniture can't be merged
+    (they change), so the same look is drawn many times at once instead
+    (`world/instancer.gd`: GPU instancing), until one changes.
 
 ### The stand-ins
 `world/props/make_props.gd` makes them all. To change one, edit the script and

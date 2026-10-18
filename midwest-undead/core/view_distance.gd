@@ -1,8 +1,9 @@
 extends RefCounted
-## Small things stop being drawn past a distance (the graphics card skips them):
-## containers, items on the ground, windows, doors, boards. Each says how far
-## it shows from (limit()); the View Distance setting scales them all
-## (set_scale()). Never instanced.
+## Things stop being drawn past a distance (the graphics card skips them):
+## containers, items on the ground, windows, doors, boards, and, much further
+## out, whole patches of town (static_merge.gd). Each says how far it shows
+## from (limit()); the View Distance setting scales them all (set_scale()).
+## Never instanced.
 
 const GROUP := &"view_limited"
 ## The View Distance setting: 1 is as tuned, less draws less.

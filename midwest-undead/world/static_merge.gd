@@ -11,6 +11,10 @@ extends RefCounted
 ## of the kit's scripts.
 
 const PATCH := 48.0 # meters: small enough that off-screen patches aren't drawn
+## Past this a patch isn't drawn at all (the fog has all but hidden it by
+## then); the View Distance setting scales it (core/view_distance.gd).
+const FAR := 700.0
+const ViewDistance := preload("res://core/view_distance.gd")
 const MERGED_SCRIPTS := ["building.gd", "kit_wall.gd", "kit_floor.gd", "kit_stairs.gd", "kit_box.gd", "kit_prop.gd",
 		"kit_sign.gd", "kit_steeple.gd", "kit_silo.gd"]
 
@@ -44,6 +48,7 @@ static func merge(town: Node3D) -> int:
 		merged.material_override = key[2]
 		merged.cast_shadow = key[3]
 		holder.add_child(merged)
+		ViewDistance.limit(merged, FAR)
 	return hidden
 
 

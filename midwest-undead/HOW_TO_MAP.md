@@ -501,6 +501,22 @@ forested map (about 65,000 plants) draws about 1 million triangles in about
 800 batches from inside the woods. Press **F3** in the game to see the
 numbers yourself (frames per second, and which part is slowest).
 
+Towns are kept cheap when a game starts, on their own:
+- Buildings, walls and furniture that never change are merged into a few big
+  meshes per 48 m patch of map, and a patch isn't drawn at all past about
+  700 m (the fog has hidden it by then; View Distance scales that).
+- Every piece of furniture, door and window is turned into one mesh (a
+  stand-in is dozens of little boxes), and the same ones nearby are drawn
+  together (GPU instancing).
+- Buildings hide what's behind them (occlusion culling): their walls, floors
+  and roofs, not their windows or doorways.
+
+Measured in a test town of 80 furnished buildings: from about 15,500 draw
+calls to about 1,300-1,900 from inside it (fewer close to buildings, where
+occlusion culling helps most), and about 2.5 ms more processor time per frame
+than the empty map (60 fps leaves 16.7 ms). A map can hold several towns that
+size without needing to load and unload parts of it.
+
 If it slows down:
 - **Plant view distance** (each plant file's View Distance): ferns and bushes
   far away cost a lot and nobody sees them. Lower it first.
@@ -508,7 +524,8 @@ If it slows down:
   little difference.
 - **Crop fields:** a big field is thousands of plants. Fewer, smaller fields,
   or wider Plant Spacing.
-- **Settings > Graphics** in the game: shadows, view distance, resolution.
+- **Settings > Graphics** in the game: shadows, view distance, resolution,
+  and hiding what's behind buildings (occlusion culling).
 - Real tree models later need *levels of detail* (simpler versions for far
   away): that comes with the models work.
 
