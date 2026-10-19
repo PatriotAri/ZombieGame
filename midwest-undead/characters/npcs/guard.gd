@@ -88,7 +88,10 @@ func _find_target() -> Node3D:
 	var mask := GameData.LAYER_WORLD | GameData.LAYER_ZOMBIES | GameData.LAYER_PLAYER | GameData.LAYER_NPC
 	for node in get_tree().get_nodes_in_group("zombies"):
 		var zombie := node as Node3D
-		if not _near_guarded(zombie.global_position):
+		# Quick: its aim point is within a couple of meters of its feet, so
+		# one this far off can't be in range.
+		if eye.distance_squared_to(zombie.global_position) > (best_dist + 2.0) ** 2 \
+				or not _near_guarded(zombie.global_position):
 			continue
 		var aim: Vector3 = zombie.call("aim_point") if zombie.has_method("aim_point") else zombie.global_position + Vector3(0, 1.2, 0)
 		var dist := eye.distance_to(aim)

@@ -263,10 +263,6 @@ func _process(delta: float) -> void:
 			_send_home(i)
 
 
-func recruited_count() -> int:
-	return survivors.filter(func(s: Survivor) -> bool: return s.state != Survivor.State.WAITING).size()
-
-
 ## name -> {"state", "camp"}.
 func save_state() -> Dictionary:
 	var data := {}

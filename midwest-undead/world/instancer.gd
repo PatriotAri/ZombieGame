@@ -85,7 +85,3 @@ static func unbatch(mesh_inst: MeshInstance3D) -> void:
 	mesh_inst.visible = true
 
 
-## Takes every mesh under node out of its batch.
-static func unbatch_all(node: Node) -> void:
-	for mesh_inst in node.find_children("*", "MeshInstance3D", true, false):
-		unbatch(mesh_inst)

@@ -9,6 +9,8 @@ extends Node3D
 ##   world/nav_tiles.gd   where zombies can walk (the navigation mesh, in tiles)
 ##   world/ground.gd      how high the ground is anywhere
 ##   world/loot.gd        rolls the containers' loot tables (items/loot/)
+##   world/save_io.gd     what a save holds, gathered and put back
+##   world/map_summary.gd what the map screen shows of the map
 ##   quests/              the main story and side quests (see QUESTS.md)
 ##   ui/hud.gd            everything on screen during play
 ##   ui/perf_overlay.gd   the performance readout (F3)
@@ -37,7 +39,6 @@ const GroundItem := preload("res://items/ground_item.gd")
 const PauseMenu := preload("res://ui/pause_menu.gd")
 const InventoryMenu := preload("res://ui/inventory_menu.gd")
 const ShopMenu := preload("res://ui/shop_menu.gd")
-const Building := preload("res://world/building.gd")
 const DayNight := preload("res://world/day_night.gd")
 const Shopkeeper := preload("res://characters/npcs/shopkeeper.gd")
 const ShopkeeperScene := preload("res://characters/npcs/shopkeeper.tscn")
@@ -50,6 +51,8 @@ const DialogueBox := preload("res://ui/dialogue_box.gd")
 const QuestManager := preload("res://quests/quest_manager.gd")
 const JournalMenu := preload("res://ui/journal_menu.gd")
 const SaveGame := preload("res://core/save_game.gd")
+const SaveIO := preload("res://world/save_io.gd")
+const MapSummary := preload("res://world/map_summary.gd")
 const SceneFade := preload("res://ui/scene_fade.gd")
 const SavePoint := preload("res://world/save_point.gd")
 const SaveMenu := preload("res://ui/save_menu.gd")
@@ -175,6 +178,20 @@ func _ready() -> void:
 	Settings.load_settings() # before anything can play a sound: it creates the Effects bus
 	rng.randomize()
 	_build_environment()
+	_setup_world()
+	_setup_characters()
+	_setup_camps_and_zombies()
+	_setup_menus()
+	_setup_story()
+	# Coming from "Load": the map is freshly loaded; now put the saved state on top.
+	if not SaveGame.pending_load.is_empty():
+		_apply_save(SaveGame.pending_load)
+		SaveGame.pending_load = {}
+		hud.show_toast("Game loaded.")
+
+
+## The map, its navigation, loot, boarded-up openings and what you can build.
+func _setup_world() -> void:
 	nav_region = NavTiles.new()
 	nav_region.name = "Navigation"
 	add_child(nav_region)
@@ -198,6 +215,10 @@ func _ready() -> void:
 	structures = Structures.new()
 	add_child(structures)
 	structures.setup(nav_region, fortifications)
+
+
+## The people (and the HUD, which the player reports to), then the zombies.
+func _setup_characters() -> void:
 	_spawn_npcs()
 	survivors = Survivors.new()
 	add_child(survivors)
@@ -208,6 +229,10 @@ func _ready() -> void:
 	_spawn_player()
 	_spawn_zombies()
 	_spawn_mine_zombies()
+
+
+## Zones, base camps, more zombies over time and the hordes.
+func _setup_camps_and_zombies() -> void:
 	zones = Zones.new()
 	add_child(zones)
 	zones.setup(town, player)
@@ -230,6 +255,10 @@ func _ready() -> void:
 	horde.setup(self, zombie_population_node, nav_region, player, day_night)
 	survivors.move_zombies_out(zombies)
 	hud.setup(player, day_night)
+
+
+## The pause menu and the screens you open in play, and what opens them.
+func _setup_menus() -> void:
 	add_child(PauseMenu.new())
 	# Added last on purpose: Godot sends input to later nodes first, so while a menu
 	# is open it gets Esc/E before the pause menu and the player do.
@@ -249,48 +278,26 @@ func _ready() -> void:
 	add_child(save_menu)
 	discoveries = Discoveries.new()
 	add_child(discoveries)
-	discoveries.setup(player, _discoverable_places())
+	discoveries.setup(player, MapSummary.discoverable(places))
 	discoveries.discovered.connect(func(names: Array[String]) -> void:
 		hud.show_toast("Discovered: " + ", ".join(names)))
 	map_menu = MapMenu.new()
 	add_child(map_menu)
-	map_menu.setup(player, zones, camps, discoveries, _map_rects("map_road"), _map_buildings(),
-			_map_rects("map_fence"), _map_streets())
+	map_menu.setup(player, zones, camps, discoveries, MapSummary.rects(get_tree(), "map_road"), MapSummary.buildings(town),
+			MapSummary.rects(get_tree(), "map_fence"), MapSummary.streets(places))
 	backpack_menu = BackpackMenu.new()
 	add_child(backpack_menu)
 	backpack_menu.setup(player)
-	player.object_interacted.connect(func(obj: Node) -> void:
-		if obj is SavePoint:
-			save_menu.open(player, _save_game)
-		elif obj is BulletinBoard:
-			var board := obj as BulletinBoard
-			choice_menu.open(player, board.title, board.summary + "\n\n" + board.details, [["Close", Callable(), true]])
-		elif obj is StructurePiece and (obj as StructurePiece).kind == "camp_kit":
-			_take_down_camp(obj as StructurePiece)
-		elif obj is Door:
-			(obj as Door).toggle()
-		elif obj is Fortification:
-			var back := fortifications.take_down(obj as Fortification)
-			if back == "":
-				hud.show_toast("The used planks splinter apart. Nothing left to save.")
-			else:
-				player.give_item(back)
-		elif obj is GateLeaf:
-			structures.toggle_gate((obj as GateLeaf).piece)
-		elif obj is StructurePiece:
-			var back := structures.take_down(obj as StructurePiece)
-			if back.is_empty():
-				hud.show_toast("Take down what's on top of it first.")
-			for id: String in back:
-				player.give_item(id, back[id])
-		elif obj.has_method("interact"): # a mine's generator, cage lever, call button
-			obj.call("interact", player))
+	player.object_interacted.connect(_on_object_interacted)
 	# Getting hurt never closes a menu or a conversation: only Esc (each menu
 	# handles its own) or dying does.
 	for menu: Callable in [inventory_menu.close, shop_menu.close, dialogue.close, save_menu.close, map_menu.close,
 			backpack_menu.close, craft_menu.close, choice_menu.close]:
 		player.died.connect(menu)
 
+
+## The quests, and the story's people and places.
+func _setup_story() -> void:
 	quests = QuestManager.new()
 	add_child(quests)
 	quests.objective_changed.connect(hud.set_objective)
@@ -327,11 +334,34 @@ func _ready() -> void:
 	camps.attach_woodworker(woodworker_rescue)
 	survivors.attach(player, dialogue, choice_menu, craft_menu, camps, woodworker_rescue)
 
-	# Coming from "Load": the map is freshly loaded; now put the saved state on top.
-	if not SaveGame.pending_load.is_empty():
-		_apply_save(SaveGame.pending_load)
-		SaveGame.pending_load = {}
-		hud.show_toast("Game loaded.")
+
+## Pressing interact on something that isn't a person, an item or a container.
+func _on_object_interacted(obj: Node) -> void:
+	if obj is SavePoint:
+		save_menu.open(player, _save_game)
+	elif obj is BulletinBoard:
+		var board := obj as BulletinBoard
+		choice_menu.open(player, board.title, board.summary + "\n\n" + board.details, [["Close", Callable(), true]])
+	elif obj is StructurePiece and (obj as StructurePiece).kind == "camp_kit":
+		_take_down_camp(obj as StructurePiece)
+	elif obj is Door:
+		(obj as Door).toggle()
+	elif obj is Fortification:
+		var back := fortifications.take_down(obj as Fortification)
+		if back == "":
+			hud.show_toast("The used planks splinter apart. Nothing left to save.")
+		else:
+			player.give_item(back)
+	elif obj is GateLeaf:
+		structures.toggle_gate((obj as GateLeaf).piece)
+	elif obj is StructurePiece:
+		var back := structures.take_down(obj as StructurePiece)
+		if back.is_empty():
+			hud.show_toast("Take down what's on top of it first.")
+		for id: String in back:
+			player.give_item(id, back[id])
+	elif obj.has_method("interact"): # a mine's generator, cage lever, call button
+		obj.call("interact", player)
 
 
 # --- The map ---------------------------------------------------------------------
@@ -448,59 +478,6 @@ func _place_position(place_name: String) -> Vector3:
 			return place.global_position
 	push_warning("The map scene has no Place called \"%s\"." % place_name)
 	return Vector3.ZERO
-
-
-func _map_buildings() -> Array[PackedVector2Array]:
-	var result: Array[PackedVector2Array] = []
-	for node in town.find_children("*", "Node3D", true, false):
-		if node is Building and (node as Building).size_depth > 0.0:
-			result.append((node as Building).ground_corners())
-	return result
-
-
-## One rectangle on the ground (x, z) for each node in the group, covering its
-## box collision shapes: the roads ("map_road") and the compound fence ("map_fence").
-func _map_rects(group: String) -> Array[Rect2]:
-	var result: Array[Rect2] = []
-	for node in get_tree().get_nodes_in_group(group):
-		var rect := Rect2()
-		var first := true
-		for col: CollisionShape3D in node.find_children("*", "CollisionShape3D", true, false):
-			if not col.shape is BoxShape3D:
-				continue
-			var half := (col.shape as BoxShape3D).size / 2.0
-			for corner: Vector3 in [Vector3(-half.x, 0, -half.z), Vector3(half.x, 0, -half.z),
-					Vector3(-half.x, 0, half.z), Vector3(half.x, 0, half.z)]:
-				var p := col.global_transform * corner
-				if first:
-					rect = Rect2(p.x, p.z, 0, 0)
-					first = false
-				else:
-					rect = rect.expand(Vector2(p.x, p.z))
-		if not first:
-			result.append(rect)
-	return result
-
-
-## Street names for the map screen, as [name, (x, z)]. Always shown.
-func _map_streets() -> Array:
-	var result := []
-	for place in places:
-		if place.kind == "street":
-			result.append([place.place_name, Vector2(place.global_position.x, place.global_position.z) + place.label_offset])
-	return result
-
-
-## Places you find by going near them (world/discoveries.gd); the map names each
-## one only after that. center and label_at are (x, z); radius is in meters.
-func _discoverable_places() -> Array[Dictionary]:
-	var result: Array[Dictionary] = []
-	for place in places:
-		if place.kind == "discoverable":
-			var center := Vector2(place.global_position.x, place.global_position.z)
-			result.append({"name": place.place_name, "center": center, "radius": place.radius,
-					"label_at": center + place.label_offset})
-	return result
 
 
 ## Pressing interact on an NPC. Anything a quest has for them (an offer, a step
@@ -701,143 +678,14 @@ func _player_threatened() -> bool:
 
 
 ## Saves the game to `path` (the logbook's new save or the one you picked, or
-## the autosave). Collects everything that can change during play. Things in the
-## town go by their town_id.
+## the autosave): world/save_io.gd gathers it.
 func _save_game(path: String) -> bool:
-	var containers := {}
-	for spot in loot_spots:
-		containers[spot.get_meta("town_id")] = {"opened": spot.opened, "inventory": spot.inventory.to_dict()}
-	var ground := []
-	for item in get_tree().get_nodes_in_group("ground_items"):
-		if not item.is_queued_for_deletion(): # (picked up this frame)
-			ground.append({"id": item.item_id, "amount": item.amount,
-					"position": SaveGame.vec_to_array(item.global_position), "yaw": item.rotation.y})
-	var zombie_data := [] # the ones still up
-	for zombie in zombies:
-		if is_instance_valid(zombie) and not zombie.is_dead:
-			var entry := {"position": SaveGame.vec_to_array(zombie.global_position),
-					"yaw": zombie.rotation.y, "health": zombie.health, "kind": zombie.kind}
-			if zombie.march_to != Vector3.INF:
-				entry["march"] = SaveGame.vec_to_array(zombie.march_to)
-			zombie_data.append(entry)
-	var door_data := {}
-	for door in doors:
-		door_data[door.get_meta("town_id")] = door.save_state()
-	var mine_data := {}
-	for mine in mines:
-		mine_data[mine.get_meta("town_id")] = mine.save_state()
-	var bandit_data := {} # by the SpawnPoint each started at
-	for bandit in bandits:
-		bandit_data[bandit.get_meta("spawn_id")] = {"position": SaveGame.vec_to_array(bandit.global_position),
-				"yaw": bandit.rotation.y, "health": bandit.health, "dead": bandit.is_dead}
-	return SaveGame.write({
-		"clock": day_night.clock_text(),
-		"objective": quests.objective_text(),
-		"time": {"hour": day_night.hour, "day": day_night.day},
-		"quest": quests.save_state(),
-		"player": player.save_state(),
-		"containers": containers,
-		"ground_items": ground,
-		"zombies": zombie_data,
-		"horde": horde.save_state(),
-		"bandits": bandit_data,
-		"doors": door_data,
-		"mines": mine_data,
-		"fortifications": fortifications.save_state(),
-		"structures": structures.save_state(),
-		"discovered": discoveries.save_state(),
-		"shop_stock": trader.stock.to_dict() if trader else {},
-		"shop_restocked_day": trader.restocked_day if trader else 0,
-		"wagon_trader": trader_arrival.save_state(),
-		"woodworker": woodworker_rescue.save_state(),
-		"survivors": survivors.save_state(),
-		"camps": camps.save_state(),
-		"salvaged": salvage.save_state(),
-	}, path)
+	return SaveGame.write(SaveIO.collect(self), path)
 
 
-## Put a save on top of the freshly loaded town. Order matters a little: the
-## world first, then the people in it, then you.
+## Put a save on top of the freshly loaded town (world/save_io.gd).
 func _apply_save(data: Dictionary) -> void:
-	var time: Dictionary = data.get("time", {})
-	day_night.hour = float(time.get("hour", day_night.hour))
-	day_night.day = int(time.get("day", day_night.day))
-	quests.begin_load() # no story moments while the save goes back on
-	quests.load_state(data.get("quest", {}))
-
-	var containers: Dictionary = data.get("containers", {})
-	for spot in loot_spots:
-		var saved: Dictionary = containers.get(spot.get_meta("town_id"), {})
-		if saved.is_empty():
-			continue # new to the map since the save: keeps its fresh contents
-		spot.inventory.from_dict(saved.get("inventory", {}))
-		if saved.get("opened", false):
-			spot.open() # darkens it like when you searched it
-
-	var door_data: Dictionary = data.get("doors", {})
-	for door in doors:
-		if door_data.has(door.get_meta("town_id")):
-			door.load_state(door_data[door.get_meta("town_id")])
-	var mine_data: Dictionary = data.get("mines", {})
-	for mine in mines:
-		if mine_data.has(mine.get_meta("town_id")):
-			mine.load_state(mine_data[mine.get_meta("town_id")])
-	fortifications.load_state(data.get("fortifications", {}))
-	structures.load_state(data.get("structures", []))
-	discoveries.load_state(data.get("discovered", []))
-
-	# Ground items and zombies: throw away the fresh ones and recreate exactly
-	# what the save recorded. (Nothing is aiming at a zombie yet: the game
-	# hasn't run a frame.)
-	for item in get_tree().get_nodes_in_group("ground_items"):
-		item.remove_from_group("ground_items")
-		item.queue_free()
-	for entry: Dictionary in data.get("ground_items", []):
-		if GameData.has_item(str(entry.get("id", ""))):
-			add_ground_item(entry["id"], int(entry.get("amount", 1)),
-					SaveGame.array_to_vec(entry["position"]), float(entry.get("yaw", 0.0)))
-	for zombie in zombies:
-		zombie.get_parent().remove_child(zombie) # out of the "zombies" group right away
-		zombie.queue_free()
-	zombies.clear()
-	for entry: Dictionary in data.get("zombies", []):
-		var zombie := _add_zombie(SaveGame.array_to_vec(entry["position"]), null, str(entry.get("kind", "walker")))
-		zombie.rotation.y = float(entry.get("yaw", 0.0))
-		zombie.health = float(entry.get("health", zombie.max_health))
-		if entry.has("march"):
-			zombie.march_to = SaveGame.array_to_vec(entry["march"])
-	horde.load_state(data.get("horde", {}))
-
-	var bandit_data: Dictionary = data.get("bandits", {})
-	for bandit in bandits:
-		var entry: Dictionary = bandit_data.get(bandit.get_meta("spawn_id"), {})
-		if entry.is_empty():
-			continue
-		bandit.global_position = SaveGame.array_to_vec(entry["position"])
-		bandit.rotation.y = float(entry.get("yaw", 0.0))
-		if entry.get("dead", false):
-			bandit.drop_loot_on_death = false # their drops are already in ground_items
-			bandit.die()
-		else:
-			bandit.health = float(entry.get("health", bandit.max_health))
-
-	if trader: # (a map without a "trader" SpawnPoint has none)
-		trader.stock.from_dict(data.get("shop_stock", trader.stock.to_dict()))
-		trader.restocked_day = int(data.get("shop_restocked_day", day_night.day))
-	trader_arrival.load_state(data.get("wagon_trader", {}))
-	woodworker_rescue.load_state(data.get("woodworker", {}))
-	survivors.load_state(data.get("survivors", []))
-	camps.load_state(data.get("camps", {}))
-	salvage.load_state(data.get("salvaged", []))
-	# What the world says has happened (for saves from before quests kept their own record).
-	if trader_arrival.was_seen:
-		quests.event("trader_found")
-	if woodworker_rescue.state() != Woodworker.State.CAPTIVE:
-		quests.event("woodworker_untied")
-	if woodworker_rescue.was_seen:
-		quests.event("woodworker_found")
-	quests.end_load()
-	player.load_state(data.get("player", {}))
+	SaveIO.apply(self, data)
 
 
 ## An item lying on the ground, outside nav_region (items don't change zombie paths).

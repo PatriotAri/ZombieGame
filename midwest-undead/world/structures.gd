@@ -33,6 +33,7 @@ const StructurePiece := preload("res://world/structure_piece.gd")
 const GateLeaf := preload("res://world/gate_leaf.gd")
 const CampSite := preload("res://world/camp_site.gd")
 const Ground := preload("res://world/ground.gd")
+const ClimbArea := preload("res://world/climb_area.gd")
 
 const KINDS := ["scaffold", "guard_post", "fence", "fence_gate", "garden_plot", "ammo_bench", "shell_bench", "rifle_bench", "camp_kit", "lantern"]
 ## A lantern is set down, not built: no hammering, and it's too small to change
@@ -88,6 +89,7 @@ var camps: Node # world/camps.gd, set by main.gd (camps keep their distance)
 var _ghost: Node3D
 var _ghost_key := "" # what the ghost currently shows, so it's only rebuilt when that changes
 var _ghost_material: StandardMaterial3D
+var _room_query: PhysicsShapeQueryParameters3D # _room()'s, made once (its box resized each time)
 
 
 func _ready() -> void:
@@ -232,20 +234,21 @@ func _ground_height(piece: StructurePiece, top_y: float) -> float:
 ## Nothing solid (or anyone) in the way of the piece at xform.
 func _room(kind: String, xform: Transform3D, exclude: Array[RID]) -> bool:
 	var size := _size(kind)
-	var shape := BoxShape3D.new()
+	if _room_query == null: # (asked every frame while you hold a piece: made once)
+		_room_query = PhysicsShapeQueryParameters3D.new()
+		_room_query.shape = BoxShape3D.new()
+		_room_query.collision_mask = GameData.LAYER_WORLD | GameData.LAYER_GLASS | GameData.LAYER_PLAYER \
+				| GameData.LAYER_ZOMBIES | GameData.LAYER_NPC
+	var shape := _room_query.shape as BoxShape3D
 	# A little smaller than the piece, and lifted off what it stands on, so
 	# touching the ground, a curb or its neighbor doesn't count.
 	shape.size = Vector3(size.x - 0.3, size.y - 0.25, maxf(size.z - 0.3, 0.1))
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = shape
 	# A camp is big: lifted clear of the bumps in the ground under it (how
 	# level it has to be is checked separately: _too_steep).
 	var lift := 0.7 if kind == "camp_kit" else 0.15
-	query.transform = xform * Transform3D(Basis.IDENTITY, Vector3(0, lift + shape.size.y / 2.0, 0))
-	query.collision_mask = GameData.LAYER_WORLD | GameData.LAYER_GLASS | GameData.LAYER_PLAYER \
-			| GameData.LAYER_ZOMBIES | GameData.LAYER_NPC
-	query.exclude = exclude
-	return get_viewport().get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
+	_room_query.transform = xform * Transform3D(Basis.IDENTITY, Vector3(0, lift + shape.size.y / 2.0, 0))
+	_room_query.exclude = exclude
+	return get_viewport().get_world_3d().direct_space_state.intersect_shape(_room_query, 1).is_empty()
 
 
 func _size(kind: String) -> Vector3:
@@ -573,20 +576,11 @@ func _add_leaf(piece: StructurePiece) -> void:
 ## ground, and the area you climb it in (player.gd).
 func _add_ladder(post: StructurePiece, height: float) -> void:
 	_ladder_model(post, height)
-	var area := Area3D.new()
-	area.collision_layer = 0
-	area.collision_mask = GameData.LAYER_PLAYER
-	area.set_meta("top_y", post.global_position.y)
 	# From the ground to a little above the floor (so you can step off at the
 	# top), and from the scaffolding out to arm's length.
 	var reach := CLIMB_REACH + LADDER_OUT
-	_shape(area, Vector3(0.9, height + 1.2, reach), Vector3(0, (1.2 - height) / 2.0, SCAFFOLD.z / 2.0 + reach / 2.0))
-	area.body_entered.connect(func(body: Node3D) -> void:
-		if body.has_method("enter_ladder"):
-			body.call("enter_ladder", area))
-	area.body_exited.connect(func(body: Node3D) -> void:
-		if body.has_method("exit_ladder"):
-			body.call("exit_ladder", area))
+	var area := ClimbArea.make(Vector3(0.9, height + 1.2, reach), Vector3(0, (1.2 - height) / 2.0, SCAFFOLD.z / 2.0 + reach / 2.0))
+	area.set_meta("top_y", post.global_position.y)
 	post.add_child(area)
 	post.ladder = area
 

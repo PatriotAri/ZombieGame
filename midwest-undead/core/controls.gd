@@ -35,6 +35,7 @@ extends RefCounted
 ## True when the last input came from a controller; HUD prompts use it to show
 ## "X" instead of "E", etc. main.gd updates it as input arrives.
 static var using_gamepad := false
+static var _hints := {} # hint() as worked out: [gamepad][action] (emptied when bindings change)
 
 const PATH := "user://controls.cfg"
 const STICK_DEADZONE := 0.2 # analog stick actions: small deadzone for fine movement
@@ -97,6 +98,7 @@ const MOUSE_BUTTONS := {
 static func setup() -> void:
 	_defaults()
 	_load_bindings()
+	_hints.clear()
 
 
 static func _defaults() -> void:
@@ -142,10 +144,14 @@ static func _defaults() -> void:
 
 ## The key/button name to show in a prompt for an action, for whatever you're
 ## using now (keyboard / mouse or controller).
+## (Asked every frame by the prompts, so kept until a binding changes.)
 static func hint(action: String) -> String:
 	if FIXED_HINTS.has(action):
 		return FIXED_HINTS[action][1 if using_gamepad else 0]
-	return binding_text(action, using_gamepad)
+	var cached: Dictionary = _hints.get_or_add(using_gamepad, {})
+	if not cached.has(action):
+		cached[action] = binding_text(action, using_gamepad)
+	return cached[action]
 
 
 ## What an action is set to on a controller (gamepad true) or keyboard / mouse:
@@ -228,6 +234,7 @@ static func bind(action: String, ev: InputEvent) -> void:
 	InputMap.action_add_event(action, ev)
 	if ev is InputEventJoypadMotion:
 		InputMap.action_set_deadzone(action, TRIGGER_PRESS)
+	_hints.clear()
 	save_bindings()
 
 
@@ -246,6 +253,7 @@ static func reset_to_defaults() -> void:
 		if InputMap.has_action(row[0]):
 			InputMap.action_erase_events(row[0])
 	_defaults()
+	_hints.clear()
 	if FileAccess.file_exists(PATH):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
 

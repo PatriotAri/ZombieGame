@@ -25,11 +25,6 @@ func is_discovered(place: String) -> bool:
 	return _found.has(place)
 
 
-## False only for a place on the list that hasn't been found yet.
-func is_known(place: String) -> bool:
-	return _found.has(place) or not places.any(func(p: Dictionary) -> bool: return p["name"] == place)
-
-
 ## Marks a place found without announcing it (loading, or inferring it for an
 ## older save).
 func mark(place: String) -> void:

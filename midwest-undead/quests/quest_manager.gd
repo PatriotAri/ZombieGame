@@ -8,7 +8,8 @@ extends Node
 ##     complete steps and show the quests' event stories;
 ##   - conversations: what each NPC has to say about quests (talk_options()),
 ##     played through the dialogue box, with replies in the choice menu;
-##   - timers, people dying, and the "!" / "?" over quest givers' heads;
+##   - timers, people dying, and the "!" / "?" over quest givers' heads
+##     (quest_markers.gd);
 ##   - the tracked quest: its objective on the HUD and its waypoint.
 ## main.gd creates it, routes NPC conversations here, and saves it.
 
@@ -19,12 +20,11 @@ signal story_beat(text: String)
 signal changed
 
 const Conversation := preload("res://quests/conversation.gd")
+const QuestMarkers := preload("res://quests/quest_markers.gd")
 
 const MAIN_STORY := "res://quests/main_story.tres"
 const SIDE_DIR := "res://quests/side/"
 const CHECK_INTERVAL := 0.25
-const MARKER_HIDE_DISTANCE := 6.0 # the waypoint hides once you're basically there
-const NPC_MARKER_RANGE := 45.0 # "!" and "?" show this close
 
 ## Where a quest stands.
 const LOCKED := "locked" # not offered yet (see QuestData.available)
@@ -48,8 +48,7 @@ var _choices: Node # ui/choice_menu.gd
 var _conversation: Conversation
 var _camps: Node # world/camps.gd (kills near a camp)
 var _day_night: Node
-var _waypoint: Label3D
-var _npc_markers := {} # npc -> its "!" / "?" label
+var _markers: QuestMarkers # the waypoint, and "!" / "?" over people's heads
 var _watched := {} # NPC name -> that NPC, for quests that fail if they die (the dead leave the "npcs" group)
 var _timer := 0.0
 var _last_hours := -1.0 # the in-game clock, in hours, at the last check
@@ -65,6 +64,7 @@ func _ready() -> void:
 func setup(main: Node, player: Node3D, dialogue: Node, choices: Node, camps: Node, day_night: Node) -> void:
 	_main = main
 	_player = player
+	_markers = QuestMarkers.new(self)
 	_dialogue = dialogue
 	_choices = choices
 	_conversation = Conversation.new(player, dialogue, choices)
@@ -81,15 +81,6 @@ func setup(main: Node, player: Node3D, dialogue: Node, choices: Node, camps: Nod
 	if story:
 		_start_quest(story, false)
 		tracked = story.id
-	_waypoint = Label3D.new()
-	_waypoint.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_waypoint.no_depth_test = true
-	_waypoint.fixed_size = true
-	_waypoint.pixel_size = 0.0012
-	_waypoint.font_size = 32
-	_waypoint.outline_size = 10
-	_waypoint.modulate = Color(1.0, 0.85, 0.35)
-	add_child(_waypoint)
 	_last_hours = _game_hours()
 	_announce()
 
@@ -165,18 +156,13 @@ func objective_text() -> String:
 
 ## Where the shown quest's waypoint is, or Vector3.INF.
 func objective_position() -> Vector3:
-	var q := shown_quest()
-	return _waypoint_position(current_step(q)) if q else Vector3.INF
+	return _markers.objective_position()
 
 
 ## The waypoint to autosave near (the current step asks for it and hasn't had
 ## one yet), or Vector3.INF. Call mark_autosaved() once saved.
 func autosave_target() -> Vector3:
-	var q := shown_quest()
-	var step := current_step(q) if q else null
-	if step == null or not step.autosave_near or _autosave_key(q, step) in _autosaved:
-		return Vector3.INF
-	return _waypoint_position(step)
+	return _markers.objective_position() if _markers.autosave_due() else Vector3.INF
 
 
 func mark_autosaved() -> void:
@@ -184,6 +170,7 @@ func mark_autosaved() -> void:
 	var step := current_step(q) if q else null
 	if step:
 		_autosaved.append(_autosave_key(q, step))
+		_markers.stale = true
 
 
 func _autosave_key(q: QuestData, step: QuestStep) -> String:
@@ -372,6 +359,7 @@ func _unlock() -> void:
 				ready = other != null and status(other) == DONE
 		if ready:
 			_state[q.id]["status"] = AVAILABLE
+			_markers.stale = true
 
 
 ## Can it be offered by its giver now?
@@ -413,7 +401,8 @@ func _check() -> void:
 
 
 func _process(delta: float) -> void:
-	_update_markers()
+	if _player and _markers:
+		_markers.update(_player)
 	_timer -= delta
 	if _timer > 0.0 or _player == null:
 		return
@@ -557,93 +546,6 @@ func _play(dialogue: QuestDialogue, who: String, on_finished: Callable, on_actio
 	_conversation.play(dialogue, who, on_finished, on_action)
 
 
-# --- Markers -----------------------------------------------------------------------
-
-func _update_markers() -> void:
-	if _player == null or _waypoint == null:
-		return
-	var in_screen: bool = _player.get("menu_open") or get_tree().paused
-	var target := objective_position()
-	var dist := INF if target == Vector3.INF else _player.global_position.distance_to(target)
-	_waypoint.visible = dist > MARKER_HIDE_DISTANCE and dist != INF and not in_screen
-	if _waypoint.visible:
-		_waypoint.global_position = target + Vector3(0, 3.2, 0)
-		_waypoint.text = "%s\n%d m\n▼" % [_waypoint_label(current_step(shown_quest())), roundi(dist)]
-	# "!" over someone with a quest to offer, "?" over someone a quest needs you to talk to.
-	var wanted := {}
-	for q in quests:
-		if _offerable(q) and q.offer:
-			wanted[q.giver] = wanted.get(q.giver, "!")
-		elif status(q) == ACTIVE:
-			var step := current_step(q)
-			if step and step.kind == "talk_to":
-				wanted[step.target] = "?"
-	for npc in get_tree().get_nodes_in_group("npcs"):
-		var who: String = npc.get("display_name")
-		var mark: String = wanted.get(who, "")
-		var label: Label3D = _npc_markers.get(npc)
-		var show: bool = mark != "" and not npc.get("is_dead") and not in_screen \
-				and (npc as Node3D).global_position.distance_to(_player.global_position) < NPC_MARKER_RANGE
-		if not show:
-			if label:
-				label.visible = false
-			continue
-		if label == null:
-			label = Label3D.new()
-			label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-			label.fixed_size = true
-			label.pixel_size = 0.0016
-			label.font_size = 48
-			label.outline_size = 12
-			label.modulate = Color(1.0, 0.85, 0.35)
-			add_child(label)
-			_npc_markers[npc] = label
-			npc.tree_exiting.connect(func() -> void:
-				_npc_markers.erase(npc)
-				label.queue_free())
-		label.text = mark
-		label.visible = true
-		label.global_position = (npc as Node3D).global_position + Vector3(0, 2.35, 0)
-
-
-func _waypoint_position(step: QuestStep) -> Vector3:
-	if step == null:
-		return Vector3.INF
-	var mode := step.waypoint
-	var target := step.waypoint_target
-	if mode == "auto":
-		match step.kind:
-			"talk_to":
-				mode = "npc"
-				target = step.target
-			"go_to_place":
-				mode = "place"
-				target = step.target
-			_:
-				return Vector3.INF
-	match mode:
-		"npc":
-			var npc := _find_npc(target)
-			return npc.global_position if npc else Vector3.INF
-		"place":
-			for place: Node3D in _main.get("places"):
-				if place.get("place_name") == target:
-					return place.global_position
-		"spawn_point":
-			for spot: Node3D in _main.get("spawn_points"):
-				if spot.get("role") == target:
-					return spot.global_position
-	return Vector3.INF
-
-
-func _waypoint_label(step: QuestStep) -> String:
-	if step == null:
-		return ""
-	if step.marker_label != "":
-		return step.marker_label
-	return step.waypoint_target if step.waypoint not in ["auto", "none"] else step.target
-
-
 ## The NPC with this name (the living one, if there's one alive; with any_state,
 ## a dead one too).
 func _find_npc(who: String, any_state := false) -> Node3D:
@@ -675,6 +577,7 @@ func _flush_beats() -> void:
 
 
 func _announce() -> void:
+	_markers.stale = true
 	objective_changed.emit(objective_text())
 	changed.emit()
 

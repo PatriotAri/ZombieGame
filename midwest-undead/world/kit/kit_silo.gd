@@ -9,7 +9,7 @@ extends StaticBody3D
 
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
 const Door := preload("res://world/door.gd")
-const GameData := preload("res://core/game_data.gd")
+const ClimbArea := preload("res://world/climb_area.gd")
 const LADDER := preload("res://world/props/ladder.tscn")
 const FLOOR := preload("res://world/kit/materials/concrete_slab.tres")
 const DEFAULT_WALL := preload("res://world/kit/materials/concrete_block.tres")
@@ -125,23 +125,9 @@ func _rebuild() -> void:
 	add_child(look, false, Node.INTERNAL_MODE_BACK)
 	_generated.append(look)
 	if not Engine.is_editor_hint():
-		var area := Area3D.new()
-		area.collision_layer = 0
-		area.collision_mask = GameData.LAYER_PLAYER
+		var area := ClimbArea.make(Vector3(0.9, height + 1.0, CLIMB_REACH), Vector3(0, (height + 1.0) / 2.0, CLIMB_REACH / 2.0))
 		area.set_meta("top_y", height + 0.3) # (in the area's space: set below once it's placed)
-		var shape := BoxShape3D.new()
-		shape.size = Vector3(0.9, height + 1.0, CLIMB_REACH)
-		var col := CollisionShape3D.new()
-		col.shape = shape
-		col.position = Vector3(0, (height + 1.0) / 2.0, CLIMB_REACH / 2.0)
-		area.add_child(col)
 		area.transform = Transform3D(ladder_basis, foot)
-		area.body_entered.connect(func(body: Node3D) -> void:
-			if body.has_method("enter_ladder"):
-				body.call("enter_ladder", area))
-		area.body_exited.connect(func(body: Node3D) -> void:
-			if body.has_method("exit_ladder"):
-				body.call("exit_ladder", area))
 		add_child(area, false, Node.INTERNAL_MODE_BACK)
 		_generated.append(area)
 		area.ready.connect(func() -> void: area.set_meta("top_y", global_position.y + height + 0.3), CONNECT_ONE_SHOT)

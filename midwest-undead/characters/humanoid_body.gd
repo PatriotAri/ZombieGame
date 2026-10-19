@@ -99,6 +99,7 @@ var _still_time := 0.0
 var _wounds: Array[Node3D] = []
 var _attachments := {} # bone index -> BoneAttachment3D
 var _spine := -1
+var _head := -1 # the head bone (found once)
 var _spine_unaimed := Quaternion.IDENTITY # its rotation before aim_pitch went on
 var _aimed := false
 
@@ -135,6 +136,7 @@ func setup(scene: PackedScene, library: AnimationLibrary = MANNEQUIN_ANIMATIONS)
 		if mat is ShaderMaterial and (mat as ShaderMaterial).shader == BODY_SHADER:
 			_tinted.append(mesh)
 	_spine = skeleton.find_bone("Spine")
+	_head = skeleton.find_bone("Head")
 	_notifier = VisibleOnScreenNotifier3D.new()
 	_notifier.aabb = AABB(Vector3(-0.7, 0.0, -0.9), Vector3(1.4, 2.0, 1.8))
 	add_child(_notifier)
@@ -252,10 +254,9 @@ func on_screen() -> bool:
 
 ## The middle of its head, in the world.
 func head_center() -> Vector3:
-	var head := skeleton.find_bone("Head")
-	if head < 0:
+	if _head < 0:
 		return global_position + global_basis.y * 1.65
-	return skeleton.global_transform * skeleton.get_bone_global_pose(head) * HEAD_CENTER
+	return skeleton.global_transform * skeleton.get_bone_global_pose(_head) * HEAD_CENTER
 
 
 func _place_head_shape() -> void:
@@ -434,6 +435,7 @@ func _settle() -> void:
 	if is_settled:
 		return
 	is_settled = true
+	set_process(false) # (nothing more to do: _process only ran the ragdoll)
 	_falling.erase(self)
 	if _sim:
 		var to_skeleton := skeleton.global_transform.affine_inverse()

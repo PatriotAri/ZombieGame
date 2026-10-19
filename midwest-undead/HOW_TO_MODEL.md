@@ -344,9 +344,11 @@ the same). Empty, it's the stand-in.
     (`world/instancer.gd`: GPU instancing), until one changes.
 
 ### The stand-ins
-`world/props/make_props.gd` makes them all. To change one, edit the script and
-run it from the project folder (Models you've set on the `world/props/` scenes
-are kept):
+`world/props/make_props.gd` makes them all, one script for each kind:
+`props_furniture.gd`, `props_built.gd` (things you build), `props_camp.gd` and
+`props_openings.gd` (doors and windows), on the building blocks in
+`prop_builder.gd`. To change one, edit its script and run `make_props.gd` from
+the project folder (Models you've set on the `world/props/` scenes are kept):
 
 ```
 godot --headless --path . -s res://world/props/make_props.gd

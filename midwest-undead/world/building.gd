@@ -33,6 +33,9 @@ extends Node3D
 ## you put under the building are yours and are saved as usual.
 
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
+const Darkness := preload("res://world/darkness.gd")
+const PorchBuilder := preload("res://world/porch_builder.gd")
+const BuildingWarnings := preload("res://world/building_warnings.gd")
 const Door := preload("res://world/door.gd")
 
 const WALL := KitMesh.WALL
@@ -418,15 +421,6 @@ func ground_corners() -> PackedVector2Array:
 	return corners
 
 
-## Local z of the middle of the ground-floor front door (0 if there isn't one).
-## (A rectangle's; for any shape, outside_front_door().)
-func front_door_z() -> float:
-	for op in openings:
-		if op and op.kind == "door" and edge_of(op) == 0 and op.level == 0:
-			return op.offset
-	return 0.0
-
-
 ## A point `distance` meters outside the middle of the ground-floor front door
 ## (in the world); the front wall's middle if there's no door.
 func outside_front_door(distance: float) -> Vector3:
@@ -537,102 +531,9 @@ func _changed() -> void:
 		_rebuild.call_deferred()
 
 
+## What's wrong with it (world/building_warnings.gd).
 func _get_configuration_warnings() -> PackedStringArray:
-	var warnings := PackedStringArray()
-	if footprint.size() > 0 and footprint.size() < 3:
-		warnings.append("The drawn outline needs at least 3 corners (it's using the Size rectangle until then).")
-	elif footprint.size() >= 3 and not Geometry2D.triangulate_polygon(footprint).size():
-		warnings.append("The drawn outline crosses itself: draw it again going round once.")
-	if roof_shape != "Flat" and not KitRoof.fits(outline()):
-		warnings.append("A pitched roof needs walls that all meet at right angles (along x or z): this one gets a flat roof.")
-	for k in _top_level():
-		if not _flights().any(func(f: Dictionary) -> bool: return f["level"] == k):
-			warnings.append("Nothing goes up from floor %d to floor %d: place stairs (Map Tools, Buildings)." % [k, k + 1] if footprint.size() >= 3 or stairs.any(func(st: KitStair) -> bool: return st != null and st.level >= 0)
-					else "Too shallow for the staircase to floor %d: it needs %.1f m of depth." % [k + 1, _stairs_needs(k)])
-	if basement and not _flights().any(func(f: Dictionary) -> bool: return f["level"] == -1) \
-			and not cellar_doors.any(func(c: KitCellarDoor) -> bool: return c != null):
-		warnings.append("Nothing goes down to the basement: place stairs from floor -1, or add a cellar door.")
-	for flight in _flights():
-		if flight["level"] < bottom_level():
-			warnings.append("A staircase starts on floor -1, but the building has no Basement.")
-		elif flight["level"] >= _top_level():
-			warnings.append("A staircase starts on floor %d, but there's nothing above it (%d floor(s)%s)." % [flight["level"], floors, ", and no walk-in attic" if flight["level"] == floors - 1 else ""])
-		elif flight["level"] == floors - 1 and _walk_in_attic() and _headroom(flight) < 2.0:
-			warnings.append("The stairs to the attic come up where the roof is only %.1f m above the attic floor: move them under the ridge." % _headroom(flight))
-		elif not _flight_fits(flight):
-			warnings.append("A staircase on floor %d doesn't fit inside the building (it needs %.1f m of room ahead of its bottom step)." % [flight["level"], _run(flight["level"]) + LANDING])
-	for op in openings:
-		if op == null:
-			continue
-		var n := edge_of(op)
-		if n >= edge_count():
-			warnings.append("An opening is on wall %d, but the building has %d walls." % [n, edge_count()])
-			continue
-		var ends := edge_ends(n)
-		var length := ends[0].distance_to(ends[1])
-		if absf(op.offset) + op.width / 2.0 > length / 2.0 - WALL or op.top > STOREY - 0.25 or op.bottom < 0.0:
-			warnings.append("An opening on wall %d (floor %d) doesn't fit in the wall." % [n, op.level])
-		if op.level >= floors:
-			warnings.append("An opening is on floor %d, but the building has %d floor(s)." % [op.level, floors])
-		if op.kind != "window" and op.width < MIN_PASSAGE - 0.01:
-			warnings.append("A %s on wall %d (floor %d) is under %.1f m wide: zombies can't find their way through it." % [op.kind, n, op.level, MIN_PASSAGE])
-		if op.kind == "garage door" and op.level != 0:
-			warnings.append("A garage door on wall %d is on floor %d: they go on the ground floor." % [n, op.level])
-		if op.level == 0 and _porch_on(n) and floor_top(0) + op.top > _porch_roof_y() - PORCH_ROOF:
-			warnings.append("A %s on wall %d comes up higher than the porch roof in front of it (%.1f m above the floor at most)." % [op.kind, n, _porch_roof_y() - PORCH_ROOF - floor_top(0)])
-	for i in inner_walls.size():
-		var inner := inner_walls[i]
-		if inner == null:
-			continue
-		if inner.level >= floors or inner.level < bottom_level():
-			warnings.append("Inner wall %d is on floor %d, but the building has %d floor(s)%s." % [i + 1, inner.level, floors, "" if basement else " and no basement"])
-		if not contains_local(inner.start.lerp(inner.end, 0.5)):
-			warnings.append("Inner wall %d is outside the building." % (i + 1))
-		var length := inner.start.distance_to(inner.end)
-		for op in inner.openings:
-			if op == null:
-				continue
-			if absf(op.offset) + op.width / 2.0 > length / 2.0 or op.top > STOREY - 0.25 or op.bottom < 0.0:
-				warnings.append("An opening in inner wall %d doesn't fit in the wall." % (i + 1))
-			if op.kind != "window" and op.width < MIN_PASSAGE - 0.01:
-				warnings.append("A %s in inner wall %d is under %.1f m wide: zombies can't find their way through it." % [op.kind, i + 1, MIN_PASSAGE])
-			if op.kind == "garage door":
-				warnings.append("Inner wall %d has a garage door: they only go in outside walls (it's left as a doorway)." % (i + 1))
-	for room in rooms:
-		if room and not contains_local(room.point):
-			warnings.append("A room's point (floor %d) is outside the building." % room.level)
-		elif room and room.level < bottom_level():
-			warnings.append("A room is on floor -1, but the building has no Basement.")
-	for i in cellar_doors.size():
-		var cellar := cellar_doors[i]
-		if cellar == null:
-			continue
-		if not basement:
-			warnings.append("Cellar door %d: the building has no Basement for it to go down to." % (i + 1))
-		elif cellar.wall >= edge_count():
-			warnings.append("Cellar door %d is on wall %d, but the building has %d walls." % [i + 1, cellar.wall, edge_count()])
-		else:
-			var ends := edge_ends(cellar.wall)
-			if absf(cellar.offset) + CELLAR_WIDE / 2.0 > ends[0].distance_to(ends[1]) / 2.0 - WALL:
-				warnings.append("Cellar door %d doesn't fit along wall %d." % [i + 1, cellar.wall])
-	for i in porches.size():
-		var porch := porches[i]
-		if porch == null:
-			continue
-		var walls := Array(porch.walls)
-		if walls.is_empty() or walls.any(func(n: int) -> bool: return n < 0 or n >= edge_count()):
-			warnings.append("Porch %d is on a wall the building doesn't have (it has %d)." % [i + 1, edge_count()])
-			continue
-		for k in range(1, walls.size()):
-			if walls[k] != (walls[k - 1] + 1) % edge_count():
-				warnings.append("Porch %d: its walls have to follow on round the building (%d then %d)." % [i + 1, walls[k - 1], walls[k]])
-				break
-		if porch.steps_wall >= 0 and not porch.steps_wall in walls:
-			warnings.append("Porch %d's steps are on wall %d, which it isn't along." % [i + 1, porch.steps_wall])
-		var headroom := _porch_roof_y() - (porch.depth + PORCH_EAVE) * tan(deg_to_rad(PORCH_PITCH)) - PORCH_ROOF - floor_top(0)
-		if porch.kind != "Open" and headroom < 2.0:
-			warnings.append("Porch %d's roof is only %.1f m above its deck at the edge: make it less deep, or lower Floor Y." % [i + 1, headroom])
-	return warnings
+	return BuildingWarnings.of(self)
 
 
 # --- Building it -------------------------------------------------------------
@@ -734,7 +635,7 @@ func _rebuild() -> void:
 					KitMesh.all(CHIMNEY_MATERIAL))
 	for porch in porches:
 		if porch:
-			_porch(km, porch, roof, made)
+			PorchBuilder.build(self, km, porch, roof, made)
 	if basement:
 		for cellar in cellar_doors:
 			if cellar and cellar.wall < poly.size():
@@ -827,7 +728,7 @@ func _foundation(km: KitMesh) -> void:
 	if terrain == null:
 		return
 	var poly := outline()
-	_porch_posts(km, terrain)
+	PorchBuilder.posts(self, km, terrain)
 	var lowest := 0.0 # the ground's lowest point under the walls, from the base
 	for n in poly.size():
 		var ends := edge_ends(n)
@@ -857,20 +758,6 @@ func _foundation(km: KitMesh) -> void:
 		for i in count: # (the next wall's first post is this one's last)
 			var p := ends[0].lerp(ends[1], float(i) / count) + inward + along * (0.15 if i == 0 else 0.0)
 			km.box(Vector3(0.25, depth, 0.25), _at(Vector3(p.x, -depth / 2.0, p.y)), [mat, mat, null, null, mat, mat])
-
-
-## Posts under each porch's outer corners, down to the ground where it's lower than the deck.
-func _porch_posts(km: KitMesh, terrain: Node) -> void:
-	for porch in porches:
-		if porch == null:
-			continue
-		for side in _porch_sides(porch, porch.depth - 0.1):
-			for p: Vector2 in [side["a_out"], side["b_out"]]:
-				var world := global_transform * Vector3(p.x, 0, p.y)
-				var depth := world.y - TerrainEdit.height_at(terrain, world)
-				if depth > 0.05:
-					depth += 0.3
-					km.box(Vector3(0.2, depth, 0.2), _at(Vector3(p.x, -depth / 2.0, p.y)), KitMesh.all(TIMBER))
 
 
 static func _at(pos: Vector3) -> Transform3D:
@@ -1068,205 +955,6 @@ func furnish_rooms() -> Array[Node]:
 	return added
 
 
-# --- Porches ------------------------------------------------------------------------
-
-## One porch: a deck at the ground floor's height along each of its walls
-## (meeting the next one's on the diagonal at a corner), steps down, a railing
-## or screens round the edge, and a roof on posts.
-func _porch(km: KitMesh, porch: KitPorch, roof_mat: Material, made: Array[Node]) -> void:
-	var deck := floor_top(0)
-	var sides := _porch_sides(porch, porch.depth)
-	var eaves := _porch_sides(porch, porch.depth + PORCH_EAVE)
-	var roofed := porch.kind != "Open"
-	var wall_y := _porch_roof_y()
-	var slope := tan(deg_to_rad(PORCH_PITCH))
-	for i in sides.size():
-		var side: Dictionary = sides[i]
-		var a: Vector2 = side["a"]
-		var b: Vector2 = side["b"]
-		var a_out: Vector2 = side["a_out"]
-		var b_out: Vector2 = side["b_out"]
-		# The deck, down into the ground (posts under it on a slope: _foundation).
-		km.slab(PackedVector2Array([a_out, b_out, b, a]), [], deck, deck + 0.3, DECK, null, TIMBER, null)
-		if roofed:
-			var e: Dictionary = eaves[i]
-			var corners := PackedVector3Array([Vector3(a.x, wall_y, a.y), Vector3(b.x, wall_y, b.y),
-					_porch_point(e["b_out"], side, wall_y, slope), _porch_point(e["a_out"], side, wall_y, slope)])
-			if (corners[1] - corners[0]).cross(corners[2] - corners[0]).y < 0.0:
-				corners.reverse()
-			km.plate(corners, PORCH_ROOF, roof_mat, DECK, TIMBER)
-		# Round its edge: the outer side, and an end that doesn't meet another side.
-		var gap := _steps_gap(porch, side)
-		var runs := [[a_out, b_out, gap]]
-		if not side["joined_a"]:
-			runs.append([a, a_out, Vector2.INF])
-		if not side["joined_b"]:
-			runs.append([b_out, b, Vector2.INF])
-		for run: Array in runs:
-			_porch_edge(km, porch, run[0], run[1], run[2], side, wall_y, slope, made)
-		if gap != Vector2.INF:
-			_porch_steps(km, side, gap, deck)
-
-
-## A porch's sides, one per wall: {"n", "a", "b" (along the outline),
-## "a_out", "b_out" (`out` meters out, meeting the next side's on the
-## diagonal), "out" (the way out from the wall), "joined_a", "joined_b"}.
-func _porch_sides(porch: KitPorch, out_by: float) -> Array[Dictionary]:
-	var result: Array[Dictionary] = []
-	var count := edge_count()
-	var walls := Array(porch.walls).filter(func(n: int) -> bool: return n >= 0 and n < count)
-	for i in walls.size():
-		var n: int = walls[i]
-		var ends := edge_ends(n)
-		var along := (ends[1] - ends[0]).normalized()
-		var out := Vector2(-along.y, along.x)
-		var a := ends[0]
-		var b := ends[1]
-		if walls.size() == 1 and porch.length > 0.0:
-			var middle := (ends[0] + ends[1]) / 2.0 + along * porch.offset
-			a = middle - along * porch.length / 2.0
-			b = middle + along * porch.length / 2.0
-		var joined_a: bool = i > 0 and walls[i - 1] == posmod(n - 1, count)
-		var joined_b: bool = i < walls.size() - 1 and walls[i + 1] == (n + 1) % count
-		var a_out := a + out * out_by
-		var b_out := b + out * out_by
-		if joined_a:
-			a_out = _meet(a_out, along, n - 1, out_by)
-		if joined_b:
-			b_out = _meet(b_out, along, n + 1, out_by)
-		result.append({"n": n, "a": a, "b": b, "a_out": a_out, "b_out": b_out, "out": out, "along": along,
-				"joined_a": joined_a, "joined_b": joined_b})
-	return result
-
-
-## Where a line (through p, along `along`) meets wall n's line moved `by` out.
-func _meet(p: Vector2, along: Vector2, n: int, by: float) -> Vector2:
-	var ends := edge_ends(posmod(n, edge_count()))
-	var other := (ends[1] - ends[0]).normalized()
-	var hit: Variant = Geometry2D.line_intersects_line(p, along, ends[0] + Vector2(-other.y, other.x) * by, other)
-	return hit if hit is Vector2 else p
-
-
-## A point of a porch's roof: wall_y at the wall, lower going out.
-static func _porch_point(p: Vector2, side: Dictionary, wall_y: float, slope: float) -> Vector3:
-	var away: float = (p - (side["a"] as Vector2)).dot(side["out"])
-	return Vector3(p.x, wall_y - away * slope, p.y)
-
-
-## Whether a porch runs along wall n.
-func _porch_on(n: int) -> bool:
-	return porches.any(func(p: KitPorch) -> bool: return p != null and p.kind != "Open" and n in p.walls)
-
-
-## The porch roof's height against the wall: under the main roof's eaves.
-func _porch_roof_y() -> float:
-	var y := STOREY - 0.3
-	if floors == 1 and upper_height <= 0.0 and _pitched():
-		var tan_p := tan(deg_to_rad(roof_pitch))
-		var eave := STOREY - roof_overhang * tan_p - KitRoof.THICK / cos(deg_to_rad(roof_pitch))
-		y = minf(y, eave - 0.05 + roof_overhang * tan(deg_to_rad(PORCH_PITCH)))
-	return y
-
-
-## Where the steps leave a side's outer edge: the gap's two ends (Vector2.INF: not this side).
-func _steps_gap(porch: KitPorch, side: Dictionary) -> Vector2:
-	if porch.steps_wall != side["n"]:
-		return Vector2.INF
-	var ends := edge_ends(side["n"])
-	var along: Vector2 = side["along"]
-	var middle := ((ends[0] + ends[1]) / 2.0).dot(along) + porch.steps_offset
-	var lo: float = (side["a_out"] as Vector2).dot(along) + POST
-	var hi: float = (side["b_out"] as Vector2).dot(along) - POST
-	var half := (SCREEN_DOOR_WIDTH if porch.kind == "Screened" else STAIR_WIDTH) / 2.0 + 0.05
-	middle = clampf(middle, lo + half, hi - half)
-	return Vector2(middle - half, middle + half)
-
-
-## One edge of a porch, from p to q (a gap along it, in the side's along
-## distances, left open: the steps): posts, a railing, screens, a screen door.
-func _porch_edge(km: KitMesh, porch: KitPorch, p: Vector2, q: Vector2, gap: Vector2, side: Dictionary,
-		wall_y: float, slope: float, made: Array[Node]) -> void:
-	var deck := floor_top(0)
-	var length := p.distance_to(q)
-	if length < 0.05:
-		return
-	var dir := (q - p) / length
-	var along: Vector2 = side["along"]
-	var pieces: Array[Vector2] = [] # [from, to] distances from p
-	if gap != Vector2.INF and absf(dir.dot(along)) > 0.99:
-		var g0 := (gap.x - p.dot(along)) * signf(dir.dot(along))
-		var g1 := (gap.y - p.dot(along)) * signf(dir.dot(along))
-		pieces.append(Vector2(0.0, minf(g0, g1)))
-		pieces.append(Vector2(maxf(g0, g1), length))
-	else:
-		pieces.append(Vector2(0.0, length))
-	var roofed := porch.kind != "Open"
-	var screened := porch.kind == "Screened"
-	var frame_basis := Basis(Vector3(-dir.y, 0, dir.x), Vector3.UP, Vector3(dir.x, 0, dir.y))
-	var under := func(at: Vector2) -> float: return _porch_point(at, side, wall_y, slope).y - PORCH_ROOF / cos(deg_to_rad(PORCH_PITCH))
-	for piece in pieces:
-		if piece.y - piece.x < 0.05:
-			continue
-		var from := p + dir * piece.x
-		var to := p + dir * piece.y
-		var mid := (from + to) / 2.0
-		var span := piece.y - piece.x
-		if roofed: # posts at its ends and every POST_SPACING or so between
-			var count := maxi(1, ceili(span / POST_SPACING))
-			for k in count + 1:
-				var at := from.lerp(to, float(k) / count)
-				var top: float = under.call(at)
-				km.box(Vector3(POST, top - deck, POST), _at(Vector3(at.x, (deck + top) / 2.0, at.y)), KitMesh.all(TIMBER))
-		if screened:
-			# Screen from a low rail to the roof (solid: zombies can't get through).
-			var lo := deck + 0.25
-			var corners := PackedVector3Array([Vector3(from.x, lo, from.y), Vector3(to.x, lo, to.y),
-					Vector3(to.x, under.call(to), to.y), Vector3(from.x, under.call(from), from.y)])
-			km.plate(corners, 0.02, SCREEN, SCREEN, null)
-			km.box(Vector3(0.06, 0.25, span), Transform3D(frame_basis, Vector3(mid.x, deck + 0.125, mid.y)), KitMesh.all(TIMBER))
-			km.box(Vector3(0.05, 0.06, span), Transform3D(frame_basis, Vector3(mid.x, deck + RAIL_HEIGHT, mid.y)), KitMesh.all(TIMBER), false)
-		elif porch.railing:
-			km.box(Vector3(0.07, 0.06, span), Transform3D(frame_basis, Vector3(mid.x, deck + RAIL_HEIGHT, mid.y)), KitMesh.all(TIMBER), false)
-			km.box(Vector3(0.05, 0.05, span), Transform3D(frame_basis, Vector3(mid.x, deck + 0.12, mid.y)), KitMesh.all(TIMBER), false)
-			var balusters := floori(span / 0.3)
-			for k in range(1, balusters):
-				var at := from + dir * (span * k / balusters)
-				km.box(Vector3(0.04, RAIL_HEIGHT - 0.12, 0.04), _at(Vector3(at.x, deck + 0.06 + RAIL_HEIGHT / 2.0, at.y)), KitMesh.all(TIMBER), false)
-			# Solid all the way up, unseen: nobody steps over it.
-			km.box(Vector3(0.07, RAIL_HEIGHT + 0.1, span), Transform3D(frame_basis, Vector3(mid.x, deck + (RAIL_HEIGHT + 0.1) / 2.0, mid.y)),
-					[null, null, null, null, null, null])
-	if screened and gap != Vector2.INF and pieces.size() == 2:
-		# The screen door in the gap, and screen over it.
-		var g0 := p + dir * pieces[0].y
-		var g1 := p + dir * pieces[1].x
-		var top := minf(deck + SCREEN_DOOR_HEIGHT, minf(under.call(g0), under.call(g1)) - 0.05)
-		km.plate(PackedVector3Array([Vector3(g0.x, top, g0.y), Vector3(g1.x, top, g1.y),
-				Vector3(g1.x, under.call(g1), g1.y), Vector3(g0.x, under.call(g0), g0.y)]), 0.02, SCREEN, SCREEN, null)
-		var mid := (g0 + g1) / 2.0
-		# Its frame: X in toward the wall (it swings in, onto the porch).
-		var into := -(side["out"] as Vector2)
-		var basis := Basis(Vector3(into.x, 0, into.y), Vector3.UP, Vector3(into.x, 0, into.y).cross(Vector3.UP))
-		var width := g0.distance_to(g1)
-		var entry := {"top": top, "bottom": deck, "width": width, "frame": Transform3D(basis, Vector3(mid.x, (deck + top) / 2.0, mid.y))}
-		var door := KitMesh.make_door(entry, Color(0.55, 0.42, 0.28))
-		door.look_scene = ScreenDoorLook
-		door.label = "screen door"
-		door.name = "Porch%dScreenDoor" % (porches.find(porch) + 1)
-		made.append(door)
-
-
-## Steps from a side's outer edge (across gap) down to the ground.
-func _porch_steps(km: KitMesh, side: Dictionary, gap: Vector2, deck: float) -> void:
-	if deck < 0.12:
-		return # a step up is nothing
-	var along: Vector2 = side["along"]
-	var out: Vector2 = side["out"]
-	var edge: Vector2 = side["a_out"]
-	var start := edge + along * ((gap.x + gap.y) / 2.0 - edge.dot(along))
-	var flight := {"level": 0, "start": start + out * (deck * STAIR_RUN_PER_RISE), "angle": atan2(-out.y, -out.x)}
-	_ramp(km, flight, 0.0, deck, (gap.y - gap.x) - 0.1, DECK, TIMBER)
-
-
 # --- The basement ----------------------------------------------------------------------
 
 ## What the basement's walls look like outside: the foundation's (block, if that's posts).
@@ -1353,22 +1041,15 @@ func _darkness() -> ReflectionProbe:
 	var box := Rect2(poly[0], Vector2.ZERO)
 	for p in poly:
 		box = box.expand(p)
-	var probe := ReflectionProbe.new()
-	probe.name = "BasementDark"
 	# Up to just under the floor above: its ceiling well inside (past the
 	# blend), the ground floor's floor outside.
 	var top := floor_y - 0.05
 	var bottom := -BASEMENT_DEPTH - 0.5
 	# Its sides in the middle of the walls: their inside faces dark, their outsides not.
-	probe.size = Vector3(box.size.x - WALL, top - bottom, box.size.y - WALL)
-	probe.position = Vector3(box.get_center().x, (top + bottom) / 2.0, box.get_center().y)
-	probe.interior = true
-	probe.ambient_mode = ReflectionProbe.AMBIENT_COLOR
-	probe.ambient_color = BASEMENT_DARK
-	probe.ambient_color_energy = 1.0
-	probe.blend_distance = 0.1
+	var probe := Darkness.probe(Vector3(box.size.x - WALL, top - bottom, box.size.y - WALL),
+			Vector3(box.get_center().x, (top + bottom) / 2.0, box.get_center().y), BASEMENT_DARK, 0.1)
+	probe.name = "BasementDark"
 	probe.max_distance = 20.0
-	probe.intensity = 0.2
 	return probe
 
 

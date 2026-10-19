@@ -12,6 +12,9 @@ extends CanvasLayer
 
 const Player := preload("res://characters/player/player.gd")
 const Controls := preload("res://core/controls.gd")
+## What the death screen says, by player.death_cause (anything else: bitten).
+const DEATHS := {"starved": "You starved.", "shot": "You were shot.", "fell": "You fell to your death.",
+		"drowned": "You drowned.", "blown_up": "You were blown up."}
 
 var _player: Player
 var _day_night: Node
@@ -52,13 +55,14 @@ func _process(_delta: float) -> void:
 	for item in _play_items:
 		item.visible = not in_screen
 	var crouch := "   (crouching)" if _player.is_crouching else ""
-	status_label.text = "Health %d\nStamina %d%s\n%s\nHealth packs %d    $%d" % [
+	var status := "Health %d\nStamina %d%s\n%s\nHealth packs %d    $%d" % [
 		ceili(_player.health), floori(_player.stamina), crouch, _player.hunger_text(),
 		_player.inventory.count("health_pack"), _player.money,
 	]
 	if _player.breath < _player.BREATH: # under water, or getting it back
-		status_label.text += "\nBreath %d%%%s" % [floori(100.0 * _player.breath / _player.BREATH),
+		status += "\nBreath %d%%%s" % [floori(100.0 * _player.breath / _player.BREATH),
 				"   DROWNING" if _player.breath <= 0.0 else ""]
+	status_label.text = status # (once: it relays itself out each time it changes)
 	water_overlay.visible = _player.head_under and not in_screen
 	held_label.text = _player.held_label()
 	var scoped := _player.is_scoped() and not in_screen
@@ -69,7 +73,7 @@ func _process(_delta: float) -> void:
 	prompt_label.text = _player.prompt_text
 	clock_label.text = _day_night.clock_text()
 	if _player.is_dead:
-		var cause: String = {"starved": "You starved.", "shot": "You were shot.", "fell": "You fell to your death.", "drowned": "You drowned.", "blown_up": "You were blown up."}.get(_player.death_cause, "You were bitten.")
+		var cause: String = DEATHS.get(_player.death_cause, "You were bitten.")
 		if _has_save_on_death:
 			message_label.text = "%s\nLoading your last save...   (%s to load now)" % [cause, Controls.hint("restart")]
 		else:

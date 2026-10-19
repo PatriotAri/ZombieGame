@@ -38,6 +38,9 @@ const Ground := preload("res://world/ground.gd")
 const EYE_HEIGHT := 1.6
 const SENSE_INTERVAL := 0.25
 const ALERT_TIME := 6.0 # how long it stays on edge after hearing something
+## A new path when where it's going moves (a path costs; every frame would be
+## wasteful): at once if it moved more than a meter, else at most this often.
+const REPATH_INTERVAL := 0.3
 
 var home := Vector3.ZERO # camp center, set by main.gd before the bandit is added
 var drop_loot_on_death := true # off when restoring an already-dead bandit from a save
@@ -52,6 +55,7 @@ var _alert_pos := Vector3.ZERO
 var _alert_timer := 0.0
 var _wander_target := Vector3.ZERO
 var _wander_timer := 0.0
+var _repath_wait := 0.0
 var _day_night: Node
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
@@ -153,19 +157,24 @@ func die() -> void:
 ## The closest enemy it can see right now: the player or a zombie.
 func _pick_target() -> void:
 	var best: Node3D = null
-	var best_dist := INF
+	var best_sq := (sight_range * 1.2) ** 2 # (nobody further off can be seen)
 	var candidates: Array[Node] = get_tree().get_nodes_in_group("zombies")
 	var player := get_tree().get_first_node_in_group("player")
 	if player:
 		candidates.append(player)
+	var light := -1.0 # (looked up once, when first needed)
 	for node in candidates:
 		var candidate := node as Node3D
-		if not _is_enemy(candidate):
+		if candidate == null or not is_instance_valid(candidate):
 			continue
-		var dist := global_position.distance_to(candidate.global_position)
-		if dist < best_dist and _can_see(candidate, dist):
+		var dist_sq := global_position.distance_squared_to(candidate.global_position)
+		if dist_sq >= best_sq or not _is_enemy(candidate):
+			continue
+		if light < 0.0:
+			light = _light()
+		if _can_see(candidate, sqrt(dist_sq), light):
 			best = candidate
-			best_dist = dist
+			best_sq = dist_sq
 	if best:
 		if state != State.COMBAT:
 			# Just spotted them: a moment to react ("Hey!") before the first shot.
@@ -188,12 +197,15 @@ func _is_enemy(node: Node3D) -> bool:
 	return node.is_in_group("zombies") # (dead zombies leave the group)
 
 
-func _can_see(candidate: Node3D, dist: float) -> bool:
-	var light := 1.0
+## 0 at darkest night, 1 in full day.
+func _light() -> float:
 	if _day_night == null:
 		_day_night = get_tree().get_first_node_in_group("day_night")
-	if _day_night:
-		light = _day_night.call("light_level")
+	return _day_night.call("light_level") if _day_night else 1.0
+
+
+## light: _light() (passed in so it's looked up once for everyone).
+func _can_see(candidate: Node3D, dist: float, light: float) -> bool:
 	var sight := sight_range * lerpf(night_sight_factor, 1.0, light)
 	if candidate.is_in_group("player"):
 		if candidate.get("is_crouching"):
@@ -263,10 +275,11 @@ func _walk(point: Vector3, walk_speed: float) -> void:
 	from_home.y = 0.0
 	if from_home.length() > leash_radius:
 		point = home + from_home.normalized() * leash_radius
-	agent.target_position = point
-	if agent.is_navigation_finished():
-		_stop()
-		return
+	_repath_wait -= get_physics_process_delta_time()
+	var moved := point.distance_squared_to(agent.target_position)
+	if moved > 1.0 or (moved > 0.0001 and _repath_wait <= 0.0):
+		agent.target_position = point
+		_repath_wait = REPATH_INTERVAL
 	var dir := agent.get_next_path_position() - global_position
 	dir.y = 0.0
 	if dir.length() < 0.05:

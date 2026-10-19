@@ -23,14 +23,14 @@ const Inventory := preload("res://items/inventory.gd")
 const LootSpot := preload("res://items/loot_spot.gd")
 const GroundItem := preload("res://items/ground_item.gd")
 const Fall := preload("res://characters/fall.gd")
-const StructurePiece := preload("res://world/structure_piece.gd")
 const Sound := preload("res://core/sound.gd")
 const Settings := preload("res://core/settings.gd")
-const Fortifications := preload("res://world/fortifications.gd")
 const Water := preload("res://world/water.gd")
 const Cover := preload("res://world/cover.gd")
 const Ground := preload("res://world/ground.gd")
 const Hands := preload("res://characters/player/hands.gd")
+const PlayerLights := preload("res://characters/player/player_lights.gd")
+const PlayerBuilding := preload("res://characters/player/player_building.gd")
 
 @export_group("Movement")
 @export var walk_speed := 4.0
@@ -168,7 +168,6 @@ const FELL_BELOW := 30.0
 var _safe_spot := Vector3.INF
 var _safe_timer := 0.0
 var hunger := 20.0 # 0 = just ate, 100 = starving; set to starting_hunger in _ready
-var flashlight_charge := 1.0 # what's left in the batteries in the flashlight, 0-1
 var menu_open := false # set by the inventory/shop screens; freezes your controls
 
 var prompt_text := "" # read by the HUD
@@ -194,16 +193,12 @@ var suppress_next_attack := false # the click that re-grabs the mouse shouldn't 
 var _last_physics_frame := 0 # to notice when we've just come back from a pause or menu
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var day_night: Node # for hunger, which runs on in-game time
-var _flashlight_energy := 1.0 # the beam's full brightness, from player.tscn
-## The helmet lamp (an item: wear it from the backpack, and the flashlight key
-## switches it instead): LAMP_BRIGHTER times as bright and wider than the
-## flashlight, and its batteries last LAMP_LASTS times as long.
-const LAMP_BRIGHTER := 1.6
-const LAMP_LASTS := 2.0
-var lamp_worn := false
-var lamp_charge := 1.0 # its own batteries, 0-1
-var _lamp: SpotLight3D
-var _carried_lantern: OmniLight3D # lit while you hold a lantern
+## The flashlight, the helmet lamp and a carried lantern (player_lights.gd).
+var lights: PlayerLights
+## Wearing the helmet lamp (the backpack puts it on: wear_lamp).
+var lamp_worn: bool:
+	get:
+		return lights.lamp_worn
 ## Dynamite (world/dynamite.gd): use lights it, and letting go throws it,
 ## THROW_SPEED m/s; the fuse burns while you hold it (it goes off in your
 ## hand if you hold on too long). Crouching, use sets it down lit instead.
@@ -215,17 +210,12 @@ var _layer_wait := 0.0
 var _hunger_stage := 0 # 0 fed, 1 hungry, 2 starving: to announce each change once
 var _growl_timer := 0.0
 var _hurt_sound_wait := 0.0 # zombies hurt you every frame; grunt at most this often
-var fortifications: Node # world/fortifications.gd, found through its group
-var structures: Node # world/structures.gd, found through its group
-var _build_view := {} # where the held piece would go this frame (structures.preview), or empty
 var _ladders: Array[Area3D] = [] # the ladders you're touching (structures.gd tells us)
-var salvage: Node # world/salvage.gd, found through its group
-var _salvage_target: Node3D = null # what you're holding interact on with the crowbar
-var _salvage_held := 0.0
-var _salvage_sound_wait := 0.0
-const SALVAGE_TAP := 0.3 # let go sooner than this and it's an ordinary interact
-var _barricade_ghost: MeshInstance3D # where a held barricade would go
-var _ghost_material: StandardMaterial3D
+## Fortifying, building and salvaging (player_building.gd).
+var building := PlayerBuilding.new(self)
+var _look_target: Node3D # what _looked_at() saw, and on which physics frame
+var _look_frame := -1
+var _look_nothing := false
 
 
 func _ready() -> void:
@@ -253,23 +243,10 @@ func _ready() -> void:
 	inventory.add("batteries", starting_spare_batteries)
 	inventory.add("planks", starting_planks)
 	inventory.add("barricade", starting_barricades)
-	_flashlight_energy = flashlight.light_energy
-	_lamp = flashlight.duplicate() as SpotLight3D
-	_lamp.name = "HelmetLamp"
-	_lamp.light_energy = _flashlight_energy * LAMP_BRIGHTER
-	_lamp.spot_angle = flashlight.spot_angle + 12.0
-	_lamp.spot_range = flashlight.spot_range * 1.3
-	_lamp.position.y += 0.15 # on your forehead
-	_lamp.visible = false
-	camera.add_child(_lamp)
-	_carried_lantern = OmniLight3D.new()
-	_carried_lantern.name = "Lantern"
-	_carried_lantern.light_color = Color(1.0, 0.75, 0.45)
-	_carried_lantern.light_energy = 1.2
-	_carried_lantern.omni_range = 8.0
-	_carried_lantern.position = Vector3(0.3, 1.1, -0.3) # at your side
-	_carried_lantern.visible = false
-	add_child(_carried_lantern)
+	lights = PlayerLights.new()
+	lights.name = "Lights"
+	add_child(lights)
+	lights.setup(flashlight, camera, self, inventory, notify.emit, battery_life, low_battery)
 	_base_fov = camera.fov
 	hands.setup(self)
 	_refresh_weapon_visuals(false)
@@ -305,9 +282,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var target := _looked_at()
 		if event.is_action_pressed("reload") and not _has_interaction(target):
 			_start_reload() # one button for both (X on a controller): nothing to use, so it reloads
-		elif (_can_salvage() and not _salvage_yield(target).is_empty()) or _can_dig(target):
-			_salvage_target = target # a tap still opens it; holding strips it, or digs it out (_update_salvage)
-			_salvage_held = 0.0
+		elif (_can_salvage() and not building.salvage_yield(target).is_empty()) or _can_dig(target):
+			building.start_salvage(target) # a tap still opens it; holding strips it, or digs it out
 		else:
 			_interact()
 	elif event.is_action_pressed("flashlight"):
@@ -351,7 +327,8 @@ func _look(amount: Vector2, invert: bool) -> void:
 func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
-	_ladders = _ladders.filter(func(l: Area3D) -> bool: return is_instance_valid(l))
+	if not _ladders.is_empty(): # (a ladder that's gone, a built one torn down say, lets go)
+		_ladders = _ladders.filter(func(l: Area3D) -> bool: return is_instance_valid(l))
 	var climbing := not _ladders.is_empty()
 	_update_water()
 	_update_breath(delta)
@@ -387,9 +364,9 @@ func _physics_process(delta: float) -> void:
 		_update_stamina(delta, false)
 		_update_hunger(delta)
 		_update_flashlight(delta)
-		_update_barricade_ghost() # hides it while a menu is up
-		_update_build_view()
-		_salvage_target = null
+		building.update_barricade_ghost() # hides it while a menu is up
+		building.update_build_view()
+		building.salvage_target = null
 		return
 
 	# Coming back from the pause menu or a trade/inventory screen: the button that
@@ -481,10 +458,10 @@ func _physics_process(delta: float) -> void:
 	_update_hunger(delta)
 	_update_flashlight(delta)
 	_update_footsteps(delta, sprinting)
-	_update_build_view()
-	_update_salvage(delta)
+	building.update_build_view()
+	building.update_salvage(delta)
 	_update_prompt()
-	_update_barricade_ghost()
+	building.update_barricade_ghost()
 	_hurt_sound_wait = maxf(_hurt_sound_wait - delta, 0.0)
 
 
@@ -540,10 +517,8 @@ func _update_breath(delta: float) -> void:
 func _slope_factor(direction: Vector3, slowdown: float) -> float:
 	if not is_on_floor() or direction == Vector3.ZERO:
 		return 1.0
-	var normal := get_floor_normal()
-	var downhill := Vector3(normal.x, 0.0, normal.z) # points down the slope
-	var uphill_rise := maxf(-Vector3(direction.x, 0.0, direction.z).normalized().dot(downhill), 0.0) / maxf(normal.y, 0.1)
-	return clampf(1.0 - slowdown * uphill_rise, 0.2, 1.0)
+	var flat := Vector3(direction.x, 0.0, direction.z).normalized()
+	return clampf(1.0 - slowdown * Ground.uphill_rise(get_floor_normal(), flat), 0.2, 1.0)
 
 
 ## cause is what the death message blames if this kills you: zombies bite
@@ -566,13 +541,10 @@ func take_damage(amount: float, cause := "bitten") -> void:
 func _die(cause: String) -> void:
 	death_cause = cause
 	is_dead = true
-	if _barricade_ghost:
-		_barricade_ghost.visible = false
-	_update_build_view() # hides the building preview
+	building.update_barricade_ghost() # hides the previews: the barricade's, and the building piece's
+	building.update_build_view()
 	_ladders.clear()
-	flashlight.visible = false
-	_lamp.visible = false
-	_carried_lantern.visible = false
+	lights.all_off()
 	hands.visible = false
 	aiming = false
 	camera.fov = _base_fov
@@ -593,10 +565,7 @@ func hunger_text() -> String:
 
 ## For the inventory screen: the flashlight's charge and the spare batteries.
 func flashlight_text() -> String:
-	var text := "Helmet lamp %d%%" % ceili(lamp_charge * 100.0) if lamp_worn else "Flashlight %d%%" % ceili(flashlight_charge * 100.0)
-	if inventory.has("batteries"):
-		text += "  (+%d batteries)" % inventory.count("batteries")
-	return text
+	return lights.text()
 
 
 ## Text for the HUD describing what's in your hands, e.g. "Pistol 5/7  (+12)".
@@ -648,7 +617,7 @@ func make_noise(radius: float) -> void:
 
 ## Everything about you that a save file needs, as plain data.
 func save_state() -> Dictionary:
-	return {
+	var data := {
 		"position": [global_position.x, global_position.y, global_position.z],
 		"yaw": rotation.y,
 		"pitch": camera.rotation.x,
@@ -658,13 +627,10 @@ func save_state() -> Dictionary:
 		"inventory": inventory.to_dict(),
 		"mags": mags.duplicate(),
 		"held": held,
-		"flashlight": flashlight.visible,
-		"flashlight_charge": flashlight_charge,
-		"lamp_worn": lamp_worn,
-		"lamp_on": _lamp.visible,
-		"lamp_charge": lamp_charge,
 		"hunger": hunger,
 	}
+	lights.save_into(data) # "flashlight", "flashlight_charge", "lamp_worn", "lamp_on", "lamp_charge"
+	return data
 
 
 func load_state(data: Dictionary) -> void:
@@ -679,11 +645,7 @@ func load_state(data: Dictionary) -> void:
 	var saved_mags: Dictionary = data.get("mags", {"pistol": data.get("pistol_mag", 0)})
 	for id: String in mags:
 		mags[id] = clampi(int(saved_mags.get(id, 0)), 0, GameData.weapon(id).magazine)
-	flashlight_charge = clampf(float(data.get("flashlight_charge", 1.0)), 0.0, 1.0)
-	flashlight.visible = bool(data.get("flashlight", false)) and flashlight_charge > 0.0
-	lamp_charge = clampf(float(data.get("lamp_charge", 1.0)), 0.0, 1.0)
-	lamp_worn = bool(data.get("lamp_worn", false)) and inventory.has("helmet_lamp")
-	_lamp.visible = lamp_worn and bool(data.get("lamp_on", false)) and lamp_charge > 0.0
+	lights.load_from(data)
 	hunger = clampf(float(data.get("hunger", starting_hunger)), 0.0, 100.0)
 	_hunger_stage = _stage_for(hunger)
 	var saved_held: String = data.get("held", "hands")
@@ -756,13 +718,13 @@ func _use_held() -> void:
 		"eat":
 			_start_use(eat_time)
 		"board":
-			_try_board()
+			building.try_board()
 		"barricade":
-			_try_barricade()
+			building.try_barricade()
 		"build":
-			_try_build()
+			building.try_build()
 		"plate":
-			_try_plate()
+			building.try_plate()
 		"throw":
 			_try_dynamite()
 
@@ -809,7 +771,22 @@ func _lower_item() -> void:
 
 # --- Interaction (pick up / open / trade) ------------------------------------
 
+## Cast once a physics frame (the prompt, salvaging and fortifying all ask);
+## afresh outside the physics step (a button press: aim where you're aiming now).
 func _looked_at() -> Node3D:
+	var frame := Engine.get_physics_frames()
+	if Engine.is_in_physics_frame() and frame == _look_frame:
+		if _look_nothing:
+			return null
+		if is_instance_valid(_look_target):
+			return _look_target
+	_look_target = _cast_look()
+	_look_nothing = _look_target == null
+	_look_frame = frame if Engine.is_in_physics_frame() else -1
+	return _look_target
+
+
+func _cast_look() -> Node3D:
 	var origin := camera.global_position
 	var end := origin - camera.global_basis.z * INTERACT_RANGE
 	var query := PhysicsRayQueryParameters3D.create(origin, end,
@@ -842,20 +819,8 @@ func _update_prompt() -> void:
 	elif _offers_interaction(target):
 		prompt_text = "%s: %s" % [key, target.call("interact_prompt")]
 	if prompt_text == "":
-		prompt_text = _fortify_prompt()
-	# With the pickaxe, a cave-in says how far through it you are.
-	if _can_dig(target):
-		var done: float = target.call("dug")
-		prompt_text = "Digging...  %d%%" % roundi(100.0 * done) if _salvage_target == target and _salvage_held >= SALVAGE_TAP \
-				else "Hold %s: dig through the cave-in%s" % [key, "  (%d%% done)" % roundi(100.0 * done) if done > 0.0 else ""]
-	# With the crowbar, things you can strip for materials say so.
-	var got := _salvage_yield(target) if _can_salvage() else []
-	if not got.is_empty():
-		if _salvage_target == target and _salvage_held >= SALVAGE_TAP:
-			prompt_text = "Salvaging...  %d%%" % roundi(100.0 * _salvage_held / float(salvage.get("TIME")))
-		else:
-			var line := "Hold %s: salvage %d %s" % [key, got[1], GameData.item_name(got[0]).to_lower()]
-			prompt_text = line if prompt_text == "" else prompt_text + "   ·   " + line
+		prompt_text = building.fortify_prompt()
+	prompt_text = building.salvage_prompt(target, key, prompt_text)
 
 
 func _interact() -> void:
@@ -884,7 +849,7 @@ func _interact() -> void:
 func _has_interaction(target: Node3D) -> bool:
 	if target is GroundItem or target is LootSpot or _offers_interaction(target):
 		return true
-	return _can_salvage() and not _salvage_yield(target).is_empty()
+	return _can_salvage() and not building.salvage_yield(target).is_empty()
 
 
 ## Anything (an NPC, the logbook...) with an interact_prompt() that isn't empty.
@@ -897,77 +862,8 @@ func _offers_interaction(target: Node3D) -> bool:
 	return target.call("interact_prompt") != ""
 
 
-# --- Fortifying (planks and barricades; see world/fortifications.gd) ---------------
+# --- Dynamite (world/dynamite.gd) -------------------------------------------------
 
-func _fortifications() -> Node:
-	if fortifications == null:
-		fortifications = get_tree().get_first_node_in_group("fortifications")
-	return fortifications
-
-
-## The door or window you're aiming at (index into fortifications.openings), or -1.
-## The first thing the ray hits must be the opening itself, not a wall in front of it.
-func _aimed_opening() -> int:
-	var fort := _fortifications()
-	if fort == null:
-		return -1
-	var origin := camera.global_position
-	var query := PhysicsRayQueryParameters3D.create(origin, origin - camera.global_basis.z * (INTERACT_RANGE + 0.5),
-			GameData.LAYER_WORLD | GameData.LAYER_GLASS | GameData.LAYER_OPENINGS)
-	query.collide_with_areas = true
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	return fort.opening_of(hit["collider"]) if not hit.is_empty() else -1
-
-
-## Where a held barricade would stand: a couple of meters ahead, on the ground,
-## facing you.
-func _barricade_transform() -> Transform3D:
-	var forward := -global_basis.z
-	forward.y = 0.0
-	var spot := global_position + forward.normalized() * 2.2
-	var query := PhysicsRayQueryParameters3D.create(spot + Vector3.UP * 2.0, spot + Vector3.DOWN * 3.0, GameData.LAYER_WORLD)
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty():
-		spot.y = (hit["position"] as Vector3).y
-	return Transform3D(Basis(Vector3.UP, rotation.y), spot)
-
-
-func _fortify_prompt() -> String:
-	var fort := _fortifications()
-	if fort == null:
-		return ""
-	var key := Controls.hint("use_held")
-	var piece := _aimed_piece()
-	if GameData.item_use(held) == "board" and piece and piece.is_damaged():
-		return "%s: repair the %s" % [key, GameData.item_name(piece.kind).to_lower()]
-	if GameData.item_use(held) == "plate" and piece and not piece.broken:
-		if piece.plated:
-			return "Already plated"
-		var sheets: int = StructurePiece.SHEETS[piece.kind]
-		if inventory.count("sheet_metal") < sheets:
-			return "Plating the %s takes %d sheet metal" % [GameData.item_name(piece.kind).to_lower(), sheets]
-		return "%s: plate the %s (%d sheet metal)" % [key, GameData.item_name(piece.kind).to_lower(), sheets]
-	if GameData.item_use(held) == "board":
-		var index := _aimed_opening()
-		if index >= 0 and not fort.is_boarded(index):
-			return "%s: board up the %s" % [key, fort.describe(index)]
-	elif held == "barricade":
-		return "%s: place barricade" % key if fort.can_place_barricade(_barricade_transform()) else "No room for a barricade here"
-	elif not _build_view.is_empty():
-		return ("%s: %s" % [key, _build_view["text"]]) if _build_view["ok"] else _build_view["text"]
-	return ""
-
-
-## The fence or gate you built that you're looking at (structure_piece.gd), or null.
-func _aimed_piece() -> StructurePiece:
-	var target := _looked_at()
-	if target != null and target.get("piece") != null: # a gate's leaf
-		target = target.get("piece")
-	var piece := target as StructurePiece
-	return piece if piece != null and piece.is_breakable() else null
-
-
-## Holding sheet metal: cover the fence or gate you're looking at (structures.gd).
 ## Lights the dynamite in your hand (thrown when you let go), or, crouching,
 ## lights it and sets it down at your feet.
 func _try_dynamite() -> void:
@@ -1002,86 +898,7 @@ func _spawn_dynamite(stick: Dynamite) -> void:
 	get_parent().add_child(stick)
 
 
-func _try_plate() -> void:
-	var piece := _aimed_piece()
-	if piece == null or piece.broken:
-		notify.emit("Aim at a fence or gate you built to plate it.")
-		return
-	if piece.plated:
-		notify.emit("That's already plated.")
-		return
-	var sheets: int = StructurePiece.SHEETS[piece.kind]
-	if inventory.count("sheet_metal") < sheets:
-		notify.emit("That takes %d sheet metal." % sheets)
-		return
-	take_item("sheet_metal", sheets)
-	_structures().call("plate", piece)
-	attack_cooldown = 0.6
-
-
-func _try_board() -> void:
-	var piece := _aimed_piece()
-	if piece and piece.is_damaged(): # planks mend a damaged fence or gate
-		_structures().call("repair", piece)
-		take_item(held)
-		attack_cooldown = 0.6
-		return
-	var fort := _fortifications()
-	var index := _aimed_opening()
-	if fort == null or index < 0:
-		notify.emit("Aim at a door or window to board it up.")
-	elif fort.is_boarded(index):
-		notify.emit("That's already boarded up.")
-	else:
-		fort.board(index, false, held == "used_planks")
-		take_item(held)
-		attack_cooldown = 0.6
-
-
-func _try_barricade() -> void:
-	var fort := _fortifications()
-	var xform := _barricade_transform()
-	if fort == null or not fort.can_place_barricade(xform):
-		notify.emit("No room for a barricade there.")
-		return
-	fort.place_barricade(xform)
-	take_item("barricade")
-	attack_cooldown = 0.6
-
-
-# --- Building (scaffolding, guard posts, fences; see world/structures.gd) ----------
-
-func _structures() -> Node:
-	if structures == null:
-		structures = get_tree().get_first_node_in_group("structures")
-	return structures
-
-
-## Where the piece you're holding would go, and its see-through preview.
-func _update_build_view() -> void:
-	var builder := _structures()
-	if builder == null:
-		return
-	if is_dead or menu_open or GameData.item_use(held) != "build":
-		_build_view = {}
-		builder.call("show_ghost", "", {})
-		return
-	var skip: Array[RID] = [get_rid()]
-	_build_view = builder.call("preview", held, camera.global_position, -camera.global_basis.z, global_position, skip)
-	builder.call("show_ghost", held, _build_view)
-
-
-func _try_build() -> void:
-	if _build_view.is_empty() or attack_cooldown > 0.0:
-		return
-	if not _build_view["ok"]:
-		notify.emit(_build_view["text"] + ".")
-		return
-	_structures().call("build", held, _build_view["xform"], _build_view["on"])
-	take_item(held)
-	attack_cooldown = 0.6
-	_update_build_view()
-
+# --- Ladders -------------------------------------------------------------------
 
 ## On a ladder: forward climbs up (or down, if you're looking down), back climbs
 ## down. Partway up you hang on (no stepping off into the air); at the bottom
@@ -1101,54 +918,6 @@ func _climb(input_dir: Vector2) -> void:
 		velocity.z = 0.0
 
 
-# --- Salvaging (world/salvage.gd) --------------------------------------------------
-
-## [item, amount] that thing would give you, or [].
-func _salvage_yield(thing: Node3D) -> Array:
-	if salvage == null:
-		salvage = get_tree().get_first_node_in_group("salvage")
-	if salvage == null or thing == null:
-		return []
-	return salvage.call("yield_of", thing)
-
-
-## Holding interact on something with the crowbar (a weapon that salvages):
-## strip it once the bar fills.
-## Let go early and it was just a press (open it as usual).
-func _update_salvage(delta: float) -> void:
-	if _salvage_target == null:
-		return
-	if not is_instance_valid(_salvage_target) or not (_can_salvage() or _can_dig(_salvage_target)) \
-			or _looked_at() != _salvage_target:
-		_salvage_target = null # looked away or switched hands: cancelled
-		return
-	if not Input.is_action_pressed("interact"):
-		if _salvage_held < SALVAGE_TAP:
-			_interact()
-		_salvage_target = null
-		return
-	_salvage_held += delta
-	_salvage_sound_wait -= delta
-	if _salvage_held >= SALVAGE_TAP and _salvage_sound_wait <= 0.0:
-		_salvage_sound_wait = 0.6
-		if salvage == null: # (digging with the pickaxe: not looked up yet)
-			salvage = get_tree().get_first_node_in_group("salvage")
-		Sound.play_ui(self, "melee_hit", -6.0, 0.2) # prying and banging
-		make_noise(float(salvage.get("NOISE")))
-	if _can_dig(_salvage_target):
-		# The cave-in keeps count: let go and come back, and you carry on where you were.
-		if _salvage_held >= SALVAGE_TAP and _salvage_target.call("dig", delta):
-			_salvage_target = null
-			notify.emit("You dig your way through.")
-		return
-	if _salvage_held >= float(salvage.get("TIME")):
-		var got: Array = salvage.call("strip", _salvage_target)
-		_salvage_target = null
-		if not got.is_empty():
-			give_item(got[0], got[1])
-			notify.emit("Salvaged %d %s." % [got[1], GameData.item_name(got[0]).to_lower()])
-
-
 ## Ladders (structures.gd calls these as you touch them and let go).
 func enter_ladder(ladder: Area3D) -> void:
 	if not ladder in _ladders:
@@ -1157,33 +926,6 @@ func enter_ladder(ladder: Area3D) -> void:
 
 func exit_ladder(ladder: Area3D) -> void:
 	_ladders.erase(ladder)
-
-
-## A see-through preview of the barricade while you hold one: green where it fits,
-## red where it doesn't.
-func _update_barricade_ghost() -> void:
-	var fort := _fortifications()
-	var show := held == "barricade" and not is_dead and not menu_open and fort != null
-	if _barricade_ghost == null:
-		if not show:
-			return
-		_ghost_material = StandardMaterial3D.new()
-		_ghost_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		_ghost_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		var box := BoxMesh.new()
-		box.size = Fortifications.BARRICADE_SIZE
-		box.material = _ghost_material
-		_barricade_ghost = MeshInstance3D.new()
-		_barricade_ghost.mesh = box
-		_barricade_ghost.top_level = true # placed in world space, not following the camera's tilt
-		_barricade_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(_barricade_ghost)
-	_barricade_ghost.visible = show
-	if show:
-		var xform := _barricade_transform()
-		_barricade_ghost.global_transform = xform * Transform3D(Basis.IDENTITY, Vector3(0, Fortifications.BARRICADE_SIZE.y / 2.0, 0))
-		var ok: bool = fort.can_place_barricade(xform)
-		_ghost_material.albedo_color = Color(0.3, 1.0, 0.4, 0.35) if ok else Color(1.0, 0.25, 0.2, 0.35)
 
 
 # --- Weapons -----------------------------------------------------------------
@@ -1236,7 +978,7 @@ func _apply_melee_hit(weapon: Dictionary) -> void:
 	for node in victims:
 		var victim := node as Node3D
 		var to_target := victim.global_position + Vector3(0, 1.0, 0) - origin
-		if to_target.length() > reach:
+		if to_target.length_squared() > reach * reach:
 			continue
 		if forward.dot(to_target.normalized()) < 0.6: # about a 100 degree swing arc
 			continue
@@ -1425,100 +1167,16 @@ func _stage_for(value: float) -> int:
 	return 1 if value >= hungry_at else 0
 
 
-# --- Flashlight --------------------------------------------------------------
+# --- Lights (player_lights.gd) ------------------------------------------------
 
 func _toggle_flashlight() -> void:
-	Sound.play_ui(self, "flashlight_click", -8.0)
-	if lamp_worn:
-		_toggle_lamp()
-		return
-	if flashlight.visible:
-		flashlight.visible = false
-		return
-	if flashlight_charge <= 0.0 and not _swap_batteries():
-		notify.emit("The flashlight's dead. Find batteries.")
-		return
-	flashlight.visible = true
+	lights.toggle()
 
 
-func _toggle_lamp() -> void:
-	if _lamp.visible:
-		_lamp.visible = false
-		return
-	if lamp_charge <= 0.0:
-		if inventory.remove("batteries") == 0:
-			notify.emit("The helmet lamp's dead. Find batteries.")
-			return
-		lamp_charge = 1.0
-		Sound.play_ui(self, "battery_swap", -6.0)
-	_lamp.visible = true
-
-
-## Puts the helmet lamp on or takes it off (the backpack): while it's on, the
-## flashlight key switches it instead of the flashlight.
+## Puts the helmet lamp on or takes it off (the backpack).
 func wear_lamp(on: bool) -> void:
-	on = on and inventory.has("helmet_lamp")
-	if on == lamp_worn:
-		return
-	lamp_worn = on
-	var was_lit := flashlight.visible or _lamp.visible
-	flashlight.visible = false
-	_lamp.visible = false
-	if was_lit:
-		_toggle_flashlight() # the light you had on carries over to the other
-	notify.emit("You put on the helmet lamp." if on else "You take off the helmet lamp.")
+	lights.wear_lamp(on)
 
 
-## The helmet lamp's batteries, as the flashlight's below (it runs LAMP_LASTS times as long).
-func _update_lamp(delta: float) -> void:
-	if lamp_worn and not inventory.has("helmet_lamp"):
-		wear_lamp(false) # (sold or stored)
-	if not _lamp.visible:
-		return
-	lamp_charge = maxf(lamp_charge - delta / (battery_life * LAMP_LASTS), 0.0)
-	if lamp_charge <= 0.0:
-		if inventory.remove("batteries") > 0:
-			lamp_charge = 1.0
-			Sound.play_ui(self, "battery_swap", -6.0)
-			notify.emit("Swapped fresh batteries into the helmet lamp (%d left)." % inventory.count("batteries"))
-		else:
-			_lamp.visible = false
-			notify.emit("The helmet lamp died.")
-			return
-	var energy := _flashlight_energy * LAMP_BRIGHTER
-	if lamp_charge < low_battery:
-		energy *= lerpf(0.35, 1.0, lamp_charge / low_battery)
-		if randf() < 0.05:
-			energy *= 0.15
-	_lamp.light_energy = energy
-
-
-## Drains the batteries while it's on. Runs low: dims and flickers. Runs out:
-## swaps in a spare set from your inventory, or goes dark.
 func _update_flashlight(delta: float) -> void:
-	_update_lamp(delta)
-	_carried_lantern.visible = held == "lantern" and not is_dead
-	if not flashlight.visible:
-		return
-	flashlight_charge = maxf(flashlight_charge - delta / battery_life, 0.0)
-	if flashlight_charge <= 0.0:
-		if _swap_batteries():
-			notify.emit("Swapped in fresh batteries (%d left)." % inventory.count("batteries"))
-		else:
-			flashlight.visible = false
-			notify.emit("The flashlight died.")
-			return
-	var energy := _flashlight_energy
-	if flashlight_charge < low_battery:
-		energy *= lerpf(0.35, 1.0, flashlight_charge / low_battery)
-		if randf() < 0.05:
-			energy *= 0.15 # flicker
-	flashlight.light_energy = energy
-
-
-func _swap_batteries() -> bool:
-	if inventory.remove("batteries") == 0:
-		return false
-	flashlight_charge = 1.0
-	Sound.play_ui(self, "battery_swap", -6.0)
-	return true
+	lights.update(delta, held == "lantern" and not is_dead)

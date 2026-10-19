@@ -103,7 +103,7 @@ func _arrive() -> void:
 
 func _station_clear() -> bool:
 	for zombie: Node3D in get_tree().get_nodes_in_group("zombies"):
-		if zombie.global_position.distance_to(_station_center) < RESTOCK_CLEAR:
+		if zombie.global_position.distance_squared_to(_station_center) < RESTOCK_CLEAR * RESTOCK_CLEAR:
 			return false
 	return true
 

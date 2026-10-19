@@ -52,6 +52,7 @@ var nav_region: NavTiles # where planks and barricades go (they're in the naviga
 ## "planks" (or null), "at_start": boarded when a new game starts}.
 var openings: Array[Dictionary] = []
 var barricades: Array[Fortification] = []
+var _room_query: PhysicsShapeQueryParameters3D # can_place_barricade()'s, made once
 
 
 func _ready() -> void:
@@ -112,16 +113,19 @@ func describe(index: int) -> String:
 
 
 ## Room for a barricade here? (Nothing solid in the way, people included.)
+## (Asked every frame while you hold one: the query is made once.)
 func can_place_barricade(xform: Transform3D) -> bool:
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(BARRICADE_SIZE.x, BARRICADE_SIZE.y - 0.25, BARRICADE_SIZE.z + 0.1)
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = shape
+	if _room_query == null:
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(BARRICADE_SIZE.x, BARRICADE_SIZE.y - 0.25, BARRICADE_SIZE.z + 0.1)
+		_room_query = PhysicsShapeQueryParameters3D.new()
+		_room_query.shape = shape
+		_room_query.collision_mask = GameData.LAYER_WORLD | GameData.LAYER_GLASS | GameData.LAYER_PLAYER \
+				| GameData.LAYER_ZOMBIES | GameData.LAYER_NPC
 	# Lifted a little off the ground, so the ground, a curb or a road doesn't count.
-	query.transform = xform * Transform3D(Basis.IDENTITY, Vector3(0, 0.15 + shape.size.y / 2.0, 0))
-	query.collision_mask = GameData.LAYER_WORLD | GameData.LAYER_GLASS | GameData.LAYER_PLAYER \
-			| GameData.LAYER_ZOMBIES | GameData.LAYER_NPC
-	return get_viewport().get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
+	var lift := 0.15 + (_room_query.shape as BoxShape3D).size.y / 2.0
+	_room_query.transform = xform * Transform3D(Basis.IDENTITY, Vector3(0, lift, 0))
+	return get_viewport().get_world_3d().direct_space_state.intersect_shape(_room_query, 1).is_empty()
 
 
 # --- Changes -------------------------------------------------------------------

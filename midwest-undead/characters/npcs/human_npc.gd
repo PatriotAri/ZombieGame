@@ -152,10 +152,6 @@ func interact_prompt() -> String:
 	return ""
 
 
-func is_hostile_to_player() -> bool:
-	return faction == Faction.BANDIT
-
-
 ## Hits from weapons (player or NPC). Same signature zombies use, so attackers
 ## don't need to care what they hit.
 ## Blood where it landed (on them and whatever's behind), a flinch, and the
@@ -192,6 +188,7 @@ func die() -> void:
 	if is_dead:
 		return
 	is_dead = true
+	set_physics_process(false) # (it returned at once from now on anyway)
 	health = 0.0
 	talking = false
 	remove_from_group("zombie_targets")

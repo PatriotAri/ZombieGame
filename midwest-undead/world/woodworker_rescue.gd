@@ -30,7 +30,6 @@ const UNTIE_LINES: Array[String] = [
 	"I'm a woodworker. Scaffolding, lookout posts, fences, gates. If it's made of wood, I can build it.",
 	"The police station? Then that's where I'm going. Find me in the yard. I owe you one.",
 ]
-const HOME_STORY := "The woodworker has set up in the station yard.\nBring him planks, plywood and scrap metal and he'll build for you."
 
 var woodworker: Woodworker
 var was_seen := false

@@ -23,6 +23,9 @@ extends StaticBody3D
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
 const GameData := preload("res://core/game_data.gd")
 const TerrainEdit := preload("res://world/map/terrain_edit.gd")
+const Darkness := preload("res://world/darkness.gd")
+const MineShaftBuilder := preload("res://world/map/mine_shaft_builder.gd")
+const MinePlan := preload("res://world/map/mine_plan.gd")
 const ROCK := preload("res://world/kit/materials/mine_rock.tres")
 const DIRT := preload("res://world/kit/materials/mine_floor.tres")
 const TIMBER := preload("res://world/kit/materials/timber.tres")
@@ -140,7 +143,9 @@ static func contains(pos: Vector3) -> bool:
 
 func inside(pos: Vector3) -> bool:
 	var local := to_local(pos)
-	var spans: Array = _columns.get(Vector2i(roundi(local.x / CELL), roundi(local.z / CELL)), [])
+	var spans: Variant = _columns.get(Vector2i(roundi(local.x / CELL), roundi(local.z / CELL)))
+	if spans == null:
+		return false # (most places: no new empty array for the miss)
 	for span: Vector2 in spans:
 		if local.y > span.x - 0.5 and local.y < span.y:
 			return true
@@ -442,7 +447,7 @@ func _rebuild() -> void:
 	var inside := KitMesh.new() # the shafts' landings
 	for shaft in shafts:
 		if shaft and shaft.top >= shaft.bottom:
-			_shaft(shaft, inside, outside)
+			MineShaftBuilder.build(self, shaft, inside, outside)
 	for node in inside.add_to(self, "Landings"):
 		if node is MeshInstance3D:
 			(node as MeshInstance3D).layers = GameData.RENDER_UNDERGROUND
@@ -724,193 +729,6 @@ func _roofless_rise(column: Vector2i) -> float:
 	return 0.0
 
 
-## The levels a tunnel (or chamber) comes into the shaft on: level -> [sides].
-func _shaft_entries(shaft: MineShaft) -> Dictionary:
-	var entries := {}
-	for level in range(shaft.bottom, shaft.top + 1):
-		var on := Vector2(level * LEVEL, level * LEVEL + TUNNEL_HEIGHT)
-		for side in SIDES:
-			if _overlaps(_columns.get(shaft.column + side, []), on):
-				if not entries.has(level):
-					entries[level] = []
-				(entries[level] as Array).append(side)
-	return entries
-
-
-## A shaft's insides: for a ladder shaft, the ladder up the middle of the wall
-## no tunnel comes in by (or the fewest), and landings (the half of the shaft
-## away from the ladder) on the levels tunnels come in on, to step off onto.
-## Out on the surface, a stone collar round it and a timber headframe over it.
-func _shaft(shaft: MineShaft, inside: KitMesh, outside: KitMesh) -> void:
-	var center := cell_position(Vector3i(shaft.column.x, 0, shaft.column.y))
-	var entries := _shaft_entries(shaft)
-	var surface := shaft.top * LEVEL + shaft.surface_height
-	if shaft.kind == MineShaft.Kind.LADDER:
-		var wall: Vector2i = SIDES[0]
-		var fewest := INF
-		for side in SIDES:
-			var count := 0
-			for level: int in entries:
-				count += (entries[level] as Array).count(side)
-			if count < fewest:
-				fewest = count
-				wall = side
-		var w := Vector3(wall.x, 0, wall.y)
-		var across := Vector3(absi(wall.y), 0, absi(wall.x))
-		# Where you can step off: the bottom, each level a tunnel comes in on, the top.
-		var stops: Array[float] = [shaft.bottom * LEVEL]
-		for level in range(shaft.bottom + 1, shaft.top + 1):
-			if entries.has(level) or (level == shaft.top and not shaft.to_surface):
-				stops.append(level * LEVEL)
-				# The landing.
-				inside.box(across * CELL + Vector3(absi(wall.x), 0, absi(wall.y)) * (CELL / 2.0) + Vector3(0, 0.15, 0),
-						Transform3D(Basis.IDENTITY, center - w * CELL / 4.0 + Vector3(0, level * LEVEL - 0.075, 0)), KitMesh.all(PLANKS))
-		if shaft.to_surface:
-			stops.append(surface)
-		var foot := center + w * (CELL / 2.0 - 0.05) + Vector3(0, stops[0], 0)
-		var basis := Basis(Vector3.UP, atan2(-w.x, -w.z)) # its +Z out from the wall
-		var length := stops[-1] - stops[0] + 1.0
-		var look := KitProp.make(LADDER, [], Vector3(0.56, length, 0.06), Vector3(0, length / 2.0, 0))
-		look.transform = Transform3D(basis, foot)
-		add_child(look, false, Node.INTERNAL_MODE_BACK)
-		_generated.append(look)
-		if not Engine.is_editor_hint():
-			_climb_area(Transform3D(basis, foot), stops[-1] - stops[0], stops.slice(1, stops.size() - 1))
-	if shaft.kind == MineShaft.Kind.CAGE:
-		_cage(shaft, center, entries, surface)
-	if shaft.to_surface:
-		# The collar: flush with the ground, round the top.
-		for side in SIDES:
-			var s := Vector3(side.x, 0, side.y)
-			var along := Vector3(absi(side.y), 0, absi(side.x))
-			outside.box(along * (CELL + 2.0 * COLLAR) + Vector3(absi(side.x), 0, absi(side.y)) * COLLAR + Vector3(0, 0.85, 0),
-					Transform3D(Basis.IDENTITY, center + s * (CELL + COLLAR) / 2.0 + Vector3(0, surface - 0.4, 0)), KitMesh.all(STONE))
-		# The headframe: two posts and a beam across, over the shaft.
-		for s: float in [-1.0, 1.0]:
-			outside.box(Vector3(0.3, 5.0, 0.3), Transform3D(Basis.IDENTITY, center + Vector3(s * (CELL / 2.0 + 0.5), surface + 2.5, 0)),
-					KitMesh.all(TIMBER))
-		outside.box(Vector3(CELL + 1.6, 0.35, 0.35), Transform3D(Basis.IDENTITY, center + Vector3(0, surface + 5.0, 0)), KitMesh.all(TIMBER))
-
-
-## A cage shaft's cage (world/map/mine_cage.gd), its stops' gates and call
-## buttons, and a floor the navigation bake sees (only) at each stop, so
-## zombies can follow you in when its gate's open. It starts at the top.
-func _cage(shaft: MineShaft, center: Vector3, entries: Dictionary, surface: float) -> void:
-	var stops: Array[float] = []
-	var sides: Array = [] # each stop's sides with a way in
-	for level in range(shaft.bottom, shaft.top + 1):
-		if entries.has(level) or level == shaft.bottom or (level == shaft.top and not shaft.to_surface):
-			stops.append(level * LEVEL)
-			sides.append(entries.get(level, []))
-	if shaft.to_surface:
-		stops.append(surface)
-		sides.append(SIDES.duplicate())
-	var barred: Array = []
-	for side in SIDES:
-		if not sides.any(func(at: Array) -> bool: return side in at):
-			barred.append(side)
-	var cage := MineCage.new()
-	cage.name = "Cage"
-	cage.mine = self
-	cage.stops = stops
-	cage.at = stops.size() - 1
-	cage.build(CELL - 0.3, barred)
-	cage.position = center + Vector3(0, stops[-1], 0)
-	cage.add_to_group(&"not_in_navigation")
-	var iron := StandardMaterial3D.new()
-	iron.albedo_color = MineCage.IRON
-	for i in stops.size():
-		var stop_gates: Array = []
-		for side: Vector2i in sides[i]:
-			var out := Vector3(side.x, 0, side.y)
-			var along := Vector3(absi(side.y), 0, absi(side.x))
-			var gate := StaticBody3D.new()
-			gate.name = "Gate%d" % (cage.gates.size() * 4 + stop_gates.size())
-			var gk := KitMesh.new()
-			for b in 9:
-				gk.box(Vector3(0.04, 2.2, 0.04), Transform3D(Basis.IDENTITY, along * (-CELL / 2.0 + 0.15 + b * (CELL - 0.3) / 8.0) + Vector3(0, 1.15, 0)),
-						KitMesh.all(iron), false)
-			gk.box(along * (CELL - 0.1) + Vector3(0, 0.08, 0) + out.abs() * 0.06, Transform3D(Basis.IDENTITY, Vector3(0, 2.2, 0)), KitMesh.all(iron), false)
-			gk.box(along * (CELL - 0.1) + Vector3(0, 0.08, 0) + out.abs() * 0.06, Transform3D(Basis.IDENTITY, Vector3(0, 0.3, 0)), KitMesh.all(iron), false)
-			gk.box(along * (CELL - 0.1) + Vector3(0, 2.3, 0) + out.abs() * 0.08, Transform3D(Basis.IDENTITY, Vector3(0, 1.15, 0)), [null, null, null, null, null, null])
-			for node in gk.add_to(gate):
-				if node is MeshInstance3D:
-					(node as MeshInstance3D).layers = GameData.RENDER_UNDERGROUND
-			gate.position = center + out * (CELL / 2.0 - 0.06) + Vector3(0, stops[i], 0)
-			gate.add_to_group(&"not_in_navigation")
-			add_child(gate, false, Node.INTERNAL_MODE_BACK)
-			_generated.append(gate)
-			stop_gates.append(gate)
-			# Its call button, on the wall beside it (on the surface: on the headframe's post).
-			var button := MineControl.new()
-			button.name = "Call%d_%d" % [i, stop_gates.size()]
-			button.collision_layer = GameData.LAYER_ITEMS # (found by interact's ray only)
-			button.collision_mask = 0
-			var bk := KitMesh.new()
-			var red := StandardMaterial3D.new()
-			red.albedo_color = Color(0.6, 0.1, 0.08)
-			bk.box(Vector3(0.18, 0.25, 0.18), Transform3D.IDENTITY, KitMesh.all(iron))
-			bk.box(Vector3(0.1, 0.1, 0.1), Transform3D(Basis.IDENTITY, Vector3(0, 0.03, 0) + out * 0.09), KitMesh.all(red), false)
-			for node in bk.add_to(button):
-				if node is MeshInstance3D:
-					(node as MeshInstance3D).layers = GameData.RENDER_UNDERGROUND
-			var stop := i
-			button.prompt = func() -> String: return cage.call_prompt(stop)
-			button.action = func(player: Node) -> void: cage.go_to(stop, player)
-			button.position = center + out * (CELL / 2.0 + 0.35) + along * (CELL / 2.0 - 0.1) + Vector3(0, stops[i] + 1.2, 0)
-			add_child(button, false, Node.INTERNAL_MODE_BACK)
-			_generated.append(button)
-		cage.gates.append(stop_gates)
-		if i > 0: # (the bottom has a floor already)
-			var nav_floor := StaticBody3D.new()
-			nav_floor.name = "CageStop%d" % i
-			nav_floor.collision_layer = GameData.LAYER_NAV_ONLY
-			nav_floor.collision_mask = 0
-			var shape := CollisionShape3D.new()
-			var box := BoxShape3D.new()
-			box.size = Vector3(CELL, 0.1, CELL)
-			shape.shape = box
-			nav_floor.add_child(shape)
-			nav_floor.position = center + Vector3(0, stops[i] - 0.05, 0)
-			add_child(nav_floor, false, Node.INTERNAL_MODE_BACK)
-			_generated.append(nav_floor)
-	add_child(cage, false, Node.INTERNAL_MODE_BACK)
-	_generated.append(cage)
-
-
-## A ladder's climbing area, from its foot up `height`: you hold on while
-## you're in it (player.gd), as for the silo's ladder, but can step off at its
-## top and at the landings on the way (heights in the mine's space).
-func _climb_area(at: Transform3D, height: float, landings: Array[float]) -> void:
-	var area := Area3D.new()
-	area.name = "Climb"
-	area.collision_layer = 0
-	area.collision_mask = GameData.LAYER_PLAYER
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(0.9, height + 1.0, CLIMB_REACH)
-	var col := CollisionShape3D.new()
-	col.shape = shape
-	col.position = Vector3(0, (height + 1.0) / 2.0, CLIMB_REACH / 2.0)
-	area.add_child(col)
-	area.transform = at
-	area.body_entered.connect(func(body: Node3D) -> void:
-		if body.has_method("enter_ladder"):
-			body.call("enter_ladder", area))
-	area.body_exited.connect(func(body: Node3D) -> void:
-		if body.has_method("exit_ladder"):
-			body.call("exit_ladder", area))
-	add_child(area, false, Node.INTERNAL_MODE_BACK)
-	_generated.append(area)
-	var place := func() -> void: # (the map's heights, once it's placed)
-		var y0 := area.global_position.y - at.origin.y
-		area.set_meta("top_y", y0 + at.origin.y + height + 0.3)
-		area.set_meta("landings", landings.map(func(l: float) -> float: return y0 + l))
-	if area.is_inside_tree():
-		place.call()
-	else:
-		area.ready.connect(place, CONNECT_ONE_SHOT)
-
-
 ## A heap of rock and broken timber filling each cave-in's cell, floor to roof.
 func _cave_ins() -> void:
 	for cell in cave_ins:
@@ -1044,17 +862,10 @@ func _darkness() -> void:
 	var n := 0
 	for span: Vector2 in spaces:
 		for r in _rects(spaces[span]):
-			var probe := ReflectionProbe.new()
+			var probe := Darkness.probe(Vector3(r.size.x * CELL + 1.0, span.y - span.x + 0.4, r.size.y * CELL + 1.0),
+					_rect_center(r, (span.x + span.y) / 2.0), DARK, 0.3)
 			n += 1
 			probe.name = "Dark%d" % n
-			probe.size = Vector3(r.size.x * CELL + 1.0, span.y - span.x + 0.4, r.size.y * CELL + 1.0)
-			probe.position = _rect_center(r, (span.x + span.y) / 2.0)
-			probe.interior = true
-			probe.ambient_mode = ReflectionProbe.AMBIENT_COLOR
-			probe.ambient_color = DARK
-			probe.ambient_color_energy = 1.0
-			probe.blend_distance = 0.3
-			probe.intensity = 0.2
 			probe.cull_mask = 0 # nothing to reflect but the dark: cheap to render
 			add_child(probe, false, Node.INTERNAL_MODE_BACK)
 			_generated.append(probe)
@@ -1122,91 +933,6 @@ func apply(terrain: Node) -> Rect2:
 
 # --- The plan, in the editor ----------------------------------------------------------------
 
-## Its walls' outline on each level, over everything (the hill hides the mine):
-## the Level being drawn on bright, the others faint, entrances green, shafts
-## a purple X, cave-ins a brown box, floods outlined blue, and what's being
-## drawn orange.
+## Its plan, in the editor (world/map/mine_plan.gd).
 func _draw_plan() -> void:
-	if not Engine.is_editor_hint() or not is_inside_tree():
-		return
-	if not show_plan:
-		if _plan:
-			_plan.visible = false
-		return
-	if _plan == null:
-		_plan = MeshInstance3D.new()
-		_plan.name = "Plan"
-		var mat := StandardMaterial3D.new()
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.vertex_color_use_as_albedo = true
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.no_depth_test = true
-		mat.render_priority = 10
-		_plan.material_override = mat
-		_plan.mesh = ImmediateMesh.new()
-		add_child(_plan, false, Node.INTERNAL_MODE_BACK)
-	_plan.visible = true
-	_collect()
-	var mesh := _plan.mesh as ImmediateMesh
-	mesh.clear_surfaces()
-	mesh.surface_begin(Mesh.PRIMITIVE_LINES)
-	var lines := 0
-	for cell: Vector3i in _cells:
-		var color := Color(1.0, 0.85, 0.2) if cell.y == plan_level else Color(0.6, 0.7, 0.9, 0.35)
-		var y: float = _cells[cell]["floor"] + _cells[cell]["rise"] / 2.0 + 0.05
-		var c := cell_position(cell)
-		for side in SIDES:
-			if _cells.has(cell + Vector3i(side.x, 0, side.y)):
-				continue
-			var open := _open.has(Vector4i(cell.x, cell.z, side.x, side.y))
-			var out := Vector3(side.x, 0, side.y) * CELL / 2.0
-			var along := Vector3(absi(side.y), 0, absi(side.x)) * CELL / 2.0
-			mesh.surface_set_color(Color(0.3, 1.0, 0.4) if open else color)
-			mesh.surface_add_vertex(Vector3(c.x, y, c.z) + out - along)
-			mesh.surface_add_vertex(Vector3(c.x, y, c.z) + out + along)
-			lines += 1
-	for shaft in shafts: # an X across it on every level it passes
-		if shaft == null:
-			continue
-		for level in range(shaft.bottom, shaft.top + 1):
-			var c := cell_position(Vector3i(shaft.column.x, level, shaft.column.y)) + Vector3(0, 0.05, 0)
-			var h := CELL / 2.0 - 0.15
-			mesh.surface_set_color(Color(0.8, 0.4, 1.0) if level == plan_level else Color(0.8, 0.4, 1.0, 0.35))
-			for corner: Vector3 in [Vector3(-h, 0, -h), Vector3(h, 0, h), Vector3(h, 0, -h), Vector3(-h, 0, h)]:
-				mesh.surface_add_vertex(c + corner)
-			lines += 2
-	for cell in cave_ins: # a brown box in each cave-in
-		var c := cell_position(cell) + Vector3(0, 0.08, 0)
-		var h := CELL / 2.0 - 0.35
-		mesh.surface_set_color(Color(0.8, 0.5, 0.2) if cell.y == plan_level else Color(0.8, 0.5, 0.2, 0.35))
-		for i in 4:
-			var a := Vector3(h, 0, h).rotated(Vector3.UP, i * PI / 2.0)
-			mesh.surface_add_vertex(c + a)
-			mesh.surface_add_vertex(c + a.rotated(Vector3.UP, PI / 2.0))
-		lines += 4
-	for flood in floods: # a blue outline round each flood
-		if flood == null:
-			continue
-		var r := flood.rect()
-		var y := flood.corner_a.y * LEVEL + 0.12
-		var lo := Vector3((r.position.x - 0.5) * CELL + 0.2, y, (r.position.y - 0.5) * CELL + 0.2)
-		var hi := Vector3((r.end.x - 0.5) * CELL - 0.2, y, (r.end.y - 0.5) * CELL - 0.2)
-		var corners := [lo, Vector3(hi.x, y, lo.z), hi, Vector3(lo.x, y, hi.z)]
-		mesh.surface_set_color(Color(0.3, 0.6, 1.0) if flood.corner_a.y == plan_level else Color(0.3, 0.6, 1.0, 0.35))
-		for i in 4:
-			mesh.surface_add_vertex(corners[i])
-			mesh.surface_add_vertex(corners[(i + 1) % 4])
-		lines += 4
-	for i in draft.size():
-		var c := cell_position(draft[i]) + Vector3(0, 0.1, 0)
-		for side in SIDES: # a box round each cell
-			var out := Vector3(side.x, 0, side.y) * (CELL / 2.0 - 0.1)
-			var along := Vector3(absi(side.y), 0, absi(side.x)) * (CELL / 2.0 - 0.1)
-			mesh.surface_set_color(Color(1.0, 0.5, 0.1))
-			mesh.surface_add_vertex(c + out - along)
-			mesh.surface_add_vertex(c + out + along)
-			lines += 1
-	if lines == 0: # (an empty surface is an error)
-		mesh.surface_add_vertex(Vector3.ZERO)
-		mesh.surface_add_vertex(Vector3.ZERO)
-	mesh.surface_end()
+	MinePlan.draw(self)

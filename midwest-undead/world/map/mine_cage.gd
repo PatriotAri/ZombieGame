@@ -173,10 +173,6 @@ static func _set_gate(gate: StaticBody3D, open: bool) -> void:
 			(child as MeshInstance3D).position.y = 1.9 if open else 0.0
 
 
-func is_moving() -> bool:
-	return _moving
-
-
 ## Whether any cage is moving: someone standing still in it has to keep stepping to ride along.
 static func any_moving() -> bool:
 	return _moving_count > 0

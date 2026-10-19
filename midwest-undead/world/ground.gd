@@ -48,6 +48,13 @@ static func map_rect() -> Rect2:
 	return rect
 
 
+## How steeply you'd be climbing, going `dir` on ground facing `normal`:
+## rise over run uphill, 0 across or downhill. The player and zombies slow
+## down by it (each by its own amount).
+static func uphill_rise(normal: Vector3, dir: Vector3) -> float:
+	return maxf(-dir.dot(Vector3(normal.x, 0.0, normal.z)), 0.0) / maxf(normal.y, 0.1)
+
+
 ## The lowest and highest ground on the map (Vector2(min, max)), the lowest
 ## taking in the mines (anything under that has fallen out of the world).
 static func height_range() -> Vector2:
