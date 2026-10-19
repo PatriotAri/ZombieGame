@@ -1,7 +1,0 @@
-[gd_resource type="Resource" script_class="SurvivorData" format=3]
-
-[ext_resource type="Script" path="res://characters/npcs/survivor_data.gd" id="1_d3ltc"]
-
-[resource]
-script = ExtResource("1_d3ltc")
-display_name = "Zz Nobody"
