@@ -1,7 +1,8 @@
 extends Node
 ## Building: scaffolding, guard posts, fences, fence gates, garden plots, ammo
-## benches and camp kits (made by the woodworker and the machinist). They go
-## anywhere on the map. Hold one and press use:
+## benches and camp kits (made by the woodworker and the machinist), and
+## lanterns (found in mines: set down, not built). They go anywhere on the
+## map. Hold one and press use:
 ##   - Looking at the ground, it goes there, facing you.
 ##   - Looking at scaffolding you built, scaffolding or a guard post snaps on top
 ##     of it. A guard post on top makes it a guard tower: a ladder runs down the
@@ -33,7 +34,10 @@ const GateLeaf := preload("res://world/gate_leaf.gd")
 const CampSite := preload("res://world/camp_site.gd")
 const Ground := preload("res://world/ground.gd")
 
-const KINDS := ["scaffold", "guard_post", "fence", "fence_gate", "garden_plot", "ammo_bench", "shell_bench", "rifle_bench", "camp_kit"]
+const KINDS := ["scaffold", "guard_post", "fence", "fence_gate", "garden_plot", "ammo_bench", "shell_bench", "rifle_bench", "camp_kit", "lantern"]
+## A lantern is set down, not built: no hammering, and it's too small to change
+## zombies' paths. Held, it lights all round you (player.gd).
+const LANTERN := Vector3(0.24, 0.42, 0.24)
 ## The ammo benches, and the round each one's brass is colored like (pistol, shells, rifle).
 const BENCHES := {"ammo_bench": Color(0.75, 0.6, 0.2), "shell_bench": Color(0.7, 0.12, 0.1), "rifle_bench": Color(0.6, 0.5, 0.25)}
 const GARDEN := Vector3(3.0, 0.35, 2.0)
@@ -69,6 +73,7 @@ const PROPS := {
 	"ammo_bench": preload("res://world/props/ammo_bench.tscn"),
 	"shell_bench": preload("res://world/props/shell_bench.tscn"),
 	"rifle_bench": preload("res://world/props/rifle_bench.tscn"),
+	"lantern": preload("res://world/props/lantern.tscn"),
 }
 const GATE_LEAF := preload("res://world/props/gate_leaf.tscn")
 const FENCE_PLATING := preload("res://world/props/fence_plating.tscn")
@@ -175,7 +180,8 @@ func _where(kind: String, origin: Vector3, dir: Vector3, viewer: Vector3, exclud
 		yaw = snappedf(yaw, PI / 2.0)
 	result["xform"] = Transform3D(Basis(Vector3.UP, yaw), hit["position"])
 	result["ok"] = _room(kind, result["xform"], [])
-	result["text"] = ("build the " + label) if result["ok"] else "No room for the " + label
+	var verb := "set down the " if kind == "lantern" else "build the "
+	result["text"] = (verb + label) if result["ok"] else "No room for the " + label
 	return result
 
 
@@ -254,6 +260,8 @@ func _size(kind: String) -> Vector3:
 			return Vector3(BENCH.x, 1.2, BENCH.z)
 		"camp_kit":
 			return CampSite.SIZE
+		"lantern":
+			return LANTERN + Vector3(0.3, 0.25, 0.3) # (_room shrinks it by that)
 	return FENCE
 
 
@@ -276,7 +284,7 @@ func build(kind: String, xform: Transform3D, on: StructurePiece, quiet := false)
 		_add_leaf(piece)
 	if kind == "guard_post" and on:
 		_add_ladder(piece, _ground_height(on, xform.origin.y))
-	if not quiet:
+	if not quiet and kind != "lantern":
 		Sound.play_at(piece, "hammer", piece.global_position + Vector3.UP, 0.0, 30.0)
 		_fortifications.call("rebake", piece.global_position)
 	return piece
@@ -294,10 +302,13 @@ func take_down(piece: StructurePiece) -> Dictionary:
 	if piece.ladder:
 		_let_go(piece.ladder)
 	var at := piece.global_position
-	Sound.play_at(piece, "hammer", at + Vector3.UP, -3.0, 25.0)
+	var lantern := piece.kind == "lantern"
+	if not lantern:
+		Sound.play_at(piece, "hammer", at + Vector3.UP, -3.0, 25.0)
 	piece.get_parent().remove_child(piece) # gone before the re-bake reads the scene
 	piece.queue_free()
-	_fortifications.call("rebake", at)
+	if not lantern:
+		_fortifications.call("rebake", at)
 	if piece.broken:
 		return WRECK_ITEMS[piece.kind]
 	var back := {piece.kind: 1}
@@ -541,6 +552,8 @@ func _collision(kind: String, piece: StructurePiece) -> void:
 			_shape(piece, GARDEN, Vector3(0, GARDEN.y / 2.0, 0))
 		"ammo_bench", "shell_bench", "rifle_bench":
 			_shape(piece, BENCH, Vector3(0, BENCH.y / 2.0, 0))
+		"lantern":
+			_shape(piece, LANTERN, Vector3(0, LANTERN.y / 2.0, 0))
 
 
 ## The gate's leaf: hinged on the -x post, swings open toward +z.

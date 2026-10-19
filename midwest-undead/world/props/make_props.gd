@@ -197,6 +197,8 @@ const MORE_FURNITURE := [
 	["swing_set", Vector3(3.2, 2.3, 1.6), false, "", "", ""],
 	["slide", Vector3(0.7, 1.8, 3.0), false, "", "", ""],
 	["mine_cart", Vector3(0.9, 1.0, 1.3), true, "", "", ""], # (on a mine's rails: kit_mine.gd)
+	["miner_locker", Vector3(0.6, 1.9, 0.5), true, "miner", "Miner's locker", ""],
+	["supply_cache", Vector3(1.1, 0.7, 0.6), true, "mine_cache", "Supply cache", ""],
 ]
 
 
@@ -458,6 +460,24 @@ func _more_furniture() -> void:
 	_box(s, Vector3(0.3, 0.06, 0.12), Vector3(0, 0.25, -0.7), _c(IRON))
 	_more("mine_cart")
 
+	s = _start("MinerLocker") # a tall dented steel locker: vents, a handle, a padlock hasp
+	var locker := _c(Color(0.32, 0.38, 0.33))
+	_box(s, Vector3(0.6, 1.9, 0.5), Vector3(0, 0.95, 0), locker, "Paint")
+	for i in 4: # vents
+		_box(s, Vector3(0.3, 0.02, 0.01), Vector3(0, 1.6 + i * 0.05, 0.255), _c(IRON))
+	_box(s, Vector3(0.03, 0.18, 0.03), Vector3(0.22, 1.0, 0.26), _c(CHROME))
+	_box(s, Vector3(0.6, 0.04, 0.5), Vector3(0, 1.92, 0), _c(IRON))
+	_more("miner_locker")
+
+	s = _start("SupplyCache") # a stout wooden powder box, iron-banded, a stencil on the lid
+	var crate := _mat("crate_wood")
+	_box(s, Vector3(1.1, 0.6, 0.6), Vector3(0, 0.3, 0), crate, "Paint")
+	_box(s, Vector3(1.12, 0.08, 0.62), Vector3(0, 0.64, 0), crate) # lid
+	for x: float in [-0.4, 0.4]:
+		_box(s, Vector3(0.05, 0.7, 0.62), Vector3(x, 0.35, 0), _c(IRON)) # bands
+	_box(s, Vector3(0.5, 0.01, 0.2), Vector3(0, 0.685, 0), _c(Color(0.65, 0.1, 0.08))) # stencil
+	_more("supply_cache")
+
 
 ## Saves the stand-in just made, and its furniture scene if there isn't one yet:
 ## a KitBox (or a container, KitContainer, if it has a loot table) of its size
@@ -673,6 +693,32 @@ func _camp() -> void:
 		leg.rotation = Vector3(sin(a) * 0.35, 0, -cos(a) * 0.35) # leaning in to meet over the fire
 	_box(s, Vector3(0.36, 0.28, 0.36), Vector3(0, 0.75, 0), _c(IRON)) # the pot
 	_save(PROPS + "campfire.tscn")
+
+	s = _start_prop("Lantern") # a kerosene lantern: a base, a glowing globe in a wire guard, a bail handle
+	_box(s, Vector3(0.2, 0.1, 0.2), Vector3(0, 0.05, 0), _c(Color(0.25, 0.3, 0.22)), "Paint")
+	var globe := _box(s, Vector3(0.13, 0.16, 0.13), Vector3(0, 0.18, 0), null, "Flame")
+	var globe_mat := StandardMaterial3D.new()
+	globe_mat.albedo_color = Color(1.0, 0.8, 0.45)
+	globe_mat.emission_enabled = true
+	globe_mat.emission = Color(1.0, 0.75, 0.4)
+	globe_mat.emission_energy_multiplier = 2.0
+	globe_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	globe.material_override = globe_mat
+	globe.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for x: float in [-0.08, 0.08]:
+		_box(s, Vector3(0.015, 0.18, 0.015), Vector3(x, 0.19, 0), _c(IRON)) # the guard
+	_box(s, Vector3(0.18, 0.04, 0.18), Vector3(0, 0.29, 0), _c(Color(0.25, 0.3, 0.22))) # the cap
+	_box(s, Vector3(0.2, 0.015, 0.015), Vector3(0, 0.38, 0), _c(IRON)) # the handle
+	var lamp := OmniLight3D.new()
+	lamp.name = "Glow"
+	lamp.light_color = Color(1.0, 0.75, 0.45)
+	lamp.light_energy = 1.4
+	lamp.omni_range = 8.0
+	lamp.position = Vector3(0, 0.2, 0)
+	lamp.distance_fade_enabled = true
+	lamp.distance_fade_begin = 60.0
+	_add(s, lamp)
+	_save(PROPS + "lantern.tscn")
 
 	s = _start_prop("Tent") # a pup tent: two sloping sides meeting at a ridge, open at the front
 	var depth := 2.1

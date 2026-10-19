@@ -31,6 +31,8 @@ tables, recipes, quests and markers. Don't change one once it's in use.
   - `board` / `barricade` / `build`: like planks / a barricade / a building
     piece. A new `build` item also needs code in `world/structures.gd`.
   - `plate`: like sheet metal: covers the fence or gate you're looking at.
+  - `throw`: like dynamite: lit and thrown (crouching: set down lit). It
+    goes off as dynamite does (`world/dynamite.gd`).
 - **Order:** where it comes in inventory lists (lower first). Today's items use
   10, 20, 30...
 - **Looks:**

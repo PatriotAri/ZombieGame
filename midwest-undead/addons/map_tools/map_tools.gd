@@ -44,7 +44,7 @@ const PlantPainter := preload("res://world/map/plant_painter.gd")
 const Zone := preload("res://world/markers/zone.gd")
 const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
 const Building := preload("res://world/building.gd")
-const MINE_TOOLS := ["Off", "Draw tunnel", "Draw chamber", "Mark entrance", "Place shaft", "Place generator", "Place cave-in", "Flood"]
+const MINE_TOOLS := ["Off", "Draw tunnel", "Draw chamber", "Mark entrance", "Place shaft", "Place generator", "Place cave-in", "Flood", "Place locker", "Place cache"]
 const SHAFT_KINDS := ["Ladder", "Open", "Cage"] # (MineShaft.Kind's order)
 const RAMP_CELLS := 3 # a ramp's cells for each level it climbs: about 28 degrees
 const BUILDING_TOOLS := ["Off", "Draw outline", "Draw inner wall", "Place stairs", "Add door", "Add window", "Add doorway",
@@ -1225,6 +1225,8 @@ func _mine_help() -> String:
 			return "Click a tunnel's cell to block it with a cave-in, floor to roof (again, or right-click, to take it away). In the game it takes a pickaxe to dig through, and once it's dug out it's gone for good."
 		"Flood":
 			return "Click one corner of the flooded stretch, then the opposite one (on the Level set here). Its Depth is in the Inspector (Floods): 1.3 m and over you swim; 3 m and over a tunnel's flooded to its roof and you hold your breath. Right-click removes the flood under the mouse."
+		"Place locker", "Place cache":
+			return "Click a cell: a miner's locker (dynamite, batteries, food, now and then a helmet lamp or lantern) or a supply cache (dynamite, steel bars, scrap and sheet metal, gas) goes against its wall. Right-click removes the one under the mouse. Scatter Loot (Inspector) puts some in by itself."
 		"Place generator":
 			return "Click where it goes (on the Level set here). It powers every cage in this mine while it runs: pour in a gas can in the game for an hour's running, and it's loud. Right-click removes the one under the mouse."
 		"Mark entrance":
@@ -1394,6 +1396,31 @@ func _mine_input(camera: Camera3D, event: InputEvent) -> int:
 				ur.add_undo_property(mine, "floods", mine.floods)
 				ur.commit_action()
 				_flood_start = Vector3i.MAX
+		"Place locker", "Place cache":
+			var path: String = KitMine.LOCKER if tool == "Place locker" else KitMine.CACHE
+			if right:
+				for child in mine.get_children():
+					if child is KitContainer and KitMine.cell_at((child as Node3D).position, cell.y) == cell:
+						ur.create_action("Remove " + child.name)
+						ur.add_do_method(mine, "remove_child", child)
+						ur.add_undo_method(mine, "add_child", child, true)
+						ur.add_undo_method(self, "_own", child, EditorInterface.get_edited_scene_root())
+						ur.add_undo_reference(child)
+						ur.commit_action()
+						break
+			else:
+				var spot: Variant = mine.wall_spot(cell, 0.6)
+				if spot == null:
+					push_warning("No wall in that cell to put it against.")
+				else:
+					var piece := (load(path) as PackedScene).instantiate() as Node3D
+					piece.transform = spot
+					ur.create_action(tool) # (the mine stays selected: more to place)
+					ur.add_do_method(mine, "add_child", piece, true)
+					ur.add_do_method(self, "_own", piece, EditorInterface.get_edited_scene_root())
+					ur.add_do_reference(piece)
+					ur.add_undo_method(mine, "remove_child", piece)
+					ur.commit_action()
 		"Place generator":
 			var at := KitMine.cell_position(cell)
 			if right:

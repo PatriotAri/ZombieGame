@@ -326,7 +326,7 @@ one cell wide and 3 m high, held up by timber frames; **chambers** are big
 rooms, taller than a tunnel. **Levels** are 4 m apart: level 0 is the node's
 own height, -1 the one under it, and so on. It's dark inside (no sun or moon
 gets in, and the sky's light stops a few meters in from each entrance), so
-bring a flashlight.
+bring a flashlight, a helmet lamp or a lantern.
 
 1. Make a steep hillside (section 2).
 2. In Map Tools' **Mines** section click **New mine**. It appears where
@@ -404,6 +404,26 @@ bring a flashlight.
   swim, and from 3 m a tunnel's flooded to its roof, so you swim through
   holding your breath (25 seconds; then you drown, losing health). Zombies
   that wade in deep drown. Floods can't be drained.
+
+**Loot:**
+
+- **Place locker** / **Place cache**: click a cell and a **miner's locker**
+  (dynamite, batteries, food, ammo, now and then a lantern, a helmet lamp, a
+  gas can or a pickaxe: the `miner` loot table) or a **supply cache**
+  (dynamite, steel bars, scrap and sheet metal, gas cans, a lantern, shells:
+  `mine_cache`) goes against its wall. Right-click removes the one under the
+  mouse.
+- **Scatter Loot** (the mine, in the Inspector): how many it puts in by
+  itself, lockers and caches turn about, in its dead ends first, then round
+  its chambers. The same places every time, until you change the layout.
+
+Mines are where to find **dynamite** (light it and throw it, or crouch to set
+it down on an 8 second fuse: it kills zombies near it, blows cave-ins clear,
+and wrecks your own fences and barricades, and you, if you're close), the
+**helmet lamp** (put it on in your backpack: the flashlight key then switches
+it; brighter, and its batteries last twice as long), **lanterns** (hold one
+for light all round you, or set it down and pick it up again; it never runs
+out) and **steel bars**.
 
 Anything you put under the mine node (crates, lockers, carts of your own) is
 drawn in the dark with it.

@@ -10,8 +10,10 @@ extends Resource
 @export var display_name := ""
 ## What the use button does while you hold it. "none": it can't be held (ammo,
 ## batteries, materials just sit in your inventory). "plate": puts metal over a
-## fence or gate you built (sheet metal). Weapons set this themselves.
-@export_enum("none", "heal", "eat", "board", "barricade", "build", "plate") var use := "none"
+## fence or gate you built (sheet metal). "throw": lights and throws it, or
+## sets it down lit if you're crouching (dynamite: world/dynamite.gd).
+## Weapons set this themselves.
+@export_enum("none", "heal", "eat", "board", "barricade", "build", "plate", "throw") var use := "none"
 ## Where it comes in inventory lists: lower first.
 @export var order := 100
 

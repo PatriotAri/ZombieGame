@@ -31,6 +31,8 @@ const STONE := preload("res://world/kit/materials/stone_gray.tres") # an entranc
 const PLANKS := preload("res://world/kit/materials/wood_planks.tres")
 const LADDER := preload("res://world/props/ladder.tscn")
 const CART := "res://world/kit/furniture/mine_cart.tscn"
+const LOCKER := "res://world/kit/furniture/miner_locker.tscn"
+const CACHE := "res://world/kit/furniture/supply_cache.tscn"
 const CELL := 2.5 # meters: a tunnel's width
 const LEVEL := 4.0 # meters from one level's floor to the next
 const TUNNEL_HEIGHT := 3.0
@@ -70,6 +72,12 @@ const SIDES: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1),
 	set(value):
 		_watch(floods, value)
 		floods = value
+		_changed()
+## Miners' lockers and supply caches it puts in by itself, in dead ends and
+## round chambers (besides any you place: Map Tools, Place locker / cache).
+@export_range(0, 40) var scatter_loot := 0:
+	set(value):
+		scatter_loot = value
 		_changed()
 
 ## Map Tools: the plan's overlay (editor only, never saved).
@@ -381,6 +389,7 @@ func _rebuild() -> void:
 	_carts()
 	_cave_ins()
 	_floods()
+	_scatter()
 	_darkness()
 	_draw_plan()
 
@@ -870,6 +879,66 @@ func _cave_ins() -> void:
 		heap.dug_out.connect(func(c: Vector3i) -> void: _dug[c] = true)
 		add_child(heap, false, Node.INTERNAL_MODE_BACK)
 		_generated.append(heap)
+
+
+## Where a locker or crate goes in a cell: against its first wall, facing in
+## (furniture's back is its -Z). Null if the cell has no wall.
+func wall_spot(cell: Vector3i, depth: float) -> Variant:
+	_collect()
+	if not _cells.has(cell):
+		return null
+	var span := _span(cell)
+	for side in SIDES:
+		if _overlaps(_columns.get(Vector2i(cell.x + side.x, cell.z + side.y), []), Vector2(span.x, span.x + 2.0)):
+			continue
+		var at := cell_position(cell) + Vector3(side.x, 0, side.y) * (CELL / 2.0 - depth / 2.0 - 0.05)
+		at.y = span.x
+		return Transform3D(Basis(Vector3.UP, atan2(-side.x, -side.y)), at)
+	return null
+
+
+## The lockers and caches it scatters (Scatter Loot): dead ends first, then
+## the edges of chambers, picked the same way every time (by the layout).
+func _scatter() -> void:
+	if scatter_loot <= 0:
+		return
+	var spots: Array[Vector3i] = []
+	for tunnel in tunnels:
+		if tunnel == null or tunnel.points.size() < 2:
+			continue
+		var cells := tunnel.cells()
+		for tip: Array in [[cells[0], cells[1], tunnel.entrance_at_start], [cells[-1], cells[-2], tunnel.entrance_at_end]]:
+			if not tip[2] and _dead_end(tip[0], tip[1]) and not (tunnel.rails and tunnel.carts > 0) and not tip[0] in cave_ins:
+				spots.append(tip[0])
+	var dice := RandomNumberGenerator.new()
+	dice.seed = hash([tunnels.size(), chambers.size(), spots])
+	var edges: Array[Vector3i] = []
+	for chamber in chambers:
+		if chamber == null:
+			continue
+		for cell in chamber.cells():
+			if wall_spot(cell, 0.6) != null and not cell in spots:
+				edges.append(cell)
+	for i in range(edges.size() - 1, 0, -1): # shuffled, the same way each time
+		var j := dice.randi_range(0, i)
+		var swap := edges[i]
+		edges[i] = edges[j]
+		edges[j] = swap
+	spots.append_array(edges)
+	var placed := 0
+	for cell in spots:
+		if placed >= scatter_loot:
+			break
+		var scene := load(LOCKER if placed % 2 == 0 else CACHE) as PackedScene
+		var spot: Variant = wall_spot(cell, 0.6)
+		if scene == null or spot == null:
+			continue
+		var piece := scene.instantiate() as Node3D
+		placed += 1
+		piece.name = "Loot%d" % placed # (the same name each time: saves find it by it)
+		piece.transform = spot
+		add_child(piece, false, Node.INTERNAL_MODE_BACK)
+		_generated.append(piece)
 
 
 ## Each flood's water.

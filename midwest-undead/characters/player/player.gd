@@ -195,6 +195,21 @@ var _last_physics_frame := 0 # to notice when we've just come back from a pause 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var day_night: Node # for hunger, which runs on in-game time
 var _flashlight_energy := 1.0 # the beam's full brightness, from player.tscn
+## The helmet lamp (an item: wear it from the backpack, and the flashlight key
+## switches it instead): LAMP_BRIGHTER times as bright and wider than the
+## flashlight, and its batteries last LAMP_LASTS times as long.
+const LAMP_BRIGHTER := 1.6
+const LAMP_LASTS := 2.0
+var lamp_worn := false
+var lamp_charge := 1.0 # its own batteries, 0-1
+var _lamp: SpotLight3D
+var _carried_lantern: OmniLight3D # lit while you hold a lantern
+## Dynamite (world/dynamite.gd): use lights it, and letting go throws it,
+## THROW_SPEED m/s; the fuse burns while you hold it (it goes off in your
+## hand if you hold on too long). Crouching, use sets it down lit instead.
+const THROW_SPEED := 13.0
+var _cooking := false
+var _cook_left := 0.0
 var _hunger_stage := 0 # 0 fed, 1 hungry, 2 starving: to announce each change once
 var _growl_timer := 0.0
 var _hurt_sound_wait := 0.0 # zombies hurt you every frame; grunt at most this often
@@ -237,6 +252,22 @@ func _ready() -> void:
 	inventory.add("planks", starting_planks)
 	inventory.add("barricade", starting_barricades)
 	_flashlight_energy = flashlight.light_energy
+	_lamp = flashlight.duplicate() as SpotLight3D
+	_lamp.name = "HelmetLamp"
+	_lamp.light_energy = _flashlight_energy * LAMP_BRIGHTER
+	_lamp.spot_angle = flashlight.spot_angle + 12.0
+	_lamp.spot_range = flashlight.spot_range * 1.3
+	_lamp.position.y += 0.15 # on your forehead
+	_lamp.visible = false
+	camera.add_child(_lamp)
+	_carried_lantern = OmniLight3D.new()
+	_carried_lantern.name = "Lantern"
+	_carried_lantern.light_color = Color(1.0, 0.75, 0.45)
+	_carried_lantern.light_energy = 1.2
+	_carried_lantern.omni_range = 8.0
+	_carried_lantern.position = Vector3(0.3, 1.1, -0.3) # at your side
+	_carried_lantern.visible = false
+	add_child(_carried_lantern)
 	_base_fov = camera.fov
 	hands.setup(self)
 	_refresh_weapon_visuals(false)
@@ -387,6 +418,14 @@ func _physics_process(delta: float) -> void:
 		_use_left -= delta
 		if _use_left <= 0.0:
 			_finish_use()
+	if _cooking:
+		_cook_left -= delta
+		if _cook_left <= 0.0: # held on too long
+			_cooking = false
+			take_item("dynamite")
+			Dynamite.explode(get_tree(), global_position + Vector3.UP)
+		elif not Input.is_action_pressed("use_held") or held != "dynamite":
+			_throw_dynamite()
 
 	is_crouching = Input.is_action_pressed("crouch") or crouch_latched
 	_cover_timer -= delta
@@ -514,6 +553,8 @@ func _die(cause: String) -> void:
 	_update_build_view() # hides the building preview
 	_ladders.clear()
 	flashlight.visible = false
+	_lamp.visible = false
+	_carried_lantern.visible = false
 	hands.visible = false
 	aiming = false
 	camera.fov = _base_fov
@@ -534,7 +575,7 @@ func hunger_text() -> String:
 
 ## For the inventory screen: the flashlight's charge and the spare batteries.
 func flashlight_text() -> String:
-	var text := "Flashlight %d%%" % ceili(flashlight_charge * 100.0)
+	var text := "Helmet lamp %d%%" % ceili(lamp_charge * 100.0) if lamp_worn else "Flashlight %d%%" % ceili(flashlight_charge * 100.0)
 	if inventory.has("batteries"):
 		text += "  (+%d batteries)" % inventory.count("batteries")
 	return text
@@ -601,6 +642,9 @@ func save_state() -> Dictionary:
 		"held": held,
 		"flashlight": flashlight.visible,
 		"flashlight_charge": flashlight_charge,
+		"lamp_worn": lamp_worn,
+		"lamp_on": _lamp.visible,
+		"lamp_charge": lamp_charge,
 		"hunger": hunger,
 	}
 
@@ -619,6 +663,9 @@ func load_state(data: Dictionary) -> void:
 		mags[id] = clampi(int(saved_mags.get(id, 0)), 0, GameData.weapon(id).magazine)
 	flashlight_charge = clampf(float(data.get("flashlight_charge", 1.0)), 0.0, 1.0)
 	flashlight.visible = bool(data.get("flashlight", false)) and flashlight_charge > 0.0
+	lamp_charge = clampf(float(data.get("lamp_charge", 1.0)), 0.0, 1.0)
+	lamp_worn = bool(data.get("lamp_worn", false)) and inventory.has("helmet_lamp")
+	_lamp.visible = lamp_worn and bool(data.get("lamp_on", false)) and lamp_charge > 0.0
 	hunger = clampf(float(data.get("hunger", starting_hunger)), 0.0, 100.0)
 	_hunger_stage = _stage_for(hunger)
 	var saved_held: String = data.get("held", "hands")
@@ -698,6 +745,8 @@ func _use_held() -> void:
 			_try_build()
 		"plate":
 			_try_plate()
+		"throw":
+			_try_dynamite()
 
 
 ## Bandaging and eating take a moment: the item comes up toward your face, and
@@ -901,6 +950,40 @@ func _aimed_piece() -> StructurePiece:
 
 
 ## Holding sheet metal: cover the fence or gate you're looking at (structures.gd).
+## Lights the dynamite in your hand (thrown when you let go), or, crouching,
+## lights it and sets it down at your feet.
+func _try_dynamite() -> void:
+	if _cooking or attack_cooldown > 0.0:
+		return
+	if swimming:
+		notify.emit("Not in the water.")
+		return
+	Sound.play_ui(self, "fuse_hiss", -2.0)
+	if is_crouching and is_on_floor():
+		var at := global_position - global_basis.z * 0.6 + Vector3.UP * 0.1
+		_spawn_dynamite(Dynamite.lit(at, Dynamite.PLACE_FUSE))
+		take_item("dynamite")
+		attack_cooldown = 0.6
+		notify.emit("You light the fuse and set it down. %d seconds: get clear." % int(Dynamite.PLACE_FUSE))
+		return
+	_cooking = true
+	_cook_left = Dynamite.THROW_FUSE
+	notify.emit("Lit! Let go to throw it.")
+
+
+func _throw_dynamite() -> void:
+	_cooking = false
+	var forward := -camera.global_basis.z
+	var at := camera.global_position + forward * 0.5
+	_spawn_dynamite(Dynamite.lit(at, _cook_left, forward * THROW_SPEED + Vector3.UP * 2.5 + velocity))
+	take_item("dynamite")
+	attack_cooldown = 0.6
+
+
+func _spawn_dynamite(stick: Dynamite) -> void:
+	get_parent().add_child(stick)
+
+
 func _try_plate() -> void:
 	var piece := _aimed_piece()
 	if piece == null or piece.broken:
@@ -1328,6 +1411,9 @@ func _stage_for(value: float) -> int:
 
 func _toggle_flashlight() -> void:
 	Sound.play_ui(self, "flashlight_click", -8.0)
+	if lamp_worn:
+		_toggle_lamp()
+		return
 	if flashlight.visible:
 		flashlight.visible = false
 		return
@@ -1337,9 +1423,63 @@ func _toggle_flashlight() -> void:
 	flashlight.visible = true
 
 
+func _toggle_lamp() -> void:
+	if _lamp.visible:
+		_lamp.visible = false
+		return
+	if lamp_charge <= 0.0:
+		if inventory.remove("batteries") == 0:
+			notify.emit("The helmet lamp's dead. Find batteries.")
+			return
+		lamp_charge = 1.0
+		Sound.play_ui(self, "battery_swap", -6.0)
+	_lamp.visible = true
+
+
+## Puts the helmet lamp on or takes it off (the backpack): while it's on, the
+## flashlight key switches it instead of the flashlight.
+func wear_lamp(on: bool) -> void:
+	on = on and inventory.has("helmet_lamp")
+	if on == lamp_worn:
+		return
+	lamp_worn = on
+	var was_lit := flashlight.visible or _lamp.visible
+	flashlight.visible = false
+	_lamp.visible = false
+	if was_lit:
+		_toggle_flashlight() # the light you had on carries over to the other
+	notify.emit("You put on the helmet lamp." if on else "You take off the helmet lamp.")
+
+
+## The helmet lamp's batteries, as the flashlight's below (it runs LAMP_LASTS times as long).
+func _update_lamp(delta: float) -> void:
+	if lamp_worn and not inventory.has("helmet_lamp"):
+		wear_lamp(false) # (sold or stored)
+	if not _lamp.visible:
+		return
+	lamp_charge = maxf(lamp_charge - delta / (battery_life * LAMP_LASTS), 0.0)
+	if lamp_charge <= 0.0:
+		if inventory.remove("batteries") > 0:
+			lamp_charge = 1.0
+			Sound.play_ui(self, "battery_swap", -6.0)
+			notify.emit("Swapped fresh batteries into the helmet lamp (%d left)." % inventory.count("batteries"))
+		else:
+			_lamp.visible = false
+			notify.emit("The helmet lamp died.")
+			return
+	var energy := _flashlight_energy * LAMP_BRIGHTER
+	if lamp_charge < low_battery:
+		energy *= lerpf(0.35, 1.0, lamp_charge / low_battery)
+		if randf() < 0.05:
+			energy *= 0.15
+	_lamp.light_energy = energy
+
+
 ## Drains the batteries while it's on. Runs low: dims and flickers. Runs out:
 ## swaps in a spare set from your inventory, or goes dark.
 func _update_flashlight(delta: float) -> void:
+	_update_lamp(delta)
+	_carried_lantern.visible = held == "lantern" and not is_dead
 	if not flashlight.visible:
 		return
 	flashlight_charge = maxf(flashlight_charge - delta / battery_life, 0.0)

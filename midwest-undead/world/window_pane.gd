@@ -42,6 +42,7 @@ func outward() -> Vector3:
 ## Panes in the map scene come with their glass and collision already (made by
 ## setup when the town was frozen); this picks them up.
 func _ready() -> void:
+	add_to_group("windows") # (a blast smashes the ones near it: world/dynamite.gd)
 	if _mesh != null or _look != null:
 		return
 	for child in get_children():

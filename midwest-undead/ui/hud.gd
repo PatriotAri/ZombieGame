@@ -69,7 +69,7 @@ func _process(_delta: float) -> void:
 	prompt_label.text = _player.prompt_text
 	clock_label.text = _day_night.clock_text()
 	if _player.is_dead:
-		var cause: String = {"starved": "You starved.", "shot": "You were shot.", "fell": "You fell to your death.", "drowned": "You drowned."}.get(_player.death_cause, "You were bitten.")
+		var cause: String = {"starved": "You starved.", "shot": "You were shot.", "fell": "You fell to your death.", "drowned": "You drowned.", "blown_up": "You were blown up."}.get(_player.death_cause, "You were bitten.")
 		if _has_save_on_death:
 			message_label.text = "%s\nLoading your last save...   (%s to load now)" % [cause, Controls.hint("restart")]
 		else:

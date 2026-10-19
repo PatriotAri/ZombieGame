@@ -45,6 +45,8 @@ func work_spot() -> Vector3:
 func interact_prompt() -> String:
 	if kind == "camp_kit":
 		return "take down the camp"
+	if kind == "lantern":
+		return "pick up the lantern"
 	var label := GameData.item_name(kind).to_lower()
 	return "take down the broken " + label if broken else "take down the " + label
 

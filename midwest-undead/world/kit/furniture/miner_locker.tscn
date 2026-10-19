@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_gcols"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/miner_locker.tscn" id="2_0cf2b"]
+
+[node name="MinerLocker" type="StaticBody3D" unique_id=1311850552]
+script = ExtResource("1_gcols")
+label = "Miner's locker"
+loot_table = "miner"
+size = Vector3(0.6, 1.9, 0.5)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_0cf2b")])
