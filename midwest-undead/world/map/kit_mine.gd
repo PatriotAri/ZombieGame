@@ -79,6 +79,10 @@ const SIDES: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1),
 	set(value):
 		scatter_loot = value
 		_changed()
+## Zombies it fills itself with at the start of a new game, per 100 m of its
+## tunnels and chambers (besides any at ZombieSpawn markers placed in it: Map
+## Tools, Place zombies). Some are miners (characters/zombie/kinds/miner.tres).
+@export_range(0.0, 20.0, 0.5) var zombie_density := 0.0
 
 ## Map Tools: the plan's overlay (editor only, never saved).
 var show_plan := false:
@@ -94,6 +98,7 @@ var draft: Array[Vector3i] = []: # a tunnel or chamber being drawn: its cells
 		draft = value
 		_draw_plan()
 
+static var _all: Array[KitMine] = [] # the mines in the game (contains())
 var _generated: Array[Node] = []
 var _plan: MeshInstance3D
 var _dirty := true
@@ -113,6 +118,65 @@ func _ready() -> void:
 	ensure_built()
 	if not Engine.is_editor_hint():
 		underground(self)
+
+
+func _enter_tree() -> void:
+	if not Engine.is_editor_hint() and not self in _all:
+		_all.append(self)
+
+
+func _exit_tree() -> void:
+	_all.erase(self)
+
+
+## Whether a point (in the map's space) is inside any mine's open space:
+## characters there are drawn on the underground layer (zombie.gd, player.gd).
+static func contains(pos: Vector3) -> bool:
+	for mine in _all:
+		if mine.inside(pos):
+			return true
+	return false
+
+
+func inside(pos: Vector3) -> bool:
+	var local := to_local(pos)
+	var spans: Array = _columns.get(Vector2i(roundi(local.x / CELL), roundi(local.z / CELL)), [])
+	for span: Vector2 in spans:
+		if local.y > span.x - 0.5 and local.y < span.y:
+			return true
+	return false
+
+
+## Somewhere a zombie can stand at the start (in the map's space): an open
+## cell's floor, not in the daylight, a cave-in, a flood or a shaft, and if
+## `near` is given, within `reach` cells of it. Vector3.INF if there's nowhere.
+func zombie_spot(dice: RandomNumberGenerator, near := Vector3i.MAX, reach := 0) -> Vector3:
+	var flooded := {}
+	for flood in floods:
+		if flood == null:
+			continue
+		var r := flood.rect()
+		for x in range(r.position.x, r.end.x):
+			for z in range(r.position.y, r.end.y):
+				flooded[Vector3i(x, flood.corner_a.y, z)] = true
+	var spots: Array[Vector3i] = []
+	for cell: Vector3i in _cells:
+		if _lit.has(Vector2i(cell.x, cell.z)) or cell in cave_ins or flooded.has(cell) or _cells[cell].has("shaft") or _is_ramp(cell):
+			continue
+		if near != Vector3i.MAX and (cell.y != near.y or maxi(absi(cell.x - near.x), absi(cell.z - near.z)) > reach):
+			continue
+		spots.append(cell)
+	if spots.is_empty():
+		return Vector3.INF
+	var cell := spots[dice.randi() % spots.size()]
+	var at := cell_position(cell) + Vector3(dice.randf_range(-0.6, 0.6), 0.1, dice.randf_range(-0.6, 0.6))
+	at.y = _cells[cell]["floor"] + 0.1
+	return to_global(at)
+
+
+## How many zombies Zombie Density fills it with.
+func zombie_count() -> int:
+	return roundi(_cells.size() * CELL / 100.0 * zombie_density)
 
 
 ## Builds it now if anything changed (main.gd calls this before the map is in

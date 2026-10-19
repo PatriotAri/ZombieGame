@@ -14,6 +14,9 @@ const DIR := "res://characters/zombie/kinds/"
 ## Ignore the spawn chance: whatever's left after the other kinds is this kind.
 ## Exactly one kind should have it.
 @export var fills_the_rest := false
+## Only down a mine (KitMine): never rolled up top. In a mine, Spawn Chance is
+## the chance a zombie there is this kind (roll_in_mine).
+@export var mines_only := false
 
 @export_group("Body")
 ## Its model: a character scene with a humanoid skeleton (see HOW_TO_MODEL.md).
@@ -34,9 +37,14 @@ const DIR := "res://characters/zombie/kinds/"
 @export var skin_color := Color(0, 0, 0, 0)
 ## Its groans, snarls and death: 1 is normal, higher is shriller.
 @export var voice_pitch := 1.0
+## A hard hat: the first headshot only knocks it off (zombie.gd).
+@export var hard_hat := false
+## A lamp still glowing on its hat, lighting the way ahead of it.
+@export var head_lamp := false
 
 static var _kinds := {} # id -> ZombieKind
 static var _rolled: Array[ZombieKind] = [] # the ones with a chance, in id order
+static var _mine_kinds: Array[ZombieKind] = [] # mines_only ones, in id order
 static var _rest: ZombieKind = null
 
 
@@ -52,6 +60,9 @@ static func _load() -> void:
 			push_warning("%s isn't a zombie kind with an id: skipped." % (DIR + file))
 			continue
 		_kinds[kind.id] = kind
+		if kind.mines_only:
+			_mine_kinds.append(kind)
+			continue
 		if kind.fills_the_rest:
 			if _rest:
 				push_warning("Both %s and %s fill the rest; %s does." % [_rest.id, kind.id, _rest.id])
@@ -60,6 +71,7 @@ static func _load() -> void:
 		else:
 			_rolled.append(kind)
 	_rolled.sort_custom(func(a: ZombieKind, b: ZombieKind) -> bool: return a.id < b.id)
+	_mine_kinds.sort_custom(func(a: ZombieKind, b: ZombieKind) -> bool: return a.id < b.id)
 	if _rest == null and not _rolled.is_empty():
 		push_warning("No zombie kind fills the rest: %s does." % _rolled[0].id)
 		_rest = _rolled[0]
@@ -80,3 +92,15 @@ static func roll(dice: RandomNumberGenerator) -> ZombieKind:
 			return kind
 		r -= kind.spawn_chance
 	return _rest
+
+
+## A kind for a zombie down a mine: one of the mines-only kinds by their
+## spawn chances, or else one rolled as up top.
+static func roll_in_mine(dice: RandomNumberGenerator) -> ZombieKind:
+	_load()
+	var r := dice.randf()
+	for kind in _mine_kinds:
+		if r < kind.spawn_chance:
+			return kind
+		r -= kind.spawn_chance
+	return roll(dice)

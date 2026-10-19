@@ -279,6 +279,8 @@ func build(kind: String, xform: Transform3D, on: StructurePiece, quiet := false)
 	_nav_region.add_child(piece) # in the bake: zombies path around it
 	if not _model(kind, piece, null).take_shapes(piece):
 		_collision(kind, piece)
+	if KitMine.contains(piece.global_position + Vector3.UP * 0.3):
+		KitMine.underground(piece) # down a mine: out of the sun's light, like the mine
 	pieces.append(piece)
 	if kind == "fence_gate":
 		_add_leaf(piece)

@@ -133,6 +133,10 @@ var state := State.IDLE
 var max_health := 100.0 # its kind's
 var health := 100.0 # set to max_health in _ready
 var _fall := Fall.new() # falls hurt (characters/fall.gd)
+var _hat: Node3D # a miner's hard hat (its kind's hard_hat), until a headshot knocks it off
+var _meshes: Array[GeometryInstance3D] = [] # its body's, for the underground layer (KitMine)
+var _underground := false
+var _layer_wait := 0.0
 var kind_data: ZombieKind # the file for `kind`
 var eye_height := EYE_HEIGHT
 var is_dead := false
@@ -218,6 +222,8 @@ func _apply_kind() -> void:
 	skin = skin.lightened(randf_range(-0.1, 0.1)) if randf() < 0.5 else skin.darkened(randf_range(0.0, 0.15))
 	body.set_colors(skin, Color.from_hsv(randf(), randf_range(0.15, 0.4), randf_range(0.2, 0.45)),
 			Color.from_hsv(randf_range(0.55, 0.7), randf_range(0.1, 0.35), randf_range(0.12, 0.3)))
+	if kind_data.hard_hat:
+		_put_on_hat()
 	if _crawls():
 		eye_height = CRAWLER_EYE_HEIGHT
 		# Lying face down, head forward (its animations do the pose).
@@ -226,6 +232,73 @@ func _apply_kind() -> void:
 		shape.height = 1.6
 		collision.shape = shape
 		collision.transform = Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(0, 0.3, 0.05))
+
+
+## A miner's hard hat on its head (it moves with the head's hitbox), and the
+## lamp on it if its kind has one.
+func _put_on_hat() -> void:
+	_hat = Node3D.new()
+	_hat.name = "HardHat"
+	_hat.position = Vector3(0, 0.1, 0)
+	var yellow := StandardMaterial3D.new()
+	yellow.albedo_color = Color(0.8, 0.62, 0.1)
+	var dome := MeshInstance3D.new()
+	var dome_mesh := SphereMesh.new()
+	dome_mesh.radius = 0.15
+	dome_mesh.height = 0.2
+	dome_mesh.is_hemisphere = true
+	dome_mesh.material = yellow
+	dome.mesh = dome_mesh
+	_hat.add_child(dome)
+	var brim := MeshInstance3D.new()
+	var brim_mesh := CylinderMesh.new()
+	brim_mesh.top_radius = 0.19
+	brim_mesh.bottom_radius = 0.19
+	brim_mesh.height = 0.02
+	brim_mesh.material = yellow
+	brim.mesh = brim_mesh
+	_hat.add_child(brim)
+	if kind_data.head_lamp:
+		var lamp := SpotLight3D.new()
+		lamp.name = "Lamp"
+		lamp.light_color = Color(1.0, 0.9, 0.7)
+		lamp.light_energy = 1.5
+		lamp.spot_range = 14.0
+		lamp.spot_angle = 28.0
+		lamp.position = Vector3(0, 0.05, -0.16)
+		lamp.rotation.x = -0.15 # (a SpotLight shines down its -Z: ahead)
+		_hat.add_child(lamp)
+	head_shape.add_child(_hat)
+
+
+## Knocked off by a headshot: it clatters away, lamp and all.
+func _knock_hat_off() -> void:
+	Sound.play_at(self, "melee_hit", head_shape.global_position, 0.0, 25.0, 0.1, 1.4)
+	_meshes.clear() # (its meshes change)
+	_hat.queue_free()
+	_hat = null
+
+
+## While it's down a mine its body's drawn on the underground layer, out of
+## the sun's light (KitMine); up top on the ordinary one.
+func _update_layers(delta: float) -> void:
+	_layer_wait -= delta
+	if _layer_wait > 0.0:
+		return
+	_layer_wait = 0.5
+	var under := KitMine.contains(global_position + Vector3.UP)
+	if under == _underground and not (under and _meshes.is_empty()):
+		return
+	_underground = under
+	if _meshes.is_empty():
+		for node in visual.find_children("*", "GeometryInstance3D", true, false):
+			_meshes.append(node)
+		if _hat:
+			for node in _hat.find_children("*", "GeometryInstance3D", true, false):
+				_meshes.append(node)
+	for mesh in _meshes:
+		if is_instance_valid(mesh):
+			mesh.layers = GameData.RENDER_UNDERGROUND if under else 1
 
 
 ## Where shots should aim: the middle of its body (guards use this).
@@ -274,6 +347,7 @@ func _physics_process(delta: float) -> void:
 		_far_delta = 0.0
 	if not is_on_floor():
 		velocity.y -= gravity * delta
+	_update_layers(delta)
 	var fell := _fall.update(self, max_health, gravity, _water_depth >= Water.SWIM_DEPTH)
 	if fell > 0.0:
 		health -= fell
@@ -730,6 +804,9 @@ func _set_idle() -> void:
 func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node3D = null, hit_pos := Vector3.INF) -> void:
 	if is_dead:
 		return
+	if _hat and hit_pos != Vector3.INF and is_headshot(hit_pos):
+		_knock_hat_off()
+		damage = 0.0 # the hat took it
 	health -= damage
 	var away := _flat(global_position - from_pos).normalized()
 	if hit_pos == Vector3.INF:

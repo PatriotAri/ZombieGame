@@ -207,6 +207,7 @@ func _ready() -> void:
 	add_child(PerfOverlay.new())
 	_spawn_player()
 	_spawn_zombies()
+	_spawn_mine_zombies()
 	zones = Zones.new()
 	add_child(zones)
 	zones.setup(town, player)
@@ -908,8 +909,15 @@ func _spawn_npcs() -> void:
 ## chance. A marker on the ground spreads them over the ground (hills and all).
 func _spawn_zombies() -> void:
 	for spawn in zombie_spawns:
+		var mine := _mine_of(spawn)
 		for i in spawn.count:
 			if rng.randf() >= spawn.chance:
+				continue
+			if mine: # spread over the mine's open cells round it, miners among them
+				var near := KitMine.cell_at(mine.to_local(spawn.global_position), roundi(mine.to_local(spawn.global_position).y / KitMine.LEVEL))
+				var spot := mine.zombie_spot(rng, near, maxi(1, ceili(maxf(spawn.spread.x, spawn.spread.y) / KitMine.CELL)))
+				if spot != Vector3.INF:
+					_add_zombie(spot, null, ZombieKind.roll_in_mine(rng).id)
 				continue
 			var pos := spawn.global_position
 			if spawn.spread != Vector2.ZERO:
@@ -921,6 +929,24 @@ func _spawn_zombies() -> void:
 					if not _near_container(pos, ZOMBIE_CONTAINER_CLEARANCE):
 						break
 			_add_zombie(pos)
+
+
+## The mine a marker's in (under), or null.
+func _mine_of(node: Node) -> KitMine:
+	while node != null and node != town:
+		if node is KitMine:
+			return node
+		node = node.get_parent()
+	return null
+
+
+## Each mine's own zombies (its Zombie Density), at the start of a new game.
+func _spawn_mine_zombies() -> void:
+	for mine in mines:
+		for i in mine.zombie_count():
+			var spot := mine.zombie_spot(rng)
+			if spot != Vector3.INF:
+				_add_zombie(spot, null, ZombieKind.roll_in_mine(rng).id)
 
 
 func _near_container(pos: Vector3, min_dist: float) -> bool:

@@ -210,6 +210,8 @@ var _carried_lantern: OmniLight3D # lit while you hold a lantern
 const THROW_SPEED := 13.0
 var _cooking := false
 var _cook_left := 0.0
+var _underground := false # down a mine: your hands are drawn on its layer (KitMine.contains)
+var _layer_wait := 0.0
 var _hunger_stage := 0 # 0 fed, 1 hungry, 2 starving: to announce each change once
 var _growl_timer := 0.0
 var _hurt_sound_wait := 0.0 # zombies hurt you every frame; grunt at most this often
@@ -353,6 +355,7 @@ func _physics_process(delta: float) -> void:
 	var climbing := not _ladders.is_empty()
 	_update_water()
 	_update_breath(delta)
+	_update_layers(delta)
 	_check_fell_out(delta)
 	if climbing:
 		velocity.y = 0.0 # holding on: no falling (_climb moves you up and down)
@@ -502,6 +505,21 @@ func _update_water() -> void:
 	_water_surface = Water.surface_at(get_tree(), global_position)
 	water_depth = 0.0 if is_nan(_water_surface) else maxf(_water_surface - global_position.y, 0.0)
 	swimming = water_depth >= (Water.SWIM_DEPTH - 0.15 if swimming else Water.SWIM_DEPTH)
+
+
+## Down a mine, what you see of yourself (your hands, what's in them) is drawn
+## on the underground layer, out of the sun's light like the mine (KitMine).
+func _update_layers(delta: float) -> void:
+	_layer_wait -= delta
+	if _layer_wait > 0.0:
+		return
+	_layer_wait = 0.25
+	var under := KitMine.contains(global_position + Vector3.UP)
+	if under == _underground and not under:
+		return # (down there it keeps at it: what's in your hands changes)
+	_underground = under
+	for mesh in find_children("*", "GeometryInstance3D", true, false):
+		(mesh as GeometryInstance3D).layers = GameData.RENDER_UNDERGROUND if under else 1
 
 
 ## Your breath: going while your head's under water, then you drown.

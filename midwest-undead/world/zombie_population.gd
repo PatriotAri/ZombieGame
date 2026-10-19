@@ -68,7 +68,8 @@ func setup(main: Node, nav_region: NavTiles, player: Node3D, day_night: Node, ca
 func populate(count: int, rng: RandomNumberGenerator, start: Vector3) -> void:
 	for zombie: Node3D in _main.get("zombies"):
 		var at := zombie.global_position
-		if at.distance_to(start) < MIN_DISTANCE or seen(at):
+		# (One down a mine stays there, close by or not, unless you'd see it.)
+		if (at.distance_to(start) < MIN_DISTANCE and not KitMine.contains(at + Vector3.UP)) or seen(at):
 			var spot := hidden_spot(rng, at, MOVE_NEAR)
 			if spot == Vector3.INF:
 				spot = hidden_spot(rng)

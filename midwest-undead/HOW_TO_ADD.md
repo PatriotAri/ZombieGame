@@ -131,6 +131,10 @@ Every new zombie, at the start and arriving later, rolls a kind:
 - **Skin Color:** leave it fully transparent for the usual skin. Each zombie's
   is a little lighter or darker; shirts and pants are random.
 - **Voice Pitch:** its groans; 1 is normal, higher is shriller.
+- **Mines Only:** never up top; down a mine, its Spawn Chance is the chance
+  a zombie there is this kind (like the miner).
+- **Hard Hat:** the first headshot only knocks its hat off.
+- **Head Lamp:** a lamp glowing on its hat (with Hard Hat).
 
 ## Survivors (`characters/npcs/survivors/`, SurvivorData)
 

@@ -396,8 +396,9 @@ bring a flashlight, a helmet lamp or a lantern.
   rock and broken timber, floor to roof (click again, or right-click, to take
   it away). Zombies can't get past one either. In the game it takes a
   **pickaxe** (found in workshops and on farms): hold interact on it for 12
-  seconds, noisily; stop and come back and you carry on where you were. Dug
-  through, it's gone for good (the save remembers).
+  seconds, noisily; stop and come back and you carry on where you were.
+  Dynamite blows one clear at once. Dug or blown through, it's gone for good
+  (the save remembers).
 - **Floods** (**Flood**): click one corner of the flooded stretch, then the
   opposite one, on the Level set here; right-click removes the flood under
   the mouse. Its **Depth** is in the Inspector (Floods): from 1.3 m you
@@ -417,16 +418,32 @@ bring a flashlight, a helmet lamp or a lantern.
   itself, lockers and caches turn about, in its dead ends first, then round
   its chambers. The same places every time, until you change the layout.
 
-Mines are where to find **dynamite** (light it and throw it, or crouch to set
-it down on an 8 second fuse: it kills zombies near it, blows cave-ins clear,
-and wrecks your own fences and barricades, and you, if you're close), the
+**Zombies:**
+
+- **Place zombies**: click a cell for a **ZombieSpawn** marker (3 zombies;
+  its **Count**, **Chance** and **Spread** are in the Inspector). In a new
+  game they turn up on the mine's open floor within Spread of it: never in
+  rock, in the daylight by an entrance, in a cave-in or under a flood.
+  Right-click removes the marker under the mouse.
+- **Zombie Density** (the mine, in the Inspector): zombies it fills itself
+  with, per 100 m of its tunnels and chambers.
+- Down a mine, about 6 in 10 are **miners**: tougher than a walker, with a
+  hard hat that the first headshot only knocks off, and a lamp still
+  glowing on it, so you see them coming. Miners are only ever in mines.
+  The rest are the usual kinds. They're there once each new game: cleared
+  stays cleared.
+
+Mines are where to find **dynamite** (light it and throw it, or crouch to
+set it down on an 8 second fuse; within 6 m it kills zombies, blows cave-ins
+clear, wrecks your own fences and barricades, and hurts you too), the
 **helmet lamp** (put it on in your backpack: the flashlight key then switches
 it; brighter, and its batteries last twice as long), **lanterns** (hold one
 for light all round you, or set it down and pick it up again; it never runs
 out) and **steel bars**.
 
 Anything you put under the mine node (crates, lockers, carts of your own) is
-drawn in the dark with it.
+drawn in the dark with it, and so are you, zombies and lanterns while they're
+down there.
 
 The older **New mine entrance** (Fields and features) is still there: a
 single short tunnel that ends in a cave-in.
