@@ -62,6 +62,8 @@ func close() -> void:
 func _input(event: InputEvent) -> void:
 	if _player == null:
 		return
+	if get_viewport().gui_get_focus_owner() is LineEdit:
+		return # typing (a save's name): the keys are letters, not this screen's
 	if event.is_action_pressed("journal"):
 		if visible:
 			close()
