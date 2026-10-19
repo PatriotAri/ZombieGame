@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ZombieKind" format=3]
+
+[ext_resource type="Script" path="res://characters/zombie/zombie_kind.gd" id="1_fdwsq"]
+
+[resource]
+script = ExtResource("1_fdwsq")
+id = "zz_brute"
+spawn_chance = 0.5
+health = 300.0
+min_speed = 0.5
+max_speed = 0.6
+body_scale = Vector3(1.4, 1.2, 1.4)
+voice_pitch = 0.6

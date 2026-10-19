@@ -1,5 +1,5 @@
 extends CharacterBody3D
-## First-person survivor: movement, stamina, hunger, crouching, melee, guns
+## First-person survivor: movement, stamina, crouching, melee, guns
 ## (hold aim to look down the sights, or through a scope), a battery-powered
 ## flashlight, an inventory, picking things up, trading, and the noise all of
 ## that makes. Every gun and melee weapon is a file in items/data/ (WeaponData):
@@ -89,22 +89,10 @@ const PlayerBuilding := preload("res://characters/player/player_building.gd")
 @export var heal_time := 1.5
 ## Seconds to eat a can of food (getting hurt interrupts it).
 @export var eat_time := 1.2
+## What a can of food gives back: a little health (a health pack gives
+## health_pack_heal), and stamina.
 @export var food_heal := 15.0
-## Eating also restores this much stamina.
 @export var food_stamina := 100.0
-## How much a can of food takes off your hunger (0 = full, 100 = starving).
-@export var food_hunger := 35.0
-
-@export_group("Hunger")
-## Hunger rises with in-game time: 4 per hour means fed to starving in about a
-## day (25 game hours, ~50 real minutes at the default clock speed). Roughly
-## three cans of food a day keep it down.
-@export var hunger_per_game_hour := 4.0
-@export_range(0.0, 100.0) var starting_hunger := 20.0
-## From here on you're hungry: stamina comes back at half speed.
-@export_range(0.0, 100.0) var hungry_at := 60.0
-## At 100 hunger you're starving and slowly lose health.
-@export var starving_damage_per_sec := 0.4
 
 @export_group("Flashlight")
 ## Real seconds of light from one set of batteries.
@@ -143,8 +131,16 @@ var aiming := false # holding aim with a gun in your hands
 ## What's in your hands: "hands" (empty, you punch) or an item id with a "use"
 ## in its file (items/data/). The use button does whatever that item does.
 var held := "hands"
+## The weapons you switch between (scroll, D-pad left/right, 1-3), by slot:
+## a primary (a long gun), a sidearm (the pistol) and a melee weapon (fists
+## when it's empty). Each holds an item id you carry, or "" for none. A new
+## weapon fills its slot if that's empty; the backpack puts another one in
+## (equip_weapon). Everything else you hold, you pick in the backpack.
+var slots := {"primary": "", "sidearm": "", "melee": ""}
+const SLOTS: Array[String] = ["primary", "sidearm", "melee"]
 var is_dead := false
-## What killed you, for the death message: "bitten", "shot" or "starved".
+## What killed you, for the death message: "bitten", "shot", "fell", "drowned"
+## or "blown_up".
 var death_cause := ""
 var _fall := Fall.new()
 var is_crouching := false
@@ -167,7 +163,6 @@ var _cover_timer := 0.0
 const FELL_BELOW := 30.0
 var _safe_spot := Vector3.INF
 var _safe_timer := 0.0
-var hunger := 20.0 # 0 = just ate, 100 = starving; set to starting_hunger in _ready
 var menu_open := false # set by the inventory/shop screens; freezes your controls
 
 var prompt_text := "" # read by the HUD
@@ -192,7 +187,6 @@ var crouch_latched := false
 var suppress_next_attack := false # the click that re-grabs the mouse shouldn't fire
 var _last_physics_frame := 0 # to notice when we've just come back from a pause or menu
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-var day_night: Node # for hunger, which runs on in-game time
 ## The flashlight, the helmet lamp and a carried lantern (player_lights.gd).
 var lights: PlayerLights
 ## Wearing the helmet lamp (the backpack puts it on: wear_lamp).
@@ -207,8 +201,6 @@ var _cooking := false
 var _cook_left := 0.0
 var _underground := false # down a mine: your hands are drawn on its layer (KitMine.contains)
 var _layer_wait := 0.0
-var _hunger_stage := 0 # 0 fed, 1 hungry, 2 starving: to announce each change once
-var _growl_timer := 0.0
 var _hurt_sound_wait := 0.0 # zombies hurt you every frame; grunt at most this often
 var _ladders: Array[Area3D] = [] # the ladders you're touching (structures.gd tells us)
 ## Fortifying, building and salvaging (player_building.gd).
@@ -226,8 +218,6 @@ func _ready() -> void:
 	floor_constant_speed = true
 	health = max_health
 	stamina = max_stamina
-	hunger = starting_hunger
-	_hunger_stage = _stage_for(hunger)
 	money = starting_money
 	for id: String in GameData.item_ids():
 		if is_gun(id):
@@ -243,6 +233,7 @@ func _ready() -> void:
 	inventory.add("batteries", starting_spare_batteries)
 	inventory.add("planks", starting_planks)
 	inventory.add("barricade", starting_barricades)
+	_fill_slots()
 	lights = PlayerLights.new()
 	lights.name = "Lights"
 	add_child(lights)
@@ -303,12 +294,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		crouch_latched = not crouch_latched
 		sprint_latched = false
 	else:
-		# Number keys pick from what you can hold directly (numbered on the inventory screen).
-		for i in range(1, 10):
+		# 1-3: the weapon slots (the backpack numbers them too).
+		for i in range(1, 4):
 			if event.is_action_pressed("slot_%d" % i):
-				var bar := holdable()
-				if i <= bar.size():
-					select(bar[i - 1])
+				_select_slot(i)
 				break
 
 
@@ -362,7 +351,6 @@ func _physics_process(delta: float) -> void:
 		if fell > 0.0:
 			take_damage(fell, "fell")
 		_update_stamina(delta, false)
-		_update_hunger(delta)
 		_update_flashlight(delta)
 		building.update_barricade_ghost() # hides it while a menu is up
 		building.update_build_view()
@@ -455,7 +443,6 @@ func _physics_process(delta: float) -> void:
 		take_damage(fell, "fell")
 
 	_update_stamina(delta, sprinting)
-	_update_hunger(delta)
 	_update_flashlight(delta)
 	_update_footsteps(delta, sprinting)
 	building.update_build_view()
@@ -552,17 +539,6 @@ func _die(cause: String) -> void:
 	died.emit()
 
 
-## Hunger and flashlight for the HUD, e.g. "Hunger 64 (hungry)    Flashlight 38%  +2".
-func hunger_text() -> String:
-	var text := "Hunger %d" % floori(hunger)
-	match _hunger_stage:
-		1:
-			text += " (hungry)"
-		2:
-			text += " (STARVING)"
-	return text
-
-
 ## For the inventory screen: the flashlight's charge and the spare batteries.
 func flashlight_text() -> String:
 	return lights.text()
@@ -585,14 +561,55 @@ func held_label() -> String:
 
 
 ## Everything you can hold, in order: empty hands first, then each usable item
-## you're carrying (ammo and batteries can't be held, so they're skipped). The
-## number keys pick from this list, and the inventory screen (Tab) shows it.
+## you're carrying (ammo and batteries can't be held, so they're skipped).
 func holdable() -> Array[String]:
 	var bar: Array[String] = ["hands"]
 	for id in inventory.ids():
 		if GameData.item_use(id) != "":
 			bar.append(id)
 	return bar
+
+
+## The slot a weapon goes in ("primary", "sidearm" or "melee"), or "" if it
+## isn't a weapon.
+static func slot_of(id: String) -> String:
+	var weapon := GameData.weapon(id)
+	if weapon == null:
+		return ""
+	if not weapon.is_gun():
+		return "melee"
+	return "sidearm" if weapon.gun_slot == "Sidearm" else "primary"
+
+
+## What scroll steps through, in slot order: the primary and the sidearm if
+## you have them, then the melee weapon, or fists.
+func weapons() -> Array[String]:
+	var list: Array[String] = []
+	for slot in SLOTS:
+		if slots[slot] != "":
+			list.append(slots[slot])
+	if slots["melee"] == "":
+		list.append("hands")
+	return list
+
+
+## Puts a weapon you carry in its slot (the backpack), in place of what was there.
+func equip_weapon(id: String) -> void:
+	var slot := slot_of(id)
+	if slot != "" and inventory.has(id):
+		slots[slot] = id
+
+
+## Empties a slot whose weapon you no longer carry, and fills an empty one
+## with a weapon you do (the first of its kind in your inventory).
+func _fill_slots() -> void:
+	for slot in SLOTS:
+		if slots[slot] != "" and not inventory.has(slots[slot]):
+			slots[slot] = ""
+	for id in inventory.ids():
+		var slot := slot_of(id)
+		if slot != "" and slots[slot] == "":
+			slots[slot] = id
 
 
 ## Put something in your hands. Cancels a reload or a half-finished bandage.
@@ -627,7 +644,7 @@ func save_state() -> Dictionary:
 		"inventory": inventory.to_dict(),
 		"mags": mags.duplicate(),
 		"held": held,
-		"hunger": hunger,
+		"slots": slots.duplicate(),
 	}
 	lights.save_into(data) # "flashlight", "flashlight_charge", "lamp_worn", "lamp_on", "lamp_charge"
 	return data
@@ -646,8 +663,11 @@ func load_state(data: Dictionary) -> void:
 	for id: String in mags:
 		mags[id] = clampi(int(saved_mags.get(id, 0)), 0, GameData.weapon(id).magazine)
 	lights.load_from(data)
-	hunger = clampf(float(data.get("hunger", starting_hunger)), 0.0, 100.0)
-	_hunger_stage = _stage_for(hunger)
+	var saved_slots: Dictionary = data.get("slots", {})
+	for slot in SLOTS:
+		var id := str(saved_slots.get(slot, ""))
+		slots[slot] = id if slot_of(id) == slot and inventory.has(id) else ""
+	_fill_slots() # (saves from before slots: filled from what you carry)
 	var saved_held: String = data.get("held", "hands")
 	held = saved_held if saved_held == "hands" or inventory.has(saved_held) else "hands"
 	_refresh_weapon_visuals(false)
@@ -657,6 +677,7 @@ func load_state(data: Dictionary) -> void:
 
 func give_item(id: String, amount := 1) -> void:
 	inventory.add(id, amount)
+	_fill_slots()
 	_refresh_weapon_visuals()
 
 
@@ -667,6 +688,7 @@ func take_item(id: String, amount := 1) -> int:
 		# Unload the gun as it leaves your hands, so the loaded rounds stay with you.
 		inventory.add(GameData.weapon(id).ammo, mags[id])
 		mags[id] = 0
+	_fill_slots()
 	_drop_held_if_gone()
 	return taken
 
@@ -681,14 +703,25 @@ func _drop_held_if_gone() -> void:
 	_refresh_weapon_visuals()
 
 
-## Step through what you can hold (wheel, D-pad left/right). Wraps around.
+## Step through your weapons (wheel, D-pad left/right). Wraps around. Holding
+## something else (from the backpack): next goes to the first, previous to the last.
 func _cycle(step: int) -> void:
-	var bar := holdable()
-	var index := bar.find(held)
-	select(bar[posmod(index + step, bar.size())])
+	var list := weapons()
+	var index := list.find(held)
+	if index < 0:
+		index = -1 if step > 0 else list.size()
+	select(list[posmod(index + step, list.size())])
 
 
-## Q / LB: grab a health pack and start using it, whatever you were holding.
+## 1, 2, 3: the primary, the sidearm, the melee weapon (or fists).
+func _select_slot(number: int) -> void:
+	if number == 3:
+		select(slots["melee"] if slots["melee"] != "" else "hands")
+	elif number >= 1 and number <= 2 and slots[SLOTS[number - 1]] != "":
+		select(slots[SLOTS[number - 1]])
+
+
+## Q: grab a health pack and start using it, whatever you were holding.
 func _quick_heal() -> void:
 	if not inventory.has("health_pack"):
 		notify.emit("No health packs.")
@@ -752,8 +785,6 @@ func _finish_use() -> void:
 		"eat":
 			health = minf(health + food_heal, max_health)
 			stamina = minf(stamina + food_stamina, max_stamina)
-			hunger = maxf(hunger - food_hunger, 0.0)
-			_hunger_stage = _stage_for(hunger)
 			notify.emit("That hit the spot.")
 	attack_cooldown = 0.3
 	_drop_held_if_gone() # last one used: back to empty hands
@@ -1119,8 +1150,7 @@ func _update_stamina(delta: float, sprinting: bool) -> void:
 	elif stamina_regen_wait > 0.0:
 		stamina_regen_wait -= delta
 	else:
-		var regen := stamina_regen_per_sec * (0.5 if hunger >= hungry_at else 1.0)
-		stamina = minf(stamina + regen * delta, max_stamina)
+		stamina = minf(stamina + stamina_regen_per_sec * delta, max_stamina)
 
 
 func _update_footsteps(delta: float, sprinting: bool) -> void:
@@ -1133,38 +1163,6 @@ func _update_footsteps(delta: float, sprinting: bool) -> void:
 		make_noise(noise_sprint if sprinting else noise_walk)
 		Sound.play_ui(self, "footstep", -6.0 if sprinting else -11.0, 0.12)
 		step_timer = 0.3 if sprinting else 0.5
-
-
-# --- Hunger ------------------------------------------------------------------
-
-func _update_hunger(delta: float) -> void:
-	if day_night == null:
-		day_night = get_tree().get_first_node_in_group("day_night")
-	var seconds_per_hour: float = day_night.seconds_per_game_hour if day_night else 120.0
-	hunger = minf(hunger + hunger_per_game_hour * delta / seconds_per_hour, 100.0)
-
-	var stage := _stage_for(hunger)
-	if stage > _hunger_stage:
-		notify.emit("You're getting hungry." if stage == 1 else "You're starving! Find something to eat.")
-		_growl_timer = 0.0 # growl right away
-	_hunger_stage = stage
-
-	if stage >= 1:
-		_growl_timer -= delta
-		if _growl_timer <= 0.0:
-			Sound.play_ui(self, "stomach_growl", -8.0 if stage == 1 else -3.0)
-			_growl_timer = randf_range(40.0, 70.0) if stage == 1 else randf_range(15.0, 25.0)
-	if stage == 2:
-		# Not take_damage(): starving shouldn't flash red or close menus every frame.
-		health = maxf(health - starving_damage_per_sec * delta, 0.0)
-		if health <= 0.0:
-			_die("starved")
-
-
-func _stage_for(value: float) -> int:
-	if value >= 100.0:
-		return 2
-	return 1 if value >= hungry_at else 0
 
 
 # --- Lights (player_lights.gd) ------------------------------------------------

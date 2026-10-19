@@ -1,6 +1,7 @@
 extends CanvasLayer
-## Everything on screen during play: health, stamina and hunger (top left), the
-## clock (top right), the objective (middle left), the crosshair and the
+## Everything on screen during play: health and stamina (top left), the
+## clock (top right), the objective (middle left: for OBJECTIVE_SHOWN seconds
+## each time it changes; the journal has it too), the crosshair and the
 ## interact prompt, what you're holding (bottom right), toasts, story moments,
 ## the red flash when you're hurt, and the death message. The button list is on
 ## the pause menu's Controls page.
@@ -13,8 +14,8 @@ extends CanvasLayer
 const Player := preload("res://characters/player/player.gd")
 const Controls := preload("res://core/controls.gd")
 ## What the death screen says, by player.death_cause (anything else: bitten).
-const DEATHS := {"starved": "You starved.", "shot": "You were shot.", "fell": "You fell to your death.",
-		"drowned": "You drowned.", "blown_up": "You were blown up."}
+const DEATHS := {"shot": "You were shot.", "fell": "You fell to your death.", "drowned": "You drowned.",
+		"blown_up": "You were blown up."}
 
 var _player: Player
 var _day_night: Node
@@ -29,6 +30,9 @@ var prompt_label: Label
 var toast_label: Label
 var message_label: Label
 var objective_label: Label
+const OBJECTIVE_SHOWN := 5.0 # seconds a new objective stays up, then it fades
+const OBJECTIVE_FADE := 0.5
+var _objective_left := 0.0 # seconds it has left on screen
 var story_label: Label
 var hurt_overlay: ColorRect
 var water_overlay: ColorRect # your head's under water
@@ -48,17 +52,17 @@ func setup(player: Player, day_night: Node) -> void:
 	_day_night = day_night
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if _player == null:
 		return
 	var in_screen := _player.menu_open or get_tree().paused
 	for item in _play_items:
 		item.visible = not in_screen
+	if not in_screen and _objective_left > 0.0: # (only counts while it can be seen)
+		_objective_left = maxf(_objective_left - delta, 0.0)
+		objective_label.modulate.a = clampf(_objective_left / OBJECTIVE_FADE, 0.0, 1.0)
 	var crouch := "   (crouching)" if _player.is_crouching else ""
-	var status := "Health %d\nStamina %d%s\n%s\nHealth packs %d    $%d" % [
-		ceili(_player.health), floori(_player.stamina), crouch, _player.hunger_text(),
-		_player.inventory.count("health_pack"), _player.money,
-	]
+	var status := "Health %d\nStamina %d%s" % [ceili(_player.health), floori(_player.stamina), crouch]
 	if _player.breath < _player.BREATH: # under water, or getting it back
 		status += "\nBreath %d%%%s" % [floori(100.0 * _player.breath / _player.BREATH),
 				"   DROWNING" if _player.breath <= 0.0 else ""]
@@ -80,8 +84,15 @@ func _process(_delta: float) -> void:
 			message_label.text = "%s You never saved.\nPress %s to start over." % [cause, Controls.hint("restart")]
 
 
+## A new objective: up for OBJECTIVE_SHOWN seconds, then it fades. The same
+## one again (the quests announce on every change) doesn't bring it back.
 func set_objective(text: String) -> void:
-	objective_label.text = "Objective:  " + text if text != "" else ""
+	var line := "Objective:  " + text if text != "" else ""
+	if line == objective_label.text:
+		return
+	objective_label.text = line
+	_objective_left = OBJECTIVE_SHOWN + OBJECTIVE_FADE if line != "" else 0.0
+	objective_label.modulate.a = 1.0 if line != "" else 0.0
 
 
 ## The death message. Its text is set every frame, so the button hint stays current.

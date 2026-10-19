@@ -29,6 +29,9 @@ extends ItemData
 @export var noise := 40.0
 
 @export_group("Gun")
+## Which weapon slot it goes in (player.gd): Primary, a long gun, or Sidearm,
+## a handgun. (Melee weapons have their own slot.)
+@export_enum("Primary", "Sidearm") var gun_slot := "Primary"
 ## The item id it loads.
 @export var ammo := ""
 @export var magazine := 7

@@ -54,7 +54,10 @@ A new item is in the game, but nothing hands it out yet. Add it to:
 ## Weapons (`items/data/`, WeaponData)
 
 A weapon is an item (everything above) plus how it fights. **Weapon Kind** is
-`gun` or `melee`.
+`gun` or `melee`. You carry three weapons ready to switch between (the mouse
+wheel or the D-pad, or 1-3): a primary gun, a sidearm and a melee weapon. A gun
+goes in the slot its **Gun Slot** says (below); melee weapons share the melee
+slot. Extra weapons wait in the backpack, where you can swap one in.
 
 - **In your hands:**
   - **Held Model:** the scene in front of the camera. Copy
@@ -73,6 +76,8 @@ A weapon is an item (everything above) plus how it fights. **Weapon Kind** is
   - **Noise:** meters. Zombies this close hear it: a gun on every shot, a melee
     weapon when it hits. The pistol is 40.
 - **Gun:**
+  - **Gun Slot:** `Primary` (a long gun: the shotgun, the rifle) or `Sidearm`
+    (a handgun: the pistol).
   - **Ammo:** the item id it loads.
   - **Magazine:** rounds it holds.
   - **Pellets:** shots per trigger pull (the shotgun has 9).

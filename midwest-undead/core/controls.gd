@@ -13,13 +13,14 @@ extends RefCounted
 ##   crouch           Ctrl (hold)        B (toggles)
 ##   use held item    left click         RT   (shoot, swing, heal, eat...)
 ##   aim (guns)       right click (hold) LT   (zooms; the rifle's scope)
-##   next/prev item   mouse wheel        D-pad right = next, D-pad left = previous
-##   pick held item   1-9                -    (numbered on the inventory screen)
+##   next/prev weapon mouse wheel        D-pad right = next, D-pad left = previous
+##   weapon slots     1-3                -    (primary, sidearm, melee; other
+##                                            things you hold: the inventory screen)
 ##   inventory        Tab                View / Back
 ##   journal (quests) J                  D-pad down
 ##   interact         E                  X
 ##   reload           R                  X    (when there's nothing to interact with)
-##   quick heal       Q                  LB   (switches to a health pack and uses it)
+##   quick heal       Q                  -    (switches to a health pack and uses it)
 ##   flashlight       F                  D-pad up
 ##   map              M                  Y
 ##   pause            Esc                Start (Menu button)
@@ -38,6 +39,9 @@ static var using_gamepad := false
 static var _hints := {} # hint() as worked out: [gamepad][action] (emptied when bindings change)
 
 const PATH := "user://controls.cfg"
+## The file's version. 2: quick heal is no longer on LB (a version 1 file
+## that still has it there, the old default, loses it).
+const VERSION := 2
 const STICK_DEADZONE := 0.2 # analog stick actions: small deadzone for fine movement
 const TRIGGER_PRESS := 0.5 # how far a trigger goes down to count as pressed
 
@@ -53,8 +57,8 @@ const REBINDABLE := [
 	["crouch", "Crouch", true, true],
 	["use_held", "Use held item (shoot, swing, heal...)", true, true],
 	["aim", "Aim (guns; the rifle's scope)", true, true],
-	["item_next", "Next item", true, true],
-	["item_prev", "Previous item", true, true],
+	["item_next", "Next weapon", true, true],
+	["item_prev", "Previous weapon", true, true],
 	["interact", "Interact (search, pick up, talk, open)", true, true],
 	["reload", "Reload", true, true],
 	["use_health_pack", "Quick heal", true, true],
@@ -69,7 +73,7 @@ const REBINDABLE := [
 const FIXED := [
 	["Look", "Mouse", "Right stick"],
 	["Move", "(above)", "Left stick"],
-	["Pick an item", "1-9", "-"],
+	["Primary, sidearm, melee", "1-3", "-"],
 	["Salvage (holding the crowbar)", "Hold Interact", "Hold Interact"],
 	["Move a whole stack (in menus)", "Shift + click", "RB + A"],
 	["Pause", "Esc", "(above)"],
@@ -117,10 +121,10 @@ static func _defaults() -> void:
 	_mouse("aim", MOUSE_BUTTON_RIGHT); _axis("aim", JOY_AXIS_TRIGGER_LEFT, 1.0, TRIGGER_PRESS)
 	_key("interact", KEY_E); _button("interact", JOY_BUTTON_X)
 	_key("reload", KEY_R); _button("reload", JOY_BUTTON_X)
-	_key("use_health_pack", KEY_Q); _button("use_health_pack", JOY_BUTTON_LEFT_SHOULDER)
+	_key("use_health_pack", KEY_Q) # (none on a controller: hold a health pack from the inventory)
 	_mouse("item_next", MOUSE_BUTTON_WHEEL_DOWN); _button("item_next", JOY_BUTTON_DPAD_RIGHT)
 	_mouse("item_prev", MOUSE_BUTTON_WHEEL_UP); _button("item_prev", JOY_BUTTON_DPAD_LEFT)
-	for i in range(1, 10):
+	for i in range(1, 4):
 		_key("slot_%d" % i, (KEY_0 + i) as Key)
 	_key("flashlight", KEY_F); _button("flashlight", JOY_BUTTON_DPAD_UP)
 	_key("map", KEY_M); _button("map", JOY_BUTTON_Y)
@@ -268,6 +272,7 @@ static func save_bindings() -> void:
 			(controller if _is_gamepad(ev) else keyboard).append(_describe(ev))
 		file.set_value("keyboard", row[0], keyboard)
 		file.set_value("controller", row[0], controller)
+	file.set_value("meta", "version", VERSION)
 	var err := file.save(PATH)
 	if err != OK:
 		push_error("Couldn't save the controls: %s" % error_string(err))
@@ -277,6 +282,7 @@ static func _load_bindings() -> void:
 	var file := ConfigFile.new()
 	if file.load(PATH) != OK:
 		return # never changed: the defaults
+	var version := int(file.get_value("meta", "version", 1))
 	for row: Array in REBINDABLE:
 		for section: String in ["keyboard", "controller"]:
 			if not file.has_section_key(section, row[0]):
@@ -286,6 +292,9 @@ static func _load_bindings() -> void:
 				if _is_gamepad(old) == gamepad:
 					InputMap.action_erase_event(row[0], old)
 			for entry: Variant in file.get_value(section, row[0], []):
+				if version < 2 and row[0] == "use_health_pack" and entry is Dictionary \
+						and int((entry as Dictionary).get("button", -1)) == JOY_BUTTON_LEFT_SHOULDER:
+					continue
 				var ev := _from_description(entry)
 				if ev:
 					InputMap.action_add_event(row[0], ev)
