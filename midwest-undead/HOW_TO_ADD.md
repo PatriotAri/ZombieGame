@@ -85,6 +85,8 @@ A weapon is an item (everything above) plus how it fights. **Weapon Kind** is
   - **Stamina Cost:** stamina each swing takes.
   - **Salvages:** it can pry things apart for materials (hold interact), like
     the crowbar.
+  - **Digs:** it digs through a mine's cave-ins (hold interact), like the
+    pickaxe.
 
 Fists aren't a file: they're what you have with empty hands.
 

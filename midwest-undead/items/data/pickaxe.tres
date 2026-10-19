@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="PackedScene" path="res://items/models/pickaxe_held.tscn" id="1_pkheld"]
+[ext_resource type="Script" path="res://items/weapon_data.gd" id="2_pkdata"]
+
+[resource]
+script = ExtResource("2_pkdata")
+weapon_kind = "melee"
+held_model = ExtResource("1_pkheld")
+held_position = Vector3(0.35, -0.35, -0.55)
+damage = 60.0
+reach = 2.4
+cooldown = 1.0
+knockback = 5.0
+noise = 11.0
+digs = true
+id = "pickaxe"
+display_name = "Pickaxe"
+order = 41
+color = Color(0.3, 0.3, 0.32, 1)
+size = Vector3(0.5, 0.05, 0.8)

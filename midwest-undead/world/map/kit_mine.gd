@@ -61,6 +61,16 @@ const SIDES: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1),
 		_watch(shafts, value)
 		shafts = value
 		_changed()
+## Cells a cave-in blocks, dug through with a pickaxe (world/map/mine_cave_in.gd).
+@export var cave_ins: Array[Vector3i] = []:
+	set(value):
+		cave_ins = value
+		_changed()
+@export var floods: Array[MineFlood] = []:
+	set(value):
+		_watch(floods, value)
+		floods = value
+		_changed()
 
 ## Map Tools: the plan's overlay (editor only, never saved).
 var show_plan := false:
@@ -87,6 +97,7 @@ var _open := {} # Vector4i (x, z, side x, side z) -> true: an entrance's open en
 var _lit := {} # Vector2i column -> true: daylight still reaches it
 var _portals: Array = [] # [Vector3i cell, Vector2i outward]
 var _mouths := {} # Vector2i column -> Vector2i outward: an entrance's mouth
+var _dug := {} # Vector3i cell -> true: a cave-in dug through (in the game; saved)
 var _roofless := {} # Vector2i column -> the top of a shaft that comes out on the surface (meters)
 
 
@@ -116,7 +127,7 @@ static func underground(node: Node) -> void:
 
 ## Its generators' fuel and its cages' stops (main.gd saves them).
 func save_state() -> Dictionary:
-	var data := {"generators": [], "cages": []}
+	var data := {"generators": [], "cages": [], "dug": _dug.keys().map(func(c: Vector3i) -> Array: return [c.x, c.y, c.z])}
 	for generator in find_children("*", "MineGenerator", true, false):
 		(data["generators"] as Array).append(generator.save_state())
 	for cage in _cages():
@@ -133,6 +144,11 @@ func load_state(data: Dictionary) -> void:
 	saved = data.get("cages", [])
 	for i in mini(cages.size(), saved.size()):
 		cages[i].load_state(saved[i])
+	for c: Array in data.get("dug", []):
+		var cell := Vector3i(int(c[0]), int(c[1]), int(c[2]))
+		for cave_in in find_children("*", "MineCaveIn", true, false):
+			if (cave_in as MineCaveIn).cell == cell:
+				(cave_in as MineCaveIn).dig_out()
 
 
 ## Its cages (in the game they're moved out from under it: main.gd).
@@ -363,6 +379,8 @@ func _rebuild() -> void:
 		node.set_meta("daylight", true) # (underground() leaves it be)
 		_generated.append(node)
 	_carts()
+	_cave_ins()
+	_floods()
 	_darkness()
 	_draw_plan()
 
@@ -820,6 +838,62 @@ func _climb_area(at: Transform3D, height: float, landings: Array[float]) -> void
 		area.ready.connect(place, CONNECT_ONE_SHOT)
 
 
+## A heap of rock and broken timber filling each cave-in's cell, floor to roof.
+func _cave_ins() -> void:
+	for cell in cave_ins:
+		if _dug.has(cell) or not _cells.has(cell):
+			continue
+		var span := _span(cell)
+		var height := span.y - span.x
+		var heap := MineCaveIn.new()
+		heap.name = "CaveIn%d" % (cave_ins.find(cell) + 1)
+		heap.cell = cell
+		var dice := RandomNumberGenerator.new()
+		dice.seed = hash(cell)
+		var km := KitMesh.new()
+		km.box(Vector3(CELL, height, CELL * 0.7), Transform3D.IDENTITY.translated(Vector3(0, height / 2.0, 0)),
+				[null, null, null, null, null, null]) # (it blocks the whole tunnel)
+		for i in 14: # tumbled rocks, bigger at the bottom
+			var up := dice.randf() * height
+			var s := lerpf(1.3, 0.5, up / height) * dice.randf_range(0.7, 1.1)
+			var basis := Basis.from_euler(Vector3(dice.randf_range(-0.6, 0.6), dice.randf() * TAU, dice.randf_range(-0.6, 0.6)))
+			km.box(Vector3(s, s * 0.7, s * 0.9), Transform3D(basis, Vector3(dice.randf_range(-1.0, 1.0), up * 0.9 + s * 0.3, dice.randf_range(-0.7, 0.7))),
+					KitMesh.all(ROCK), false)
+		for i in 3: # broken timbers
+			var basis := Basis.from_euler(Vector3(dice.randf_range(-0.9, 0.9), dice.randf_range(-0.4, 0.4) + PI / 2.0 * (i % 2), dice.randf_range(-0.5, 0.5)))
+			km.box(Vector3(0.25, 0.25, CELL * 0.9), Transform3D(basis, Vector3(dice.randf_range(-0.6, 0.6), dice.randf_range(0.5, height - 0.5), dice.randf_range(-0.5, 0.5))),
+					KitMesh.all(TIMBER), false)
+		for node in km.add_to(heap):
+			if node is MeshInstance3D:
+				(node as MeshInstance3D).layers = GameData.RENDER_UNDERGROUND
+		heap.position = cell_position(cell) + Vector3(0, span.x - cell.y * LEVEL, 0)
+		heap.dug_out.connect(func(c: Vector3i) -> void: _dug[c] = true)
+		add_child(heap, false, Node.INTERNAL_MODE_BACK)
+		_generated.append(heap)
+
+
+## Each flood's water.
+func _floods() -> void:
+	for flood in floods:
+		if flood == null:
+			continue
+		var r := flood.rect()
+		var room := TUNNEL_HEIGHT
+		for x in range(r.position.x, r.end.x):
+			for z in range(r.position.y, r.end.y):
+				var c := Vector3i(x, flood.corner_a.y, z)
+				if _cells.has(c):
+					room = maxf(room, _cells[c]["top"])
+		var water := MineWater.new()
+		water.name = "Flood%d" % (floods.find(flood) + 1)
+		water.size = Vector2(r.size.x, r.size.y) * CELL
+		water.depth = flood.depth
+		water.room = room
+		water.position = _rect_center(r, flood.corner_a.y * LEVEL)
+		add_child(water, false, Node.INTERNAL_MODE_BACK)
+		_generated.append(water)
+
+
 ## The dark: a reflection probe over each stretch the daylight doesn't reach,
 ## shutting out the sky's light (as a basement's, building.gd). They overlap
 ## a little, so there are no lighter seams where they meet.
@@ -917,7 +991,8 @@ func apply(terrain: Node) -> Rect2:
 
 ## Its walls' outline on each level, over everything (the hill hides the mine):
 ## the Level being drawn on bright, the others faint, entrances green, shafts
-## a purple X, and what's being drawn orange.
+## a purple X, cave-ins a brown box, floods outlined blue, and what's being
+## drawn orange.
 func _draw_plan() -> void:
 	if not Engine.is_editor_hint() or not is_inside_tree():
 		return
@@ -967,6 +1042,28 @@ func _draw_plan() -> void:
 			for corner: Vector3 in [Vector3(-h, 0, -h), Vector3(h, 0, h), Vector3(h, 0, -h), Vector3(-h, 0, h)]:
 				mesh.surface_add_vertex(c + corner)
 			lines += 2
+	for cell in cave_ins: # a brown box in each cave-in
+		var c := cell_position(cell) + Vector3(0, 0.08, 0)
+		var h := CELL / 2.0 - 0.35
+		mesh.surface_set_color(Color(0.8, 0.5, 0.2) if cell.y == plan_level else Color(0.8, 0.5, 0.2, 0.35))
+		for i in 4:
+			var a := Vector3(h, 0, h).rotated(Vector3.UP, i * PI / 2.0)
+			mesh.surface_add_vertex(c + a)
+			mesh.surface_add_vertex(c + a.rotated(Vector3.UP, PI / 2.0))
+		lines += 4
+	for flood in floods: # a blue outline round each flood
+		if flood == null:
+			continue
+		var r := flood.rect()
+		var y := flood.corner_a.y * LEVEL + 0.12
+		var lo := Vector3((r.position.x - 0.5) * CELL + 0.2, y, (r.position.y - 0.5) * CELL + 0.2)
+		var hi := Vector3((r.end.x - 0.5) * CELL - 0.2, y, (r.end.y - 0.5) * CELL - 0.2)
+		var corners := [lo, Vector3(hi.x, y, lo.z), hi, Vector3(lo.x, y, hi.z)]
+		mesh.surface_set_color(Color(0.3, 0.6, 1.0) if flood.corner_a.y == plan_level else Color(0.3, 0.6, 1.0, 0.35))
+		for i in 4:
+			mesh.surface_add_vertex(corners[i])
+			mesh.surface_add_vertex(corners[(i + 1) % 4])
+		lines += 4
 	for i in draft.size():
 		var c := cell_position(draft[i]) + Vector3(0, 0.1, 0)
 		for side in SIDES: # a box round each cell

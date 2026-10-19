@@ -44,7 +44,7 @@ const PlantPainter := preload("res://world/map/plant_painter.gd")
 const Zone := preload("res://world/markers/zone.gd")
 const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
 const Building := preload("res://world/building.gd")
-const MINE_TOOLS := ["Off", "Draw tunnel", "Draw chamber", "Mark entrance", "Place shaft", "Place generator"]
+const MINE_TOOLS := ["Off", "Draw tunnel", "Draw chamber", "Mark entrance", "Place shaft", "Place generator", "Place cave-in", "Flood"]
 const SHAFT_KINDS := ["Ladder", "Open", "Cage"] # (MineShaft.Kind's order)
 const RAMP_CELLS := 3 # a ramp's cells for each level it climbs: about 28 degrees
 const BUILDING_TOOLS := ["Off", "Draw outline", "Draw inner wall", "Place stairs", "Add door", "Add window", "Add doorway",
@@ -100,6 +100,7 @@ var _planned: Node # the mine showing its plan
 var _tunnel: MineTunnel # Draw tunnel: the one being drawn, or null
 var _chamber_start := Vector3i.MAX # Draw chamber: its first corner, before the second click
 var _shaft_start := Vector3i.MAX # Place shaft: its first end, before the click on the other level
+var _flood_start := Vector3i.MAX # Flood: its first corner, before the second click
 var _shaft_kind: OptionButton
 
 
@@ -1206,6 +1207,7 @@ func _on_mine_tool(_index: int) -> void:
 	_tunnel = null
 	_chamber_start = Vector3i.MAX
 	_shaft_start = Vector3i.MAX
+	_flood_start = Vector3i.MAX
 	if _selected is KitMine:
 		_selected.set("draft", [] as Array[Vector3i])
 	_on_selection_changed()
@@ -1219,6 +1221,10 @@ func _mine_help() -> String:
 			return "Click one corner of the chamber, then the opposite one. Its Height is in the Inspector (Chambers): taller than 4 m, a tunnel on the level above that reaches it opens onto a ledge. Right-click removes the chamber under the mouse."
 		"Place shaft":
 			return "Pick its kind below the Rails box. Click where it goes on one Level, then change the Level and click again: it runs between the two (tunnels there that reach its side open into it). Coming out on the surface (To Surface, Surface Height) is in the Inspector (Shafts). Esc cancels; right-click removes the shaft under the mouse."
+		"Place cave-in":
+			return "Click a tunnel's cell to block it with a cave-in, floor to roof (again, or right-click, to take it away). In the game it takes a pickaxe to dig through, and once it's dug out it's gone for good."
+		"Flood":
+			return "Click one corner of the flooded stretch, then the opposite one (on the Level set here). Its Depth is in the Inspector (Floods): 1.3 m and over you swim; 3 m and over a tunnel's flooded to its roof and you hold your breath. Right-click removes the flood under the mouse."
 		"Place generator":
 			return "Click where it goes (on the Level set here). It powers every cage in this mine while it runs: pour in a gas can in the game for an hour's running, and it's loud. Right-click removes the one under the mouse."
 		"Mark entrance":
@@ -1260,10 +1266,11 @@ func _mine_input(camera: Camera3D, event: InputEvent) -> int:
 		_tunnel = null # its start was undone
 	var key := event as InputEventKey
 	if key and key.pressed and key.keycode in [KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER] \
-			and (_tunnel or _chamber_start != Vector3i.MAX or _shaft_start != Vector3i.MAX):
+			and (_tunnel or _chamber_start != Vector3i.MAX or _shaft_start != Vector3i.MAX or _flood_start != Vector3i.MAX):
 		_tunnel = null
 		_chamber_start = Vector3i.MAX
 		_shaft_start = Vector3i.MAX
+		_flood_start = Vector3i.MAX
 		mine.draft = [] as Array[Vector3i]
 		return AFTER_GUI_INPUT_STOP
 	var mouse := event as InputEventMouse
@@ -1278,6 +1285,8 @@ func _mine_input(camera: Camera3D, event: InputEvent) -> int:
 			preview = MineTunnel.make([_tunnel.points[-1], _straight(_tunnel.points[-1], cell)] as Array[Vector3i]).cells()
 		elif tool == "Draw chamber" and _chamber_start != Vector3i.MAX:
 			preview = MineChamber.make(_chamber_start, cell).cells()
+		elif tool == "Flood" and _flood_start != Vector3i.MAX:
+			preview = MineChamber.make(_flood_start, cell).cells()
 		mine.draft = preview
 		return AFTER_GUI_INPUT_PASS
 	var mb := event as InputEventMouseButton
@@ -1356,6 +1365,35 @@ func _mine_input(camera: Camera3D, event: InputEvent) -> int:
 				ur.add_undo_property(mine, "shafts", mine.shafts)
 				ur.commit_action()
 				_shaft_start = Vector3i.MAX
+		"Place cave-in":
+			var list := mine.cave_ins.duplicate()
+			if right:
+				list.erase(cell)
+			elif not cell in list:
+				list.append(cell)
+			if list != mine.cave_ins:
+				ur.create_action("Remove cave-in" if right else "Place cave-in")
+				ur.add_do_property(mine, "cave_ins", list)
+				ur.add_undo_property(mine, "cave_ins", mine.cave_ins)
+				ur.commit_action()
+		"Flood":
+			if right and _flood_start != Vector3i.MAX:
+				_flood_start = Vector3i.MAX
+			elif right:
+				for flood in mine.floods:
+					if flood and flood.corner_a.y == cell.y and flood.rect().has_point(Vector2i(cell.x, cell.z)):
+						_remove_from(mine, "floods", flood, "Remove flood")
+						break
+			elif _flood_start == Vector3i.MAX:
+				_flood_start = cell
+			else:
+				var list := mine.floods.duplicate()
+				list.append(MineFlood.make(_flood_start, cell))
+				ur.create_action("Flood")
+				ur.add_do_property(mine, "floods", list)
+				ur.add_undo_property(mine, "floods", mine.floods)
+				ur.commit_action()
+				_flood_start = Vector3i.MAX
 		"Place generator":
 			var at := KitMine.cell_position(cell)
 			if right:

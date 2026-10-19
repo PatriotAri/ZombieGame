@@ -336,8 +336,8 @@ bring a flashlight.
    is the entrance).
 4. Pick a tool (the mine must be selected). Its plan shows over everything,
    through the hill: the **Level** you're drawing on in yellow, the other
-   levels faint blue, entrances green, shafts a purple X, and what a click
-   would add in orange.
+   levels faint blue, entrances green, shafts a purple X, cave-ins a brown
+   box, floods outlined blue, and what a click would add in orange.
    - **Draw tunnel**: click where it starts, then each corner. It runs
      straight from corner to corner along the grid. **Esc** or **Enter**
      ends it; the next click starts another. Start or end on another tunnel
@@ -389,6 +389,21 @@ bring a flashlight.
   the mine works while one of its generators runs. In the game you pour in a
   **gas can** (found in workshops, on farms and in cars) for an hour's
   running, up to three. It's loud: zombies within 35 m hear it.
+
+**Hazards:**
+
+- **Cave-ins** (**Place cave-in**): click a tunnel's cell to fill it with
+  rock and broken timber, floor to roof (click again, or right-click, to take
+  it away). Zombies can't get past one either. In the game it takes a
+  **pickaxe** (found in workshops and on farms): hold interact on it for 12
+  seconds, noisily; stop and come back and you carry on where you were. Dug
+  through, it's gone for good (the save remembers).
+- **Floods** (**Flood**): click one corner of the flooded stretch, then the
+  opposite one, on the Level set here; right-click removes the flood under
+  the mouse. Its **Depth** is in the Inspector (Floods): from 1.3 m you
+  swim, and from 3 m a tunnel's flooded to its roof, so you swim through
+  holding your breath (25 seconds; then you drown, losing health). Zombies
+  that wade in deep drown. Floods can't be drained.
 
 Anything you put under the mine node (crates, lockers, carts of your own) is
 drawn in the dark with it.
@@ -493,7 +508,8 @@ posts you build instead.
 | Uphill | slower: half speed on a 45 degree slope | slower still: 30% speed at 45 degrees |
 | Steeper than 45 degrees | can't climb (you slide back) | can't climb |
 | Shallow water (25 cm to 1.3 m) | wade at 60% speed | 40% speed |
-| Deep water (1.3 m or more) | swim slowly, no guns | sink, and drown after 4 seconds |
+| Deep water (1.3 m or more) | swim slowly, no guns; crouch dives, jump comes up | sink, and drown after 4 seconds |
+| Head under water | 25 seconds of breath, then you drown (10 health a second); it comes back three times as fast | (drowned already) |
 | Crops and bushes | crouch in them to hide | can't see you unless right next to you |
 | Trees | solid trunks block you and bullets, and block sight | the same |
 | Hills | block sight | the same |
@@ -505,6 +521,8 @@ Where to change the numbers:
 - Zombies: the constants at the top of `characters/zombie/zombie.gd`
   (SLOPE_SLOWDOWN, WADE_FACTOR, DEEP_FACTOR, DROWN_SECONDS).
 - Water depths: `world/water.gd` (WADE_DEPTH, SWIM_DEPTH).
+- Breath: the constants by `breath` in `characters/player/player.gd`
+  (BREATH, DROWN_DAMAGE, BREATH_BACK).
 - Falls: `characters/fall.gd` (SAFE, DEADLY). Landing in water, holding on
   to a ladder or riding a mine's cage down never hurts.
 

@@ -150,6 +150,14 @@ var _fall := Fall.new()
 var is_crouching := false
 var _jumping := false # in the air from a jump (heavier gravity, jump_gravity_scale)
 var swimming := false # in deep water (world/water.gd): floating chest-deep
+## Under water (your head is: a flooded mine tunnel, or diving): your breath
+## runs out in BREATH seconds, and then you drown, DROWN_DAMAGE a second.
+## Back in the air it comes back BREATH_BACK times as fast.
+const BREATH := 25.0
+const DROWN_DAMAGE := 10.0
+const BREATH_BACK := 3.0
+var breath := BREATH
+var head_under := false
 var water_depth := 0.0 # meters of water at your feet (0 when dry)
 var _water_surface := NAN
 var in_cover := false # crouched in tall crops or bushes (world/cover.gd): zombies can't see you
@@ -264,8 +272,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var target := _looked_at()
 		if event.is_action_pressed("reload") and not _has_interaction(target):
 			_start_reload() # one button for both (X on a controller): nothing to use, so it reloads
-		elif _can_salvage() and not _salvage_yield(target).is_empty():
-			_salvage_target = target # a tap still opens it; holding strips it (_update_salvage)
+		elif (_can_salvage() and not _salvage_yield(target).is_empty()) or _can_dig(target):
+			_salvage_target = target # a tap still opens it; holding strips it, or digs it out (_update_salvage)
 			_salvage_held = 0.0
 		else:
 			_interact()
@@ -313,14 +321,21 @@ func _physics_process(delta: float) -> void:
 	_ladders = _ladders.filter(func(l: Area3D) -> bool: return is_instance_valid(l))
 	var climbing := not _ladders.is_empty()
 	_update_water()
+	_update_breath(delta)
 	_check_fell_out(delta)
 	if climbing:
 		velocity.y = 0.0 # holding on: no falling (_climb moves you up and down)
 		_jumping = false
 	elif swimming:
 		# Float chest-deep: drift up or down to SWIM_DEPTH below the surface.
+		# Crouch dives, jump swims up (under a flooded tunnel's roof, say).
 		_jumping = false
-		velocity.y = clampf((_water_surface - Water.SWIM_DEPTH - global_position.y) * 4.0, -2.0, 2.0)
+		if (Input.is_action_pressed("crouch") or crouch_latched) and not menu_open:
+			velocity.y = -swim_speed
+		elif Input.is_action_pressed("jump") and not menu_open:
+			velocity.y = swim_speed
+		else:
+			velocity.y = clampf((_water_surface - Water.SWIM_DEPTH - global_position.y) * 4.0, -2.0, 2.0)
 	elif not is_on_floor():
 		velocity.y -= gravity * (jump_gravity_scale if _jumping else 1.0) * delta
 	else:
@@ -448,6 +463,19 @@ func _update_water() -> void:
 	_water_surface = Water.surface_at(get_tree(), global_position)
 	water_depth = 0.0 if is_nan(_water_surface) else maxf(_water_surface - global_position.y, 0.0)
 	swimming = water_depth >= (Water.SWIM_DEPTH - 0.15 if swimming else Water.SWIM_DEPTH)
+
+
+## Your breath: going while your head's under water, then you drown.
+func _update_breath(delta: float) -> void:
+	var eye := camera.global_position
+	var surface := Water.surface_at(get_tree(), eye)
+	head_under = not is_nan(surface) and surface > eye.y
+	if head_under:
+		breath = maxf(breath - delta, 0.0)
+		if breath <= 0.0:
+			take_damage(DROWN_DAMAGE * delta, "drowned")
+	else:
+		breath = minf(breath + delta * BREATH_BACK, BREATH)
 
 
 ## Speed multiplier for the ground you're on: 1 on the flat, downhill or across
@@ -748,6 +776,11 @@ func _update_prompt() -> void:
 		prompt_text = "%s: %s" % [key, target.call("interact_prompt")]
 	if prompt_text == "":
 		prompt_text = _fortify_prompt()
+	# With the pickaxe, a cave-in says how far through it you are.
+	if _can_dig(target):
+		var done: float = target.call("dug")
+		prompt_text = "Digging...  %d%%" % roundi(100.0 * done) if _salvage_target == target and _salvage_held >= SALVAGE_TAP \
+				else "Hold %s: dig through the cave-in%s" % [key, "  (%d%% done)" % roundi(100.0 * done) if done > 0.0 else ""]
 	# With the crowbar, things you can strip for materials say so.
 	var got := _salvage_yield(target) if _can_salvage() else []
 	if not got.is_empty():
@@ -984,7 +1017,8 @@ func _salvage_yield(thing: Node3D) -> Array:
 func _update_salvage(delta: float) -> void:
 	if _salvage_target == null:
 		return
-	if not is_instance_valid(_salvage_target) or not _can_salvage() or _looked_at() != _salvage_target:
+	if not is_instance_valid(_salvage_target) or not (_can_salvage() or _can_dig(_salvage_target)) \
+			or _looked_at() != _salvage_target:
 		_salvage_target = null # looked away or switched hands: cancelled
 		return
 	if not Input.is_action_pressed("interact"):
@@ -996,8 +1030,16 @@ func _update_salvage(delta: float) -> void:
 	_salvage_sound_wait -= delta
 	if _salvage_held >= SALVAGE_TAP and _salvage_sound_wait <= 0.0:
 		_salvage_sound_wait = 0.6
+		if salvage == null: # (digging with the pickaxe: not looked up yet)
+			salvage = get_tree().get_first_node_in_group("salvage")
 		Sound.play_ui(self, "melee_hit", -6.0, 0.2) # prying and banging
 		make_noise(float(salvage.get("NOISE")))
+	if _can_dig(_salvage_target):
+		# The cave-in keeps count: let go and come back, and you carry on where you were.
+		if _salvage_held >= SALVAGE_TAP and _salvage_target.call("dig", delta):
+			_salvage_target = null
+			notify.emit("You dig your way through.")
+		return
 	if _salvage_held >= float(salvage.get("TIME")):
 		var got: Array = salvage.call("strip", _salvage_target)
 		_salvage_target = null
@@ -1055,6 +1097,12 @@ func _melee_weapon() -> Dictionary:
 
 
 ## Holding something that can pry things apart for materials.
+## Holding something that digs (the pickaxe) and looking at something to dig out (a cave-in).
+func _can_dig(target: Node3D) -> bool:
+	var weapon := GameData.weapon(held)
+	return weapon != null and weapon.digs and target != null and target.has_method("dig")
+
+
 func _can_salvage() -> bool:
 	var weapon := GameData.weapon(held)
 	return weapon != null and weapon.salvages

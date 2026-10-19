@@ -55,6 +55,8 @@ extends ItemData
 @export var stamina_cost := 15.0
 ## Can pry things apart for materials (hold interact on a car, a fence...).
 @export var salvages := false
+## Digs through things (hold interact on a mine's cave-in: world/map/mine_cave_in.gd).
+@export var digs := false
 
 
 func use_kind() -> String:

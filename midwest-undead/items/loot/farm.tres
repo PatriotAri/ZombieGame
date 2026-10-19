@@ -62,6 +62,15 @@ script = ExtResource("1_cphua")
 chance = 0.2
 items = Array[ExtResource("2_brjpj")]([SubResource("Resource_gaspick")])
 
+[sub_resource type="Resource" id="Resource_pickaxepick"]
+script = ExtResource("2_brjpj")
+item = "pickaxe"
+
+[sub_resource type="Resource" id="Resource_pickaxeroll"]
+script = ExtResource("1_cphua")
+chance = 0.06
+items = Array[ExtResource("2_brjpj")]([SubResource("Resource_pickaxepick")])
+
 [resource]
 script = ExtResource("3_k5ph5")
-rolls = Array[ExtResource("1_cphua")]([SubResource("Resource_6bvue"), SubResource("Resource_5h2gn"), SubResource("Resource_qnqcq"), SubResource("Resource_5fb84"), SubResource("Resource_p8rwq"), SubResource("Resource_gasroll")])
+rolls = Array[ExtResource("1_cphua")]([SubResource("Resource_6bvue"), SubResource("Resource_5h2gn"), SubResource("Resource_qnqcq"), SubResource("Resource_5fb84"), SubResource("Resource_p8rwq"), SubResource("Resource_gasroll"), SubResource("Resource_pickaxeroll")])

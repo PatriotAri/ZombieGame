@@ -28,6 +28,7 @@ var message_label: Label
 var objective_label: Label
 var story_label: Label
 var hurt_overlay: ColorRect
+var water_overlay: ColorRect # your head's under water
 var story_tween: Tween
 var toast_tween: Tween
 var hurt_tween: Tween
@@ -55,6 +56,10 @@ func _process(_delta: float) -> void:
 		ceili(_player.health), floori(_player.stamina), crouch, _player.hunger_text(),
 		_player.inventory.count("health_pack"), _player.money,
 	]
+	if _player.breath < _player.BREATH: # under water, or getting it back
+		status_label.text += "\nBreath %d%%%s" % [floori(100.0 * _player.breath / _player.BREATH),
+				"   DROWNING" if _player.breath <= 0.0 else ""]
+	water_overlay.visible = _player.head_under and not in_screen
 	held_label.text = _player.held_label()
 	var scoped := _player.is_scoped() and not in_screen
 	if _scope.visible != scoped:
@@ -64,7 +69,7 @@ func _process(_delta: float) -> void:
 	prompt_label.text = _player.prompt_text
 	clock_label.text = _day_night.clock_text()
 	if _player.is_dead:
-		var cause: String = {"starved": "You starved.", "shot": "You were shot.", "fell": "You fell to your death."}.get(_player.death_cause, "You were bitten.")
+		var cause: String = {"starved": "You starved.", "shot": "You were shot.", "fell": "You fell to your death.", "drowned": "You drowned."}.get(_player.death_cause, "You were bitten.")
 		if _has_save_on_death:
 			message_label.text = "%s\nLoading your last save...   (%s to load now)" % [cause, Controls.hint("restart")]
 		else:
@@ -126,6 +131,14 @@ func _build() -> void:
 	hurt_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(hurt_overlay)
 	hurt_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	# Murky green-blue when your head's under water. Behind the text too.
+	water_overlay = ColorRect.new()
+	water_overlay.color = Color(0.05, 0.18, 0.2, 0.55)
+	water_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	water_overlay.visible = false
+	add_child(water_overlay)
+	water_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	status_label = Label.new()
 	status_label.position = Vector2(20, 16)
