@@ -22,6 +22,7 @@ const Controls := preload("res://core/controls.gd")
 const Inventory := preload("res://items/inventory.gd")
 const LootSpot := preload("res://items/loot_spot.gd")
 const GroundItem := preload("res://items/ground_item.gd")
+const Fall := preload("res://characters/fall.gd")
 const StructurePiece := preload("res://world/structure_piece.gd")
 const Sound := preload("res://core/sound.gd")
 const Settings := preload("res://core/settings.gd")
@@ -145,6 +146,7 @@ var held := "hands"
 var is_dead := false
 ## What killed you, for the death message: "bitten", "shot" or "starved".
 var death_cause := ""
+var _fall := Fall.new()
 var is_crouching := false
 var _jumping := false # in the air from a jump (heavier gravity, jump_gravity_scale)
 var swimming := false # in deep water (world/water.gd): floating chest-deep
@@ -330,6 +332,9 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, walk_speed)
 		velocity.z = move_toward(velocity.z, 0.0, walk_speed)
 		move_and_slide()
+		var fell := _fall.update(self, max_health, gravity, climbing or swimming)
+		if fell > 0.0:
+			take_damage(fell, "fell")
 		_update_stamina(delta, false)
 		_update_hunger(delta)
 		_update_flashlight(delta)
@@ -411,6 +416,9 @@ func _physics_process(delta: float) -> void:
 	if climbing:
 		_climb(input_dir)
 	move_and_slide()
+	var fell := _fall.update(self, max_health, gravity, climbing or swimming)
+	if fell > 0.0:
+		take_damage(fell, "fell")
 
 	_update_stamina(delta, sprinting)
 	_update_hunger(delta)
@@ -951,7 +959,10 @@ func _climb(input_dir: Vector2) -> void:
 	if camera.rotation.x < deg_to_rad(-35.0):
 		push = -push
 	velocity.y = push * climb_speed
-	if not is_on_floor() and global_position.y < top_y - 0.1:
+	# A mine's ladder has landings on the way up (kit_mine.gd): step off there too.
+	var landing := (ladder.get_meta("landings", []) as Array).any(func(y: float) -> bool:
+		return absf(global_position.y - y) < 0.25)
+	if not is_on_floor() and global_position.y < top_y - 0.1 and not landing:
 		velocity.x = 0.0
 		velocity.z = 0.0
 

@@ -133,6 +133,7 @@ var day_night: DayNight
 # "town_id" (its path in the map scene), so saves find it again.
 var loot_spots: Array[LootSpot] = []
 var doors: Array[Door] = [] # moved out of the map, under main (see _load_town)
+var mines: Array[KitMine] = [] # their generators' fuel and cages are saved
 var windows: Array[WindowPane] = []
 var spawn_points: Array[SpawnPoint] = []
 var zombie_spawns: Array[ZombieSpawn] = []
@@ -280,7 +281,9 @@ func _ready() -> void:
 			if back.is_empty():
 				hud.show_toast("Take down what's on top of it first.")
 			for id: String in back:
-				player.give_item(id, back[id]))
+				player.give_item(id, back[id])
+		elif obj.has_method("interact"): # a mine's generator, cage lever, call button
+			obj.call("interact", player))
 	# Getting hurt never closes a menu or a conversation: only Esc (each menu
 	# handles its own) or dying does.
 	for menu: Callable in [inventory_menu.close, shop_menu.close, dialogue.close, save_menu.close, map_menu.close,
@@ -371,9 +374,17 @@ func _load_town() -> void:
 			doors.append(node)
 		if node.has_meta("salvage_label") and not node is LootSpot:
 			salvage_others.append(node)
-	for door in doors:
-		if door.in_navigation:
-			continue # a garage door stays put, in the bake (door.gd)
+		if node is KitMine:
+			node.set_meta("town_id", _town_path(node))
+			mines.append(node)
+	var moving: Array[Node3D] = [] # moving parts that aren't doors: a mine's cage and its gates
+	for node in town.find_children("*", "", true, false):
+		if node.is_in_group(&"not_in_navigation"):
+			moving.append(node)
+	var to_move: Array = [] # (untyped: doors and the rest)
+	to_move.append_array(doors.filter(func(d: Door) -> bool: return not d.in_navigation)) # (a garage door stays in the bake: door.gd)
+	to_move.append_array(moving)
+	for door: Node3D in to_move:
 		# Where it is in the map (the map's own nodes aren't in the tree yet).
 		var xform := door.transform
 		var parent := door.get_parent()
@@ -711,6 +722,9 @@ func _save_game(path: String) -> bool:
 	var door_data := {}
 	for door in doors:
 		door_data[door.get_meta("town_id")] = door.save_state()
+	var mine_data := {}
+	for mine in mines:
+		mine_data[mine.get_meta("town_id")] = mine.save_state()
 	var bandit_data := {} # by the SpawnPoint each started at
 	for bandit in bandits:
 		bandit_data[bandit.get_meta("spawn_id")] = {"position": SaveGame.vec_to_array(bandit.global_position),
@@ -727,6 +741,7 @@ func _save_game(path: String) -> bool:
 		"horde": horde.save_state(),
 		"bandits": bandit_data,
 		"doors": door_data,
+		"mines": mine_data,
 		"fortifications": fortifications.save_state(),
 		"structures": structures.save_state(),
 		"discovered": discoveries.save_state(),
@@ -762,6 +777,10 @@ func _apply_save(data: Dictionary) -> void:
 	for door in doors:
 		if door_data.has(door.get_meta("town_id")):
 			door.load_state(door_data[door.get_meta("town_id")])
+	var mine_data: Dictionary = data.get("mines", {})
+	for mine in mines:
+		if mine_data.has(mine.get_meta("town_id")):
+			mine.load_state(mine_data[mine.get_meta("town_id")])
 	fortifications.load_state(data.get("fortifications", {}))
 	structures.load_state(data.get("structures", []))
 	discoveries.load_state(data.get("discovered", []))

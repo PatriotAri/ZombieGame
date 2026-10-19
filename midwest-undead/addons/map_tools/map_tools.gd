@@ -44,7 +44,9 @@ const PlantPainter := preload("res://world/map/plant_painter.gd")
 const Zone := preload("res://world/markers/zone.gd")
 const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
 const Building := preload("res://world/building.gd")
-const MINE_TOOLS := ["Off", "Draw tunnel", "Draw chamber", "Mark entrance"]
+const MINE_TOOLS := ["Off", "Draw tunnel", "Draw chamber", "Mark entrance", "Place shaft", "Place generator"]
+const SHAFT_KINDS := ["Ladder", "Open", "Cage"] # (MineShaft.Kind's order)
+const RAMP_CELLS := 3 # a ramp's cells for each level it climbs: about 28 degrees
 const BUILDING_TOOLS := ["Off", "Draw outline", "Draw inner wall", "Place stairs", "Add door", "Add window", "Add doorway",
 		"Add garage door", "Paint room", "Place chimney", "Place dormer", "Add porch", "Add cellar door"]
 ## Openings the tools add: [width, bottom, top]. Doors and doorways are as wide
@@ -97,6 +99,8 @@ var _mine_rails: CheckBox
 var _planned: Node # the mine showing its plan
 var _tunnel: MineTunnel # Draw tunnel: the one being drawn, or null
 var _chamber_start := Vector3i.MAX # Draw chamber: its first corner, before the second click
+var _shaft_start := Vector3i.MAX # Place shaft: its first end, before the click on the other level
+var _shaft_kind: OptionButton
 
 
 func _enter_tree() -> void:
@@ -224,6 +228,11 @@ func _build_panel() -> Control:
 	_mine_rails.tooltip_text = "New tunnels get rails (each tunnel's Rails and Carts are in the Inspector, Tunnels)."
 	_mine_rails.button_pressed = true
 	mines.add_child(_mine_rails)
+	_shaft_kind = OptionButton.new()
+	for k: String in SHAFT_KINDS:
+		_shaft_kind.add_item(k + " shaft")
+	_shaft_kind.tooltip_text = "What Place shaft puts in: a ladder (with landings), an open drop, or a cage elevator (it needs a generator running somewhere in the mine)."
+	mines.add_child(_shaft_kind)
 
 	var places := _section(root, "Zones and camps")
 	_button(places, "New zone", "Adds a zone (a named area) in front of the camera. Name it in the Inspector, then Draw points around its edge.", _new_zone)
@@ -1196,6 +1205,7 @@ func _set_list(building: Node3D, property: String, value: Array, action: String)
 func _on_mine_tool(_index: int) -> void:
 	_tunnel = null
 	_chamber_start = Vector3i.MAX
+	_shaft_start = Vector3i.MAX
 	if _selected is KitMine:
 		_selected.set("draft", [] as Array[Vector3i])
 	_on_selection_changed()
@@ -1204,12 +1214,16 @@ func _on_mine_tool(_index: int) -> void:
 func _mine_help() -> String:
 	match MINE_TOOLS[_mine_tool.selected]:
 		"Draw tunnel":
-			return "Click where the tunnel starts, then each corner (straight lines, on the 2.5 m grid). Esc or Enter ends it; the next click starts another. Start or end on another tunnel or a chamber to join them. Right-click takes back the last corner, or removes the tunnel under the mouse. Rails and Carts: in the Inspector (Tunnels)."
+			return "Click where the tunnel starts, then each corner (straight lines, on the 2.5 m grid). Change the Level between corners for a ramp (at least 3 cells per level; longer is gentler). Esc or Enter ends it; the next click starts another. Start or end on another tunnel or a chamber to join them. Right-click takes back the last corner, or removes the tunnel under the mouse. Rails and Carts: in the Inspector (Tunnels)."
 		"Draw chamber":
 			return "Click one corner of the chamber, then the opposite one. Its Height is in the Inspector (Chambers): taller than 4 m, a tunnel on the level above that reaches it opens onto a ledge. Right-click removes the chamber under the mouse."
+		"Place shaft":
+			return "Pick its kind below the Rails box. Click where it goes on one Level, then change the Level and click again: it runs between the two (tunnels there that reach its side open into it). Coming out on the surface (To Surface, Surface Height) is in the Inspector (Shafts). Esc cancels; right-click removes the shaft under the mouse."
+		"Place generator":
+			return "Click where it goes (on the Level set here). It powers every cage in this mine while it runs: pour in a gas can in the game for an hour's running, and it's loud. Right-click removes the one under the mouse."
 		"Mark entrance":
 			return "Click the end of a tunnel that comes out of the hill: no wall there, a timber portal and the floor running on 1.5 m. Again: back to a dead end. Then set the ground level with the floor where it ends, and press Apply."
-	return "Pick a tool to draw tunnels and chambers on the Level set here (the plan shows through the hill: this level yellow, others blue, entrances green). Put the node where the entrance meets the hillside and press Apply to open the hill. Everything's also in the Inspector."
+	return "Pick a tool to draw tunnels and chambers, and put in shafts and generators, on the Level set here (the plan shows through the hill: this level yellow, others blue, entrances green). Put the node where the entrance meets the hillside and press Apply to open the hill. Everything's also in the Inspector."
 
 
 ## Where the mouse points on the mine's Level, as a cell, or Vector3i.MAX.
@@ -1222,11 +1236,21 @@ func _mine_cell(camera: Camera3D, at: Vector2, mine: KitMine) -> Vector3i:
 	return KitMine.cell_at(mine.to_local(hit), level)
 
 
-## The corner a click makes after `last`: straight on from it, along whichever way is further.
+## The corner a click makes after `last`: straight on from it, along whichever
+## way is further. On another level it's a ramp: at least RAMP_CELLS cells
+## between for each level, so it's lengthened if the click was closer.
 static func _straight(last: Vector3i, cell: Vector3i) -> Vector3i:
-	if absi(cell.x - last.x) >= absi(cell.z - last.z):
-		return Vector3i(cell.x, cell.y, last.z)
-	return Vector3i(last.x, cell.y, cell.z)
+	var along_x := absi(cell.x - last.x) >= absi(cell.z - last.z)
+	var corner := Vector3i(cell.x, cell.y, last.z) if along_x else Vector3i(last.x, cell.y, cell.z)
+	var need := RAMP_CELLS * absi(cell.y - last.y) + 1 if cell.y != last.y else 0
+	var run := (corner.x - last.x) if along_x else (corner.z - last.z)
+	if absi(run) < need:
+		run = need * (signi(run) if run != 0 else 1)
+		if along_x:
+			corner.x = last.x + run
+		else:
+			corner.z = last.z + run
+	return corner
 
 
 func _mine_input(camera: Camera3D, event: InputEvent) -> int:
@@ -1235,9 +1259,11 @@ func _mine_input(camera: Camera3D, event: InputEvent) -> int:
 	if _tunnel and not _tunnel in mine.tunnels:
 		_tunnel = null # its start was undone
 	var key := event as InputEventKey
-	if key and key.pressed and key.keycode in [KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER] and (_tunnel or _chamber_start != Vector3i.MAX):
+	if key and key.pressed and key.keycode in [KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER] \
+			and (_tunnel or _chamber_start != Vector3i.MAX or _shaft_start != Vector3i.MAX):
 		_tunnel = null
 		_chamber_start = Vector3i.MAX
+		_shaft_start = Vector3i.MAX
 		mine.draft = [] as Array[Vector3i]
 		return AFTER_GUI_INPUT_STOP
 	var mouse := event as InputEventMouse
@@ -1312,6 +1338,46 @@ func _mine_input(camera: Camera3D, event: InputEvent) -> int:
 				ur.add_undo_property(mine, "chambers", mine.chambers)
 				ur.commit_action()
 				_chamber_start = Vector3i.MAX
+		"Place shaft":
+			if right and _shaft_start != Vector3i.MAX:
+				_shaft_start = Vector3i.MAX
+			elif right:
+				for shaft in mine.shafts:
+					if shaft and shaft.column == Vector2i(cell.x, cell.z):
+						_remove_from(mine, "shafts", shaft, "Remove shaft")
+						break
+			elif _shaft_start == Vector3i.MAX:
+				_shaft_start = cell
+			elif cell.y != _shaft_start.y:
+				var list := mine.shafts.duplicate()
+				list.append(MineShaft.make(Vector2i(_shaft_start.x, _shaft_start.z), _shaft_start.y, cell.y, _shaft_kind.selected))
+				ur.create_action("Place shaft")
+				ur.add_do_property(mine, "shafts", list)
+				ur.add_undo_property(mine, "shafts", mine.shafts)
+				ur.commit_action()
+				_shaft_start = Vector3i.MAX
+		"Place generator":
+			var at := KitMine.cell_position(cell)
+			if right:
+				for generator in mine.find_children("*", "MineGenerator", true, true):
+					if KitMine.cell_at((generator as Node3D).position, cell.y) == cell:
+						ur.create_action("Remove generator")
+						ur.add_do_method(mine, "remove_child", generator)
+						ur.add_undo_method(mine, "add_child", generator, true)
+						ur.add_undo_method(self, "_own", generator, EditorInterface.get_edited_scene_root())
+						ur.add_undo_reference(generator)
+						ur.commit_action()
+						break
+			else:
+				var generator := MineGenerator.new()
+				generator.name = "Generator"
+				generator.position = at
+				ur.create_action("Place generator") # (the mine stays selected: more to place)
+				ur.add_do_method(mine, "add_child", generator, true)
+				ur.add_do_method(self, "_own", generator, EditorInterface.get_edited_scene_root())
+				ur.add_do_reference(generator)
+				ur.add_undo_method(mine, "remove_child", generator)
+				ur.commit_action()
 		"Mark entrance":
 			if right:
 				return AFTER_GUI_INPUT_STOP

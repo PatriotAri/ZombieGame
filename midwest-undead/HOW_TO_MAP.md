@@ -336,7 +336,8 @@ bring a flashlight.
    is the entrance).
 4. Pick a tool (the mine must be selected). Its plan shows over everything,
    through the hill: the **Level** you're drawing on in yellow, the other
-   levels faint blue, entrances green, and what a click would add in orange.
+   levels faint blue, entrances green, shafts a purple X, and what a click
+   would add in orange.
    - **Draw tunnel**: click where it starts, then each corner. It runs
      straight from corner to corner along the grid. **Esc** or **Enter**
      ends it; the next click starts another. Start or end on another tunnel
@@ -359,6 +360,35 @@ bring a flashlight.
    (wherever the ground is inside a tunnel or chamber, or less than a meter
    over its ceiling); under plenty of hill it stays closed. Apply again after
    moving it, drawing more, or re-sculpting the ground over it.
+
+**Between levels:**
+
+- **Ramps.** While drawing a tunnel, change the **Level** before clicking the
+  next corner: the stretch between the two corners slopes from one level to
+  the other. It needs at least 3 cells for each level it climbs (about 28
+  degrees), and Map Tools lengthens it if you click closer; draw it longer
+  for a gentler slope. Zombies walk ramps.
+- **Shafts** (**Place shaft**): pick the kind (under the Rails box), click
+  where it goes on one Level, change the Level and click again. Tunnels on
+  the levels it passes that reach its side open into it. Right-click removes
+  the shaft under the mouse.
+  - **Ladder shaft:** a ladder up one wall (the one no tunnel comes in by),
+    and timber landings, half the shaft, on each level a tunnel comes in on.
+    You climb up the open half and step off onto a landing.
+  - **Open shaft:** just a drop. Falls hurt from 4 m up, and 12 m kills.
+  - **Cage shaft:** an elevator. It stops at the bottom and on each level a
+    tunnel comes in on. A lever inside sends it to the next stop; a call
+    button beside each stop's gate brings it there. The gates stay shut
+    unless the cage is at that stop. Zombies that follow you into it ride
+    along. It needs power (next).
+  - **To Surface** (in the Inspector, Shafts): the shaft comes out on the
+    surface, with a stone collar and a timber headframe at **Surface
+    Height** (meters over its top level's floor). Set that to where the
+    ground is, and press Apply.
+- **Generator** (**Place generator**): click where it goes. Every cage in
+  the mine works while one of its generators runs. In the game you pour in a
+  **gas can** (found in workshops, on farms and in cars) for an hour's
+  running, up to three. It's loud: zombies within 35 m hear it.
 
 Anything you put under the mine node (crates, lockers, carts of your own) is
 drawn in the dark with it.
@@ -467,6 +497,7 @@ posts you build instead.
 | Crops and bushes | crouch in them to hide | can't see you unless right next to you |
 | Trees | solid trunks block you and bullets, and block sight | the same |
 | Hills | block sight | the same |
+| Falling | nothing up to 4 m, then it hurts more the further you fall; 12 m kills | the same |
 
 Where to change the numbers:
 - You: `characters/player/player.tscn`, root node, Inspector, **Movement**
@@ -474,6 +505,8 @@ Where to change the numbers:
 - Zombies: the constants at the top of `characters/zombie/zombie.gd`
   (SLOPE_SLOWDOWN, WADE_FACTOR, DEEP_FACTOR, DROWN_SECONDS).
 - Water depths: `world/water.gd` (WADE_DEPTH, SWIM_DEPTH).
+- Falls: `characters/fall.gd` (SAFE, DEADLY). Landing in water, holding on
+  to a ladder or riding a mine's cage down never hurts.
 
 Zombies find their way with the **navigation mesh**: a map of where they can
 walk, worked out from the ground and everything solid on it. The game works

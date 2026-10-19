@@ -48,6 +48,7 @@ const Water := preload("res://world/water.gd")
 const Ground := preload("res://world/ground.gd")
 const HumanoidBody := preload("res://characters/humanoid_body.gd")
 const Blood := preload("res://effects/blood.gd")
+const Fall := preload("res://characters/fall.gd")
 
 enum State { IDLE, INVESTIGATE, HUNT }
 
@@ -131,6 +132,7 @@ const PATHS_PER_FRAME := 4
 var state := State.IDLE
 var max_health := 100.0 # its kind's
 var health := 100.0 # set to max_health in _ready
+var _fall := Fall.new() # falls hurt (characters/fall.gd)
 var kind_data: ZombieKind # the file for `kind`
 var eye_height := EYE_HEIGHT
 var is_dead := false
@@ -272,6 +274,12 @@ func _physics_process(delta: float) -> void:
 		_far_delta = 0.0
 	if not is_on_floor():
 		velocity.y -= gravity * delta
+	var fell := _fall.update(self, max_health, gravity, _water_depth >= Water.SWIM_DEPTH)
+	if fell > 0.0:
+		health -= fell
+		if health <= 0.0:
+			die()
+			return
 	if _update_water(delta):
 		return # drowned
 	if global_position.y < Ground.height_range().x - 30.0:
@@ -356,8 +364,9 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0.0, speed)
 		# Standing still on solid ground: nothing to move, so skip the physics
 		# step. Most zombies are standing around most of the time. (Not one
-		# beating on a door under its feet: that's below.)
-		if is_on_floor() and velocity.length_squared() < 0.0001 and not _on_door():
+		# beating on a door under its feet: that's below. Nor while a mine's
+		# cage is moving: one in it has to ride along.)
+		if is_on_floor() and velocity.length_squared() < 0.0001 and not _on_door() and not MineCage.any_moving():
 			return
 	var before := global_position
 	var on_door := _on_door()

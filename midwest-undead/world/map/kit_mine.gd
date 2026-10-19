@@ -27,7 +27,9 @@ const ROCK := preload("res://world/kit/materials/mine_rock.tres")
 const DIRT := preload("res://world/kit/materials/mine_floor.tres")
 const TIMBER := preload("res://world/kit/materials/timber.tres")
 const STEEL := preload("res://world/kit/materials/steel.tres")
-const STONE := preload("res://world/kit/materials/stone_gray.tres") # an entrance's face
+const STONE := preload("res://world/kit/materials/stone_gray.tres") # an entrance's face, a shaft's collar
+const PLANKS := preload("res://world/kit/materials/wood_planks.tres")
+const LADDER := preload("res://world/props/ladder.tscn")
 const CART := "res://world/kit/furniture/mine_cart.tscn"
 const CELL := 2.5 # meters: a tunnel's width
 const LEVEL := 4.0 # meters from one level's floor to the next
@@ -40,6 +42,8 @@ const LIT_CELLS := 2 # cells in from an entrance that the daylight still reaches
 const APRON := 1.5 # meters the floor runs on out of an entrance, to meet the ground
 const HEADWALL := 3.0 # meters of rock face over an entrance's opening
 const WING := 2.0 # meters of rock face beside it
+const COLLAR := 1.0 # meters of stone round a shaft's top, out from its walls' inside
+const CLIMB_REACH := 1.0 # how far out from a ladder you can be and still climb
 const SIDES: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 
 @export var tunnels: Array[MineTunnel] = []:
@@ -51,6 +55,11 @@ const SIDES: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1),
 	set(value):
 		_watch(chambers, value)
 		chambers = value
+		_changed()
+@export var shafts: Array[MineShaft] = []:
+	set(value):
+		_watch(shafts, value)
+		shafts = value
 		_changed()
 
 ## Map Tools: the plan's overlay (editor only, never saved).
@@ -72,12 +81,13 @@ var _plan: MeshInstance3D
 var _dirty := true
 var _queued := false
 # Worked out from the tunnels and chambers by _collect():
-var _cells := {} # Vector3i cell -> {"top": its height, "chamber": bool}
+var _cells := {} # Vector3i cell -> {"top": its height, "chamber": bool, "floor", "rise", "up": a ramp's (MineTunnel.steps())}
 var _columns := {} # Vector2i (x, z) -> Array[Vector2] open spans (floor, ceiling), low to high
 var _open := {} # Vector4i (x, z, side x, side z) -> true: an entrance's open end
 var _lit := {} # Vector2i column -> true: daylight still reaches it
 var _portals: Array = [] # [Vector3i cell, Vector2i outward]
 var _mouths := {} # Vector2i column -> Vector2i outward: an entrance's mouth
+var _roofless := {} # Vector2i column -> the top of a shaft that comes out on the surface (meters)
 
 
 func _ready() -> void:
@@ -104,6 +114,32 @@ static func underground(node: Node) -> void:
 		underground(child)
 
 
+## Its generators' fuel and its cages' stops (main.gd saves them).
+func save_state() -> Dictionary:
+	var data := {"generators": [], "cages": []}
+	for generator in find_children("*", "MineGenerator", true, false):
+		(data["generators"] as Array).append(generator.save_state())
+	for cage in _cages():
+		(data["cages"] as Array).append(cage.save_state())
+	return data
+
+
+func load_state(data: Dictionary) -> void:
+	var generators := find_children("*", "MineGenerator", true, false)
+	var saved: Array = data.get("generators", [])
+	for i in mini(generators.size(), saved.size()):
+		generators[i].load_state(saved[i])
+	var cages := _cages()
+	saved = data.get("cages", [])
+	for i in mini(cages.size(), saved.size()):
+		cages[i].load_state(saved[i])
+
+
+## Its cages (in the game they're moved out from under it: main.gd).
+func _cages() -> Array:
+	return _generated.filter(func(n: Node) -> bool: return is_instance_valid(n) and n is MineCage)
+
+
 ## Where floor `level` is, in the mine's own space.
 static func cell_position(cell: Vector3i) -> Vector3:
 	return Vector3(cell.x * CELL, cell.y * LEVEL, cell.z * CELL)
@@ -119,7 +155,7 @@ func lowest_floor() -> float:
 	_collect()
 	var low := 0.0
 	for cell: Vector3i in _cells:
-		low = minf(low, cell.y * LEVEL)
+		low = minf(low, _cells[cell]["floor"])
 	return global_position.y + low - THICK
 
 
@@ -154,18 +190,31 @@ func _collect() -> void:
 	_lit.clear()
 	_portals.clear()
 	_mouths.clear()
+	_roofless.clear()
 	for tunnel in tunnels:
 		if tunnel == null:
 			continue
-		for cell in tunnel.cells():
-			if not _cells.has(cell):
-				_cells[cell] = {"top": TUNNEL_HEIGHT, "chamber": false}
+		for step in tunnel.steps():
+			if not _cells.has(step["cell"]):
+				_cells[step["cell"]] = {"top": TUNNEL_HEIGHT, "chamber": false, "floor": step["floor"], "rise": step["rise"],
+						"up": step["up"]}
 	for chamber in chambers:
 		if chamber == null:
 			continue
 		for cell in chamber.cells():
 			var top: float = _cells[cell]["top"] if _cells.has(cell) else 0.0
-			_cells[cell] = {"top": maxf(chamber.height, top), "chamber": true}
+			_cells[cell] = {"top": maxf(chamber.height, top), "chamber": true, "floor": cell.y * LEVEL, "rise": 0.0,
+					"up": Vector2i.ZERO}
+	for shaft in shafts:
+		if shaft == null or shaft.top < shaft.bottom:
+			continue
+		for level in range(shaft.bottom, shaft.top + 1):
+			# Each level's piece reaches into the next one's, so they're one space.
+			var high := shaft.rise() if level == shaft.top else LEVEL + 0.01
+			_cells[Vector3i(shaft.column.x, level, shaft.column.y)] = {"top": high, "chamber": false, "floor": level * LEVEL,
+					"rise": 0.0, "up": Vector2i.ZERO, "shaft": shaft}
+		if shaft.to_surface:
+			_roofless[shaft.column] = shaft.top * LEVEL + shaft.rise()
 	for tunnel in tunnels:
 		if tunnel == null:
 			continue
@@ -178,10 +227,9 @@ func _collect() -> void:
 			_entrance(cells, true)
 	for cell: Vector3i in _cells:
 		var column := Vector2i(cell.x, cell.z)
-		var floor_y := cell.y * LEVEL
 		if not _columns.has(column):
 			_columns[column] = []
-		(_columns[column] as Array).append(Vector2(floor_y, floor_y + float(_cells[cell]["top"])))
+		(_columns[column] as Array).append(_span(cell))
 	for column: Vector2i in _columns:
 		var spans: Array = _columns[column]
 		spans.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
@@ -193,6 +241,17 @@ func _collect() -> void:
 			else:
 				merged.append(span)
 		_columns[column] = merged
+
+
+## A cell's open space, floor to ceiling (a ramp's from its low edge's floor
+## to its high edge's ceiling).
+func _span(cell: Vector3i) -> Vector2:
+	var c: Dictionary = _cells[cell]
+	return Vector2(c["floor"], c["floor"] + c["rise"] + c["top"])
+
+
+func _is_ramp(cell: Vector3i) -> bool:
+	return _cells[cell]["rise"] > 0.0
 
 
 ## A tunnel end that opens out of the hill: no end wall, a portal, daylight.
@@ -282,6 +341,7 @@ func _rebuild() -> void:
 	_collect()
 	var km := KitMesh.new()
 	_floors_and_ceilings(km)
+	_ramps(km)
 	_walls(km)
 	_frames(km)
 	_rails(km)
@@ -289,8 +349,16 @@ func _rebuild() -> void:
 	for node in _generated:
 		if node is MeshInstance3D:
 			(node as MeshInstance3D).layers = GameData.RENDER_UNDERGROUND
-	var outside := KitMesh.new() # the portals, out in the daylight
+	var outside := KitMesh.new() # the portals and collars, out in the daylight
 	_portals_of(outside)
+	var inside := KitMesh.new() # the shafts' landings
+	for shaft in shafts:
+		if shaft and shaft.top >= shaft.bottom:
+			_shaft(shaft, inside, outside)
+	for node in inside.add_to(self, "Landings"):
+		if node is MeshInstance3D:
+			(node as MeshInstance3D).layers = GameData.RENDER_UNDERGROUND
+		_generated.append(node)
 	for node in outside.add_to(self, "Portals"):
 		node.set_meta("daylight", true) # (underground() leaves it be)
 		_generated.append(node)
@@ -307,6 +375,8 @@ func _floors_and_ceilings(km: KitMesh) -> void:
 			if not floors.has(span.x):
 				floors[span.x] = []
 			(floors[span.x] as Array).append(column)
+			if _roofless.has(column) and span.y >= _roofless[column] - 0.001:
+				continue # open to the sky
 			if not ceilings.has(span.y):
 				ceilings[span.y] = []
 			(ceilings[span.y] as Array).append(column)
@@ -318,6 +388,27 @@ func _floors_and_ceilings(km: KitMesh) -> void:
 		for r in _rects(ceilings[y]):
 			km.box(Vector3(r.size.x * CELL, THICK, r.size.y * CELL), Transform3D(Basis.IDENTITY, _rect_center(r, y + THICK / 2.0)),
 					KitMesh.all(ROCK))
+
+
+## A ramp's sloping floor and ceiling, a slab for each cell (under and over
+## them, the flat floor and ceiling of its span are closed off by its walls).
+func _ramps(km: KitMesh) -> void:
+	for cell: Vector3i in _cells:
+		if not _is_ramp(cell):
+			continue
+		var c: Dictionary = _cells[cell]
+		var up := Vector3(c["up"].x, 0, c["up"].y)
+		var rise: float = c["rise"]
+		var along := up * CELL + Vector3(0, rise, 0) # its low edge to its high edge
+		var z := along.normalized()
+		var x := Vector3.UP.cross(z).normalized() # across, level
+		var normal := z.cross(x) # (a right-handed frame: faces the right way out)
+		var basis := Basis(x, normal, z)
+		var middle := cell_position(cell)
+		middle.y = c["floor"] + rise / 2.0
+		var size := Vector3(CELL, THICK, along.length() + 0.05)
+		km.box(size, Transform3D(basis, middle - normal * THICK / 2.0), [ROCK, ROCK, ROCK, DIRT, ROCK, ROCK])
+		km.box(size, Transform3D(basis, middle + Vector3(0, c["top"], 0) + normal * THICK / 2.0), KitMesh.all(ROCK))
 
 
 ## Rock walls wherever an open space meets solid ground: beside a closed
@@ -385,14 +476,14 @@ func _frames(km: KitMesh) -> void:
 		var cells := tunnel.cells()
 		for i in range(1, cells.size() - 1):
 			var cell := cells[i]
-			if i % FRAME_EVERY != 0 or placed.has(cell) or _cells[cell]["chamber"]:
+			if i % FRAME_EVERY != 0 or placed.has(cell) or _cells[cell]["chamber"] or _is_ramp(cell) or _cells[cell].has("shaft"):
 				continue
 			var way := Vector2i(cells[i + 1].x - cells[i - 1].x, cells[i + 1].z - cells[i - 1].z)
 			if way.x != 0 and way.y != 0:
 				continue # a corner
 			var across := Vector2i(1, 0) if way.x == 0 else Vector2i(0, 1)
 			var column := Vector2i(cell.x, cell.z)
-			var span := Vector2(cell.y * LEVEL, cell.y * LEVEL + TUNNEL_HEIGHT)
+			var span := _span(cell)
 			if _overlaps(_columns.get(column + across, []), span) or _overlaps(_columns.get(column - across, []), span):
 				continue # a side passage here
 			placed[cell] = true
@@ -450,8 +541,8 @@ func _rails(km: KitMesh) -> void:
 		for i in cells.size() - 1:
 			var a := cell_position(cells[i])
 			var b := cell_position(cells[i + 1])
-			if not is_equal_approx(a.y, b.y):
-				continue
+			if not is_equal_approx(a.y, b.y) or _is_ramp(cells[i]) or _is_ramp(cells[i + 1]):
+				continue # (not on ramps)
 			var way := (b - a).normalized()
 			var across := Vector3(absf(way.z), 0, absf(way.x))
 			var along := Vector3(absf(way.x), 0, absf(way.z))
@@ -518,7 +609,7 @@ func _dead_end(tip: Vector3i, back: Vector3i) -> bool:
 		return false
 	for side in SIDES:
 		var next := tip + Vector3i(side.x, 0, side.y)
-		if next != back and _overlaps(_columns.get(Vector2i(next.x, next.z), []), Vector2(tip.y * LEVEL, tip.y * LEVEL + TUNNEL_HEIGHT)):
+		if next != back and _overlaps(_columns.get(Vector2i(next.x, next.z), []), _span(tip)):
 			return false
 	return true
 
@@ -530,9 +621,203 @@ func _plain(cell: Vector3i) -> bool:
 	var count := 0
 	for side in SIDES:
 		var next := Vector2i(cell.x + side.x, cell.z + side.y)
-		if _overlaps(_columns.get(next, []), Vector2(cell.y * LEVEL, cell.y * LEVEL + TUNNEL_HEIGHT)):
+		if _overlaps(_columns.get(next, []), _span(cell)):
 			count += 1
 	return count == 2
+
+
+func _roofless_rise(column: Vector2i) -> float:
+	for shaft in shafts:
+		if shaft and shaft.column == column and shaft.to_surface:
+			return shaft.rise()
+	return 0.0
+
+
+## The levels a tunnel (or chamber) comes into the shaft on: level -> [sides].
+func _shaft_entries(shaft: MineShaft) -> Dictionary:
+	var entries := {}
+	for level in range(shaft.bottom, shaft.top + 1):
+		var on := Vector2(level * LEVEL, level * LEVEL + TUNNEL_HEIGHT)
+		for side in SIDES:
+			if _overlaps(_columns.get(shaft.column + side, []), on):
+				if not entries.has(level):
+					entries[level] = []
+				(entries[level] as Array).append(side)
+	return entries
+
+
+## A shaft's insides: for a ladder shaft, the ladder up the middle of the wall
+## no tunnel comes in by (or the fewest), and landings (the half of the shaft
+## away from the ladder) on the levels tunnels come in on, to step off onto.
+## Out on the surface, a stone collar round it and a timber headframe over it.
+func _shaft(shaft: MineShaft, inside: KitMesh, outside: KitMesh) -> void:
+	var center := cell_position(Vector3i(shaft.column.x, 0, shaft.column.y))
+	var entries := _shaft_entries(shaft)
+	var surface := shaft.top * LEVEL + shaft.surface_height
+	if shaft.kind == MineShaft.Kind.LADDER:
+		var wall: Vector2i = SIDES[0]
+		var fewest := INF
+		for side in SIDES:
+			var count := 0
+			for level: int in entries:
+				count += (entries[level] as Array).count(side)
+			if count < fewest:
+				fewest = count
+				wall = side
+		var w := Vector3(wall.x, 0, wall.y)
+		var across := Vector3(absi(wall.y), 0, absi(wall.x))
+		# Where you can step off: the bottom, each level a tunnel comes in on, the top.
+		var stops: Array[float] = [shaft.bottom * LEVEL]
+		for level in range(shaft.bottom + 1, shaft.top + 1):
+			if entries.has(level) or (level == shaft.top and not shaft.to_surface):
+				stops.append(level * LEVEL)
+				# The landing.
+				inside.box(across * CELL + Vector3(absi(wall.x), 0, absi(wall.y)) * (CELL / 2.0) + Vector3(0, 0.15, 0),
+						Transform3D(Basis.IDENTITY, center - w * CELL / 4.0 + Vector3(0, level * LEVEL - 0.075, 0)), KitMesh.all(PLANKS))
+		if shaft.to_surface:
+			stops.append(surface)
+		var foot := center + w * (CELL / 2.0 - 0.05) + Vector3(0, stops[0], 0)
+		var basis := Basis(Vector3.UP, atan2(-w.x, -w.z)) # its +Z out from the wall
+		var length := stops[-1] - stops[0] + 1.0
+		var look := KitProp.make(LADDER, [], Vector3(0.56, length, 0.06), Vector3(0, length / 2.0, 0))
+		look.transform = Transform3D(basis, foot)
+		add_child(look, false, Node.INTERNAL_MODE_BACK)
+		_generated.append(look)
+		if not Engine.is_editor_hint():
+			_climb_area(Transform3D(basis, foot), stops[-1] - stops[0], stops.slice(1, stops.size() - 1))
+	if shaft.kind == MineShaft.Kind.CAGE:
+		_cage(shaft, center, entries, surface)
+	if shaft.to_surface:
+		# The collar: flush with the ground, round the top.
+		for side in SIDES:
+			var s := Vector3(side.x, 0, side.y)
+			var along := Vector3(absi(side.y), 0, absi(side.x))
+			outside.box(along * (CELL + 2.0 * COLLAR) + Vector3(absi(side.x), 0, absi(side.y)) * COLLAR + Vector3(0, 0.85, 0),
+					Transform3D(Basis.IDENTITY, center + s * (CELL + COLLAR) / 2.0 + Vector3(0, surface - 0.4, 0)), KitMesh.all(STONE))
+		# The headframe: two posts and a beam across, over the shaft.
+		for s: float in [-1.0, 1.0]:
+			outside.box(Vector3(0.3, 5.0, 0.3), Transform3D(Basis.IDENTITY, center + Vector3(s * (CELL / 2.0 + 0.5), surface + 2.5, 0)),
+					KitMesh.all(TIMBER))
+		outside.box(Vector3(CELL + 1.6, 0.35, 0.35), Transform3D(Basis.IDENTITY, center + Vector3(0, surface + 5.0, 0)), KitMesh.all(TIMBER))
+
+
+## A cage shaft's cage (world/map/mine_cage.gd), its stops' gates and call
+## buttons, and a floor the navigation bake sees (only) at each stop, so
+## zombies can follow you in when its gate's open. It starts at the top.
+func _cage(shaft: MineShaft, center: Vector3, entries: Dictionary, surface: float) -> void:
+	var stops: Array[float] = []
+	var sides: Array = [] # each stop's sides with a way in
+	for level in range(shaft.bottom, shaft.top + 1):
+		if entries.has(level) or level == shaft.bottom or (level == shaft.top and not shaft.to_surface):
+			stops.append(level * LEVEL)
+			sides.append(entries.get(level, []))
+	if shaft.to_surface:
+		stops.append(surface)
+		sides.append(SIDES.duplicate())
+	var barred: Array = []
+	for side in SIDES:
+		if not sides.any(func(at: Array) -> bool: return side in at):
+			barred.append(side)
+	var cage := MineCage.new()
+	cage.name = "Cage"
+	cage.mine = self
+	cage.stops = stops
+	cage.at = stops.size() - 1
+	cage.build(CELL - 0.3, barred)
+	cage.position = center + Vector3(0, stops[-1], 0)
+	cage.add_to_group(&"not_in_navigation")
+	var iron := StandardMaterial3D.new()
+	iron.albedo_color = MineCage.IRON
+	for i in stops.size():
+		var stop_gates: Array = []
+		for side: Vector2i in sides[i]:
+			var out := Vector3(side.x, 0, side.y)
+			var along := Vector3(absi(side.y), 0, absi(side.x))
+			var gate := StaticBody3D.new()
+			gate.name = "Gate%d" % (cage.gates.size() * 4 + stop_gates.size())
+			var gk := KitMesh.new()
+			for b in 9:
+				gk.box(Vector3(0.04, 2.2, 0.04), Transform3D(Basis.IDENTITY, along * (-CELL / 2.0 + 0.15 + b * (CELL - 0.3) / 8.0) + Vector3(0, 1.15, 0)),
+						KitMesh.all(iron), false)
+			gk.box(along * (CELL - 0.1) + Vector3(0, 0.08, 0) + out.abs() * 0.06, Transform3D(Basis.IDENTITY, Vector3(0, 2.2, 0)), KitMesh.all(iron), false)
+			gk.box(along * (CELL - 0.1) + Vector3(0, 0.08, 0) + out.abs() * 0.06, Transform3D(Basis.IDENTITY, Vector3(0, 0.3, 0)), KitMesh.all(iron), false)
+			gk.box(along * (CELL - 0.1) + Vector3(0, 2.3, 0) + out.abs() * 0.08, Transform3D(Basis.IDENTITY, Vector3(0, 1.15, 0)), [null, null, null, null, null, null])
+			for node in gk.add_to(gate):
+				if node is MeshInstance3D:
+					(node as MeshInstance3D).layers = GameData.RENDER_UNDERGROUND
+			gate.position = center + out * (CELL / 2.0 - 0.06) + Vector3(0, stops[i], 0)
+			gate.add_to_group(&"not_in_navigation")
+			add_child(gate, false, Node.INTERNAL_MODE_BACK)
+			_generated.append(gate)
+			stop_gates.append(gate)
+			# Its call button, on the wall beside it (on the surface: on the headframe's post).
+			var button := MineControl.new()
+			button.name = "Call%d_%d" % [i, stop_gates.size()]
+			button.collision_layer = GameData.LAYER_ITEMS # (found by interact's ray only)
+			button.collision_mask = 0
+			var bk := KitMesh.new()
+			var red := StandardMaterial3D.new()
+			red.albedo_color = Color(0.6, 0.1, 0.08)
+			bk.box(Vector3(0.18, 0.25, 0.18), Transform3D.IDENTITY, KitMesh.all(iron))
+			bk.box(Vector3(0.1, 0.1, 0.1), Transform3D(Basis.IDENTITY, Vector3(0, 0.03, 0) + out * 0.09), KitMesh.all(red), false)
+			for node in bk.add_to(button):
+				if node is MeshInstance3D:
+					(node as MeshInstance3D).layers = GameData.RENDER_UNDERGROUND
+			var stop := i
+			button.prompt = func() -> String: return cage.call_prompt(stop)
+			button.action = func(player: Node) -> void: cage.go_to(stop, player)
+			button.position = center + out * (CELL / 2.0 + 0.35) + along * (CELL / 2.0 - 0.1) + Vector3(0, stops[i] + 1.2, 0)
+			add_child(button, false, Node.INTERNAL_MODE_BACK)
+			_generated.append(button)
+		cage.gates.append(stop_gates)
+		if i > 0: # (the bottom has a floor already)
+			var nav_floor := StaticBody3D.new()
+			nav_floor.name = "CageStop%d" % i
+			nav_floor.collision_layer = GameData.LAYER_NAV_ONLY
+			nav_floor.collision_mask = 0
+			var shape := CollisionShape3D.new()
+			var box := BoxShape3D.new()
+			box.size = Vector3(CELL, 0.1, CELL)
+			shape.shape = box
+			nav_floor.add_child(shape)
+			nav_floor.position = center + Vector3(0, stops[i] - 0.05, 0)
+			add_child(nav_floor, false, Node.INTERNAL_MODE_BACK)
+			_generated.append(nav_floor)
+	add_child(cage, false, Node.INTERNAL_MODE_BACK)
+	_generated.append(cage)
+
+
+## A ladder's climbing area, from its foot up `height`: you hold on while
+## you're in it (player.gd), as for the silo's ladder, but can step off at its
+## top and at the landings on the way (heights in the mine's space).
+func _climb_area(at: Transform3D, height: float, landings: Array[float]) -> void:
+	var area := Area3D.new()
+	area.name = "Climb"
+	area.collision_layer = 0
+	area.collision_mask = GameData.LAYER_PLAYER
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(0.9, height + 1.0, CLIMB_REACH)
+	var col := CollisionShape3D.new()
+	col.shape = shape
+	col.position = Vector3(0, (height + 1.0) / 2.0, CLIMB_REACH / 2.0)
+	area.add_child(col)
+	area.transform = at
+	area.body_entered.connect(func(body: Node3D) -> void:
+		if body.has_method("enter_ladder"):
+			body.call("enter_ladder", area))
+	area.body_exited.connect(func(body: Node3D) -> void:
+		if body.has_method("exit_ladder"):
+			body.call("exit_ladder", area))
+	add_child(area, false, Node.INTERNAL_MODE_BACK)
+	_generated.append(area)
+	var place := func() -> void: # (the map's heights, once it's placed)
+		var y0 := area.global_position.y - at.origin.y
+		area.set_meta("top_y", y0 + at.origin.y + height + 0.3)
+		area.set_meta("landings", landings.map(func(l: float) -> float: return y0 + l))
+	if area.is_inside_tree():
+		place.call()
+	else:
+		area.ready.connect(place, CONNECT_ONE_SHOT)
 
 
 ## The dark: a reflection probe over each stretch the daylight doesn't reach,
@@ -544,6 +829,8 @@ func _darkness() -> void:
 		if _lit.has(column):
 			continue
 		for span: Vector2 in _columns[column]:
+			if _roofless.has(column): # dark below its top level, not up to the sky
+				span.y = minf(span.y, _roofless[column] - _roofless_rise(column) + TUNNEL_HEIGHT)
 			if not spaces.has(span):
 				spaces[span] = []
 			(spaces[span] as Array).append(column)
@@ -605,6 +892,9 @@ func apply(terrain: Node) -> Rect2:
 					near = true # (only holes it could have made are closed again)
 					if off.x > reach or off.y > reach:
 						continue
+					if _roofless.has(column) and absf(ground - _roofless[column]) < 3.0 \
+							and maxf(off.x, off.y) > CELL / 2.0 + COLLAR - spacing:
+						continue # at the top of a shaft, only as far as its collar
 					if _mouths.has(column):
 						# Out of an entrance, only as far as the floor runs on (a hole
 						# hides the ground a vertex further out than itself).
@@ -626,8 +916,8 @@ func apply(terrain: Node) -> Rect2:
 # --- The plan, in the editor ----------------------------------------------------------------
 
 ## Its walls' outline on each level, over everything (the hill hides the mine):
-## the Level being drawn on bright, the others faint, entrances green, and
-## what's being drawn orange.
+## the Level being drawn on bright, the others faint, entrances green, shafts
+## a purple X, and what's being drawn orange.
 func _draw_plan() -> void:
 	if not Engine.is_editor_hint() or not is_inside_tree():
 		return
@@ -655,7 +945,7 @@ func _draw_plan() -> void:
 	var lines := 0
 	for cell: Vector3i in _cells:
 		var color := Color(1.0, 0.85, 0.2) if cell.y == plan_level else Color(0.6, 0.7, 0.9, 0.35)
-		var y := cell.y * LEVEL + 0.05
+		var y: float = _cells[cell]["floor"] + _cells[cell]["rise"] / 2.0 + 0.05
 		var c := cell_position(cell)
 		for side in SIDES:
 			if _cells.has(cell + Vector3i(side.x, 0, side.y)):
@@ -667,6 +957,16 @@ func _draw_plan() -> void:
 			mesh.surface_add_vertex(Vector3(c.x, y, c.z) + out - along)
 			mesh.surface_add_vertex(Vector3(c.x, y, c.z) + out + along)
 			lines += 1
+	for shaft in shafts: # an X across it on every level it passes
+		if shaft == null:
+			continue
+		for level in range(shaft.bottom, shaft.top + 1):
+			var c := cell_position(Vector3i(shaft.column.x, level, shaft.column.y)) + Vector3(0, 0.05, 0)
+			var h := CELL / 2.0 - 0.15
+			mesh.surface_set_color(Color(0.8, 0.4, 1.0) if level == plan_level else Color(0.8, 0.4, 1.0, 0.35))
+			for corner: Vector3 in [Vector3(-h, 0, -h), Vector3(h, 0, h), Vector3(h, 0, -h), Vector3(-h, 0, h)]:
+				mesh.surface_add_vertex(c + corner)
+			lines += 2
 	for i in draft.size():
 		var c := cell_position(draft[i]) + Vector3(0, 0.1, 0)
 		for side in SIDES: # a box round each cell
