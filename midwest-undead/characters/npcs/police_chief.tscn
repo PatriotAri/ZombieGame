@@ -25,6 +25,7 @@ height = 0.02
 [node name="PoliceChief" instance=ExtResource("1_base")]
 script = ExtResource("2_chief")
 display_name = "Police Chief"
+npc_id = "chief"
 show_name_tag = true
 outfit_color = Color(0.1, 0.13, 0.24, 1)
 skin_color = Color(0.68, 0.52, 0.42, 1)

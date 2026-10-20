@@ -536,6 +536,23 @@ the game, from the woodworker's camp kit.
 The station's old fixed guards are gone. You post your own survivors on guard
 posts you build instead.
 
+**Quest markers** are what quests point at. Press **Map Tools > New quest
+marker**, then set in the Inspector:
+- **Marker Id:** what quests call it (`the_radio`, `barn_loft`). No spaces,
+  and each one is different. Don't change it once a quest uses it.
+- **Kind:**
+  - `point`: just a spot.
+  - `area`: you're in it within **Radius** across and **Height** above and
+    below. A ring shows its size in the editor.
+  - `usable`: something to aim at and press interact on (a **Use Size** box
+    round the marker). Its **Prompt** shows only while a quest wants it used.
+- **Map Label:** the name the map screen writes by it when a quest points
+  there. Empty: the quest's own label.
+
+People have an id too: **Npc Id** on their scene (`chief`, `quartermaster`,
+`wagon_trader`, `woodworker`) or **Id** in a survivor's file
+(`marisol_vega`). Quests go by these, not by the names people show.
+
 ---
 
 ## 13. How the land plays

@@ -33,6 +33,7 @@ const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
 const Blood := preload("res://effects/blood.gd")
 const HumanoidBody := preload("res://characters/humanoid_body.gd")
+const GameEvents := preload("res://core/game_events.gd")
 
 const WALK_PACE := 1.4 # meters per cycle of the walk animation
 const RUN_PACE := 2.8
@@ -40,6 +41,10 @@ const RUN_FROM := 3.2 # m/s: faster than this runs
 
 @export_group("Identity")
 @export var display_name := "Survivor"
+## What quests call them (chief, woodworker, marisol_vega): no spaces, and it
+## stays the same if their display name changes. Empty for people quests never
+## need (guards, bandits).
+@export var npc_id := ""
 @export var faction := Faction.SURVIVOR
 ## Show the name floating above their head.
 @export var show_name_tag := false
@@ -78,6 +83,7 @@ var talking := false
 var rifle: Node3D
 var muzzle_flash: OmniLight3D
 var _last_blow: Array = [] # [impulse, where]: what knocks the body over if this hit kills
+var _last_attacker: Node # who hit them last (npc_died says whether it was you)
 var _player: Node
 
 @onready var visual: Node3D = $Visual
@@ -88,6 +94,8 @@ var _player: Node
 
 func _ready() -> void:
 	add_to_group("npcs")
+	if npc_id != "":
+		add_to_group("named_npcs") # (stays in it after dying: world/quest_world.gd)
 	if zombies_target:
 		add_to_group("zombie_targets")
 	collision_layer = GameData.LAYER_NPC
@@ -168,13 +176,14 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 	_last_blow = [dir * (40.0 + knockback * 25.0) + Vector3.UP * 10.0, hit_pos]
 	if health > damage:
 		body.one_shot("hit_" + body.zone_of(hit_pos))
-	take_damage(damage)
+	take_damage(damage, attacker)
 
 
-## Raw damage, e.g. a zombie biting.
-func take_damage(amount: float) -> void:
+## Raw damage, e.g. a zombie biting. attacker: who did it, if anyone.
+func take_damage(amount: float, attacker: Node = null) -> void:
 	if is_dead:
 		return
+	_last_attacker = attacker
 	health -= amount
 	_flash()
 	if not body.is_busy() and health > 0.0:
@@ -200,6 +209,8 @@ func die() -> void:
 	var blow: Array = _last_blow if not _last_blow.is_empty() else [Vector3.UP * 5.0, global_position + Vector3(0, 1.2, 0)]
 	body.ragdoll(blow[0], blow[1], Vector3(velocity.x, 0.0, velocity.z))
 	died.emit(self)
+	GameEvents.send(&"npc_died", {"npc_id": npc_id, "name": display_name, "position": global_position,
+			"by_player": is_instance_valid(_last_attacker) and _last_attacker.is_in_group("player")})
 
 
 ## Where shots come out of the rifle (its MuzzleFlash), in the world.

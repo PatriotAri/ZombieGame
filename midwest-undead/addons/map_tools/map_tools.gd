@@ -23,6 +23,8 @@ extends EditorPlugin
 ## back the last corner, or removes the inner wall, stairs, opening, room,
 ## chimney, dormer, porch or cellar door under the mouse. Its walls' numbers
 ## show while it's selected. Apply opens the ground for its basement.
+## Quests: New quest marker adds a spot, area or usable thing for quests to
+## point at (world/markers/quest_marker.gd).
 ## Mines: select a KitMine and pick a tool in the Mines section; the 3D view
 ## then draws on the Level set there (its plan shows through the hill):
 ## tunnels (click each corner; Esc or Enter ends one), chambers (click two
@@ -43,6 +45,7 @@ const Plants := preload("res://world/map/plants.gd")
 const PlantPainter := preload("res://world/map/plant_painter.gd")
 const Zone := preload("res://world/markers/zone.gd")
 const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
+const QuestMarker := preload("res://world/markers/quest_marker.gd")
 const Building := preload("res://world/building.gd")
 const BuildingTool := preload("res://addons/map_tools/building_tool.gd")
 const MineTool := preload("res://addons/map_tools/mine_tool.gd")
@@ -173,6 +176,9 @@ func _build_panel() -> Control:
 	var places := _section(root, "Zones and camps")
 	_button(places, "New zone", "Adds a zone (a named area) in front of the camera. Name it in the Inspector, then Draw points around its edge.", _new_zone)
 	_button(places, "Police station camp", "Adds the police station's base camp marker in front of the camera (one per map). Drag its Logbook, Board and Crate markers where they go.", _new_base_camp)
+
+	var quest_tools := _section(root, "Quests")
+	_button(quest_tools, "New quest marker", "Adds a quest marker in front of the camera: a spot, an area or something to use that quests point at. Give it a Marker Id in the Inspector (QUESTS.md).", _new_quest_marker)
 
 	var selected := _section(root, "Selected")
 	_selected_label = Label.new()
@@ -453,6 +459,13 @@ func _new_base_camp() -> void:
 	camp.position = _in_view()
 	_add(camp, markers, "Police station camp")
 	camp._ready() # its Logbook, Board and Crate markers, now that it's in the scene
+
+
+func _new_quest_marker() -> void:
+	var marker := QuestMarker.new()
+	marker.name = "QuestMarker"
+	marker.position = _in_view()
+	_add(marker, _group("QuestMarkers"), "New quest marker")
 
 
 func _new_building() -> void:

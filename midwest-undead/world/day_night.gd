@@ -3,6 +3,8 @@ extends Node
 ## Other scripts find this node through the "day_night" group and call
 ## light_level() (0 = darkest night, 1 = full daylight).
 
+const GameEvents := preload("res://core/game_events.gd")
+
 # Tunable values, set by main.gd from its inspector before setup().
 var start_hour := 8.0 # morning: most of a day before dusk
 var seconds_per_game_hour := 120.0 # a full day is 48 real minutes
@@ -36,10 +38,13 @@ func setup(environment: Environment, sky_material: ShaderMaterial,
 
 
 func _process(delta: float) -> void:
+	var was := int(hour)
 	hour += delta / seconds_per_game_hour
 	if hour >= 24.0:
 		hour -= 24.0
 		day += 1
+	if int(hour) != was:
+		GameEvents.send(&"hour_passed", {"hour": int(hour), "day": day})
 	_apply()
 
 

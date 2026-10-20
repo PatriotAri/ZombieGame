@@ -6,6 +6,8 @@ extends Node
 ## Places found in one check (usually one; two if they're close together).
 signal discovered(names: Array[String])
 
+const GameEvents := preload("res://core/game_events.gd")
+
 const CHECK_INTERVAL := 0.5
 
 ## One per place: {"name", "center": (x, z), "radius": how close counts as
@@ -45,6 +47,8 @@ func _process(delta: float) -> void:
 			found.append(place_name)
 	if not found.is_empty():
 		discovered.emit(found)
+		for place_name in found:
+			GameEvents.send(&"place_discovered", {"place": place_name})
 
 
 func save_state() -> Array:

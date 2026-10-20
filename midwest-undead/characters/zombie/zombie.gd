@@ -49,6 +49,7 @@ const Ground := preload("res://world/ground.gd")
 const HumanoidBody := preload("res://characters/humanoid_body.gd")
 const Blood := preload("res://effects/blood.gd")
 const Fall := preload("res://characters/fall.gd")
+const GameEvents := preload("res://core/game_events.gd")
 
 enum State { IDLE, INVESTIGATE, HUNT }
 
@@ -833,7 +834,7 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 	body.wound(hit_pos, -shot_dir)
 	if health <= 0.0:
 		_last_blow = [shot_dir * (40.0 + knockback * 25.0) + Vector3.UP * 10.0, hit_pos]
-		die()
+		die(true, attacker)
 		# Who killed it, for anyone counting (world/camps.gd: kills near a camp).
 		get_tree().call_group("kill_listeners", "zombie_killed", global_position, attacker)
 		return
@@ -852,10 +853,13 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 
 ## It goes limp and falls (a ragdoll), pushed by the blow that killed it.
 ## loud = false: no death groan (drowned quietly, fell off the map).
-func die(loud := true) -> void:
+## killer: who killed it, if anyone.
+func die(loud := true, killer: Node = null) -> void:
 	if is_dead:
 		return
 	is_dead = true
+	GameEvents.send(&"zombie_killed", {"kind": kind, "position": global_position,
+			"by_player": is_instance_valid(killer) and killer.is_in_group("player")})
 	target = null
 	remove_from_group("zombies") # stops hearing, being hit, and being targeted
 	collision.set_deferred("disabled", true) # deferred: physics may be mid-step

@@ -31,6 +31,7 @@ const Ground := preload("res://world/ground.gd")
 const Hands := preload("res://characters/player/hands.gd")
 const PlayerLights := preload("res://characters/player/player_lights.gd")
 const PlayerBuilding := preload("res://characters/player/player_building.gd")
+const GameEvents := preload("res://core/game_events.gd")
 
 @export_group("Movement")
 @export var walk_speed := 4.0
@@ -537,6 +538,7 @@ func _die(cause: String) -> void:
 	camera.fov = _base_fov
 	camera.position.y = 0.3 # collapse to the ground
 	died.emit()
+	GameEvents.send(&"player_died", {"cause": cause})
 
 
 ## For the inventory screen: the flashlight's charge and the spare batteries.
@@ -676,9 +678,12 @@ func load_state(data: Dictionary) -> void:
 # --- Inventory ---------------------------------------------------------------
 
 func give_item(id: String, amount := 1) -> void:
+	if amount <= 0:
+		return
 	inventory.add(id, amount)
 	_fill_slots()
 	_refresh_weapon_visuals()
+	GameEvents.send(&"item_gained", {"item": id, "amount": amount})
 
 
 ## Removes up to amount; returns how many actually left your inventory.
@@ -690,6 +695,8 @@ func take_item(id: String, amount := 1) -> int:
 		mags[id] = 0
 	_fill_slots()
 	_drop_held_if_gone()
+	if taken > 0:
+		GameEvents.send(&"item_lost", {"item": id, "amount": taken})
 	return taken
 
 
@@ -868,6 +875,7 @@ func _interact() -> void:
 			make_noise(noise_search) # rummaging isn't quiet
 			Sound.play_ui(self, "rummage", -4.0)
 		container_opened.emit(spot)
+		GameEvents.send(&"container_opened", {"town_id": spot.get_meta("town_id", ""), "label": spot.label})
 	elif _offers_interaction(target):
 		if target is HumanNPC:
 			npc_interacted.emit(target)

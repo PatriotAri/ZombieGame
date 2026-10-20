@@ -10,6 +10,8 @@ extends Node3D
 ##   world/ground.gd      how high the ground is anywhere
 ##   world/loot.gd        rolls the containers' loot tables (items/loot/)
 ##   world/save_io.gd     what a save holds, gathered and put back
+##   core/game_events.gd  what just happened (a kill, an item picked up...), for quests
+##   world/quest_world.gd the quest markers and people quests point at, by id
 ##   world/map_summary.gd what the map screen shows of the map
 ##   quests/              the main story and side quests (see QUESTS.md)
 ##   ui/hud.gd            everything on screen during play
@@ -96,6 +98,8 @@ const Ground := preload("res://world/ground.gd")
 const NavTiles := preload("res://world/nav_tiles.gd")
 const Cover := preload("res://world/cover.gd")
 const Plants := preload("res://world/map/plants.gd")
+const GameEvents := preload("res://core/game_events.gd")
+const QuestWorld := preload("res://world/quest_world.gd")
 
 @export_group("World")
 ## The map to play on. Edit world/map/map.tscn to change it (HOW_TO_MAP.md).
@@ -158,6 +162,8 @@ var craft_menu: CraftMenu
 var choice_menu: ChoiceMenu
 var dialogue: DialogueBox
 var quests: QuestManager # the main story and side quests (quests/)
+var game_events: GameEvents # what just happened, for anything listening
+var quest_world: QuestWorld # quest markers and people, by id
 var journal_menu: JournalMenu
 var chief: PoliceChief
 var trader: Shopkeeper
@@ -177,6 +183,9 @@ func _ready() -> void:
 	Controls.setup()
 	Settings.load_settings() # before anything can play a sound: it creates the Effects bus
 	rng.randomize()
+	game_events = GameEvents.new() # first: everything after this can report what happens
+	game_events.name = "GameEvents"
+	add_child(game_events)
 	_build_environment()
 	_setup_world()
 	_setup_characters()
@@ -298,6 +307,9 @@ func _setup_menus() -> void:
 
 ## The quests, and the story's people and places.
 func _setup_story() -> void:
+	quest_world = QuestWorld.new()
+	add_child(quest_world)
+	quest_world.setup(town, player)
 	quests = QuestManager.new()
 	add_child(quests)
 	quests.objective_changed.connect(hud.set_objective)
@@ -685,7 +697,10 @@ func _save_game(path: String) -> bool:
 
 ## Put a save on top of the freshly loaded town (world/save_io.gd).
 func _apply_save(data: Dictionary) -> void:
+	game_events.muted = true # putting the save back isn't anything happening
 	SaveIO.apply(self, data)
+	game_events.muted = false
+	quest_world.resettle()
 
 
 ## An item lying on the ground, outside nav_region (items don't change zombie paths).

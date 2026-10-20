@@ -67,6 +67,7 @@ func setup(spots: Array) -> void:
 			continue
 		var survivor := SurvivorScene.instantiate() as Survivor
 		survivor.display_name = person.display_name
+		survivor.npc_id = person.npc_id()
 		if person.model:
 			survivor.model = person.model
 		survivor.outfit_color = person.outfit_color

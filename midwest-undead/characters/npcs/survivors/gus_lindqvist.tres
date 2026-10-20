@@ -16,6 +16,7 @@ nodes = Array[ExtResource("1_jgsqo")]([SubResource("Resource_gx31g")])
 [resource]
 script = ExtResource("4_csp0n")
 display_name = "Gus Lindqvist"
+id = "gus_lindqvist"
 outfit_color = Color(0.25, 0.3, 0.38, 1)
 skin_color = Color(0.78, 0.63, 0.52, 1)
 join_talk = SubResource("Resource_jx6ww")
