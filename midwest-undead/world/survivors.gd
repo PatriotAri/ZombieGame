@@ -7,18 +7,20 @@ extends Node
 ## the planks off the door to get in. Each is in the
 ## bedroom, by the bed, with a couple of cans of food and two health packs on the
 ## floor beside them (ground items in the map scene).
-## Where each one starts, and their spot in the station's back yard, are
-## SpawnPoints in the map scene (roles "survivor" and "survivor_home", with the
-## person's name).
-## Talk to one and they join you, if the base has room (base_camp.gd; if not,
+## Where each one starts is a SpawnPoint in the map scene (role "survivor",
+## with the person's name); a "survivor_home" SpawnPoint gives them their own
+## spot at the police station (otherwise they stand round the camp).
+## Talk to one and they join you, if a camp has room (world/camps.gd; if not,
 ## they stay put and say so), the way their join talk says (a "join" reply, or
-## hearing it out; quests/conversation.gd plays it). They make their own way to the police station
-## (once you're out of sight of them and of the station), and live in the back
-## yard, each with a bedroll. Talk to them there to put them on a garden plot or
-## ammo bench, or (the machinist) to have something made.
+## hearing it out; quests/conversation.gd plays it). With room at more than one
+## camp, you pick which. They make their own way there (once you're out of
+## sight of them and of the camp), and live there, each with a bedroll. Talk to
+## them there to put them on a garden plot or ammo bench, post them on a guard
+## post, or (the machinist) to have something made.
 ## main.gd creates it once the map is loaded and sends conversations here.
-## Saved: where each one has got to, by name. (Their planks and supplies are saved with
-## the rest of the fortifications and ground items.)
+## Saved: where each one has got to and which camp they live at, by name.
+## (Their planks and supplies are saved with the rest of the fortifications and
+## ground items.)
 
 const Building := preload("res://world/building.gd")
 const SpawnPoint := preload("res://world/markers/spawn_point.gd")
@@ -34,26 +36,23 @@ const OLD_SAVE_ORDER := ["Marisol Vega", "Dale Hutchins", "Priya Raman", "Gus Li
 
 const OUT_OF_SIGHT := 40.0
 const CHECK_INTERVAL := 0.5
-## When the base is full (base_camp.gd), whoever you find stays put and says so.
+## When every camp is full (camps.gd), whoever you find stays put and says so.
 const FULL_LINES: Array[String] = [
 	"Seems like there's not enough to go around right now. I'd be better off on my own.",
 	"Come find me again later if things change.",
 ]
-const STATION_NAMES := {"garden_plot": "garden", "ammo_bench": "ammo bench", "shell_bench": "shell bench",
-		"rifle_bench": "rifle bench"}
 const MACHINIST_NEEDS_WOODWORKER := "I can press scrap into sheet metal for you. Ammo benches need frames, though: get a woodworker set up at the station and I'll make those too."
 
 
 var survivors: Array[Survivor] = []
 var houses: Array[Building] = [] # the house each one is holed up in (null if their spot isn't in one)
 var _people: Array[SurvivorData] = [] # each survivor's file
-var _homes: Array[Vector3] = [] # each survivor's spot in the station yard
 var _player: Node3D
 var _dialogue: Node
 var _choices: Node # ui/choice_menu.gd
 var _conversation: Conversation
 var _crafting: Node # ui/craft_menu.gd
-var _base: Node # base_camp.gd
+var _camps: Node # camps.gd
 var _woodworker: Node # woodworker_rescue.gd
 var _bedrolls := {} # survivor -> its bedroll in the yard
 var _timer := 0.0
@@ -63,12 +62,13 @@ var _timer := 0.0
 func setup(spots: Array) -> void:
 	for person in _load_people():
 		var start := _spot(spots, "survivor", person.display_name)
-		var home := _spot(spots, "survivor_home", person.display_name)
-		if start == null or home == null:
-			push_warning("%s has no \"survivor\" or \"survivor_home\" SpawnPoint in the map scene." % person.display_name)
+		if start == null:
+			push_warning("%s has no \"survivor\" SpawnPoint in the map scene." % person.display_name)
 			continue
 		var survivor := SurvivorScene.instantiate() as Survivor
 		survivor.display_name = person.display_name
+		if person.model:
+			survivor.model = person.model
 		survivor.outfit_color = person.outfit_color
 		survivor.skin_color = person.skin_color
 		survivor.job = "" if person.job == "none" else person.job
@@ -77,7 +77,6 @@ func setup(spots: Array) -> void:
 		get_parent().add_child(survivor)
 		survivors.append(survivor)
 		_people.append(person)
-		_homes.append(home.global_position)
 		var house: Node = start.get_parent()
 		while house != null and not house is Building:
 			house = house.get_parent()
@@ -108,15 +107,24 @@ func _spot(spots: Array, role: String, person_name: String) -> SpawnPoint:
 	return null
 
 
-## Who's talking to them, and the base they'd join (main.gd creates these after
+## Their own spots at the police station: name -> where (the "survivor_home" SpawnPoints).
+static func station_homes(spots: Array) -> Dictionary:
+	var homes := {}
+	for spot: SpawnPoint in spots:
+		if spot.role == "survivor_home" and spot.person != "":
+			homes[spot.person] = spot.global_position
+	return homes
+
+
+## Who's talking to them, and the camps they'd join (main.gd creates these after
 ## the town).
-func attach(player: Node3D, dialogue: Node, choices: Node, crafting: Node, base: Node, woodworker: Node) -> void:
+func attach(player: Node3D, dialogue: Node, choices: Node, crafting: Node, camps: Node, woodworker: Node) -> void:
 	_player = player
 	_dialogue = dialogue
 	_choices = choices
 	_conversation = Conversation.new(player, dialogue, choices)
 	_crafting = crafting
-	_base = base
+	_camps = camps
 	_woodworker = woodworker
 
 
@@ -128,9 +136,10 @@ func move_zombies_out(zombies: Array) -> void:
 			if house == null:
 				continue
 			var local := house.global_transform.affine_inverse() * zombie.global_position
-			if local.x > 0.0 and local.x < house.size_depth and absf(local.z) < house.size_width / 2.0:
+			if house.contains_local(Vector2(local.x, local.z)):
 				# Out front, clawing at the boards.
-				zombie.global_position = house.global_transform * Vector3(-3.0, 0.1, house.front_door_z() + randf_range(-2.0, 2.0))
+				var spread := house.global_basis.z * randf_range(-2.0, 2.0)
+				zombie.global_position = house.outside_front_door(3.0) + spread + Vector3(0, 0.1, 0)
 				break
 
 
@@ -142,7 +151,7 @@ func talk(survivor: Survivor) -> void:
 	var person := _people[i]
 	match survivor.state:
 		Survivor.State.WAITING:
-			if _base.call("is_full"):
+			if (_camps.call("with_room") as Array).is_empty():
 				_dialogue.call("start", survivor.display_name, FULL_LINES, _player)
 				return
 			# With a "join" reply, that's what brings them; without one, hearing them out.
@@ -170,28 +179,73 @@ func _work_menu(survivor: Survivor, person: SurvivorData) -> void:
 		_offer_jobs(survivor, person)
 
 
-## A survivor at the base: what are they doing, and do you want them on a station?
+## A survivor at camp: what are they doing, and do you want them on a station
+## or a guard post?
 func _offer_jobs(survivor: Survivor, person: SurvivorData) -> void:
 	var line := person.base_line
+	var camp: Variant = _camps.call("camp_named", survivor.camp_name)
 	var piece := survivor.work_piece if survivor.working and is_instance_valid(survivor.work_piece) else null
 	if piece != null:
-		line = "I'm on the %s. %s" % [STATION_NAMES[piece.get("kind")], line]
+		line = "I'm on the %s. %s" % [_camps.STATION_NAMES[piece.get("kind")], line]
 	var options := []
 	for station: Array in [["garden_plot", "Work a garden plot"], ["ammo_bench", "Work an ammo bench"],
 			["shell_bench", "Work a shell bench"], ["rifle_bench", "Work a rifle bench"]]:
-		var free: bool = _base.call("free_station", station[0]) != null
+		var free: bool = camp != null and _camps.call("free_station", camp, station[0]) != null
 		var label: String = station[1] if free else station[1] + "  (none free)"
-		options.append([label, func() -> void: _base.call("assign", survivor, station[0]), free])
-	options.append(["Stop working", func() -> void: _base.call("unassign", survivor), piece != null])
+		options.append([label, func() -> void: _camps.call("assign", survivor, station[0]), free])
+	var posts: Array = _camps.call("free_posts", camp) if camp != null else []
+	var guard_label := "Guard a post" if not posts.is_empty() else "Guard a post  (none free within %d m)" % roundi(_camps.RANGE)
+	options.append([guard_label, func() -> void: _pick_post(survivor, posts), not posts.is_empty()])
+	options.append(["Stop working", func() -> void: _camps.call("unassign", survivor), piece != null])
 	options.append(["Never mind", Callable(), true])
 	_choices.call("open", _player, survivor.display_name, line, options)
 
 
-func _recruited(survivor: Survivor) -> void:
-	if survivor.state != Survivor.State.WAITING or _base.call("is_full"):
+## With more than one free post, you pick (nearest first).
+func _pick_post(survivor: Survivor, posts: Array) -> void:
+	posts.sort_custom(func(a: Node3D, b: Node3D) -> bool:
+		return a.global_position.distance_to(_player.global_position) < b.global_position.distance_to(_player.global_position))
+	if posts.size() == 1:
+		_camps.call("post_guard", survivor, posts[0])
 		return
+	var options := []
+	for post: Node3D in posts:
+		var kind := "tower" if post.get("below") != null else "post"
+		var label := "The guard %s %d m %s of you" % [kind, roundi(post.global_position.distance_to(_player.global_position)),
+				_compass(post.global_position - _player.global_position)]
+		options.append([label, func() -> void: _camps.call("post_guard", survivor, post), true])
+	options.append(["Never mind", Callable(), true])
+	_choices.call("open", _player, survivor.display_name, "Which one?", options)
+
+
+static func _compass(dir: Vector3) -> String:
+	var names := ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"]
+	var angle := atan2(dir.x, -dir.z) # 0 north, clockwise
+	return names[posmod(roundi(angle / (PI / 4.0)), 8)]
+
+
+## Joining: off to a camp with room (you pick, if there's more than one).
+func _recruited(survivor: Survivor) -> void:
+	if survivor.state != Survivor.State.WAITING:
+		return
+	var open: Array = _camps.call("with_room")
+	if open.is_empty():
+		_dialogue.call("start", survivor.display_name, FULL_LINES, _player)
+		return
+	if open.size() == 1:
+		_send_to(survivor, open[0])
+		return
+	var options := []
+	for camp in open:
+		var label := "%s  (%d / %d)" % [camp.name, _camps.call("population", camp), _camps.call("capacity", camp)]
+		options.append([label, func() -> void: _send_to(survivor, camp), true])
+	_choices.call("open", _player, survivor.display_name, "Where should I head?", options)
+
+
+func _send_to(survivor: Survivor, camp: Variant) -> void:
+	survivor.camp_name = camp.name
 	survivor.state = Survivor.State.TRAVELLING
-	_player.emit_signal("notify", "%s is heading to the police station." % survivor.display_name)
+	_player.emit_signal("notify", "%s is heading to %s." % [survivor.display_name, camp.name])
 
 
 func _process(delta: float) -> void:
@@ -202,21 +256,18 @@ func _process(delta: float) -> void:
 	var at := _player.global_position
 	for i in survivors.size():
 		var survivor := survivors[i]
-		var home := _homes[i]
-		if survivor.state == Survivor.State.TRAVELLING and at.distance_to(survivor.global_position) > OUT_OF_SIGHT \
-				and at.distance_to(home) > OUT_OF_SIGHT:
+		if survivor.state != Survivor.State.TRAVELLING:
+			continue
+		var home: Vector3 = _camps.call("home_spot", survivor)
+		if at.distance_to(survivor.global_position) > OUT_OF_SIGHT and at.distance_to(home) > OUT_OF_SIGHT:
 			_send_home(i)
 
 
-func recruited_count() -> int:
-	return survivors.filter(func(s: Survivor) -> bool: return s.state != Survivor.State.WAITING).size()
-
-
-## name -> state.
+## name -> {"state", "camp"}.
 func save_state() -> Dictionary:
 	var data := {}
 	for survivor in survivors:
-		data[survivor.display_name] = survivor.state
+		data[survivor.display_name] = {"state": survivor.state, "camp": survivor.camp_name}
 	return data
 
 
@@ -231,30 +282,42 @@ func load_state(data: Variant) -> void:
 	for i in survivors.size():
 		if not by_name.has(survivors[i].display_name):
 			continue
-		var saved := int(by_name[survivors[i].display_name])
+		var entry: Variant = by_name[survivors[i].display_name]
+		var saved := int(entry["state"]) if entry is Dictionary else int(entry)
+		if entry is Dictionary:
+			survivors[i].camp_name = str(entry.get("camp", ""))
+		if survivors[i].camp_name == "" and saved != Survivor.State.WAITING:
+			survivors[i].camp_name = _camps.station.name # (older saves: everyone lived at the station)
 		if saved == Survivor.State.HOME:
 			_send_home(i)
 		elif saved == Survivor.State.TRAVELLING:
 			survivors[i].state = Survivor.State.TRAVELLING
 
 
-## Back to their spot in the yard (off a job, or just arrived).
+## Back to their spot at camp (off a job, or just arrived), with their bedroll.
 func go_home_spot(survivor: Survivor) -> void:
 	var i := survivors.find(survivor)
 	if i < 0 or survivor.state != Survivor.State.HOME:
 		return
-	survivor.global_position = _homes[i]
-	survivor.rotation.y = 0.0 # facing the back of the station
+	var home: Vector3 = _camps.call("home_spot", survivor)
+	survivor.global_position = home
+	var camp: Variant = _camps.call("camp_named", survivor.camp_name)
+	if camp != null: # facing the middle of the camp
+		var to: Vector3 = camp.center - home
+		if Vector2(to.x, to.z).length() > 0.5:
+			survivor.rotation.y = atan2(-to.x, -to.z)
+	if _bedrolls.has(survivor):
+		(_bedrolls[survivor] as Node3D).position = home + Vector3(1.0, 0.06, 0.4)
 
 
-## At home in the station's back yard, with a bedroll.
+## At home at their camp, with a bedroll.
 func _send_home(i: int) -> void:
 	var survivor := survivors[i]
-	var home := _homes[i]
 	survivor.state = Survivor.State.HOME
 	go_home_spot(survivor)
 	if _bedrolls.has(survivor):
 		return
+	var home: Vector3 = _camps.call("home_spot", survivor)
 	var bedroll := StaticBody3D.new()
 	bedroll.position = home + Vector3(1.0, 0.06, 0.4)
 	var mesh := BoxMesh.new()

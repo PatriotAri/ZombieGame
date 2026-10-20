@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://items/item_data.gd" id="1_dynam"]
+
+[resource]
+script = ExtResource("1_dynam")
+id = "dynamite"
+display_name = "Dynamite"
+use = "throw"
+order = 45
+color = Color(0.72, 0.12, 0.08, 1)
+size = Vector3(0.05, 0.05, 0.22)

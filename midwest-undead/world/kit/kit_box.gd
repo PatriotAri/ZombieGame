@@ -3,9 +3,13 @@ class_name KitBox
 extends StaticBody3D
 ## A plain solid box in a material: a fence panel, a counter, a pole, a road.
 ## Made fresh from its settings (in the editor too). Untick Solid for something
-## you can walk through (a decoration).
+## you can walk through (a decoration). With Models it looks like one of them
+## instead (the kit's furniture: a shaped stand-in until there's a model),
+## stretched to Size; it's solid where the model's own collision shapes are, or
+## the box if it has none (HOW_TO_MODEL.md, "Props").
 
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
+const ViewDistance := preload("res://core/view_distance.gd")
 const DEFAULT_MATERIAL := preload("res://world/kit/materials/concrete_slab.tres")
 
 ## In meters; the box is centered on the node (see Sits On Floor).
@@ -28,6 +32,14 @@ const DEFAULT_MATERIAL := preload("res://world/kit/materials/concrete_slab.tres"
 	set(value):
 		solid = value
 		_changed()
+@export_group("Model")
+## What it looks like: model scenes, stretched to Size. With several, each spot
+## picks one (always the same one there). Meshes named Paint take Material.
+## Empty: the plain box.
+@export var models: Array[PackedScene] = []:
+	set(value):
+		models = value
+		_changed()
 
 var _generated: Array[Node] = []
 var _dirty := true
@@ -48,6 +60,8 @@ func darken(amount: float) -> void:
 	for node in _generated:
 		if node is MeshInstance3D:
 			KitMesh.darken(node, amount)
+		elif node is KitProp:
+			(node as KitProp).darken(amount)
 
 
 func _changed() -> void:
@@ -66,5 +80,27 @@ func _rebuild() -> void:
 			node.queue_free()
 	var km := KitMesh.new()
 	var at := Transform3D(Basis.IDENTITY, Vector3(0, size.y / 2.0 if sits_on_floor else 0.0, 0))
-	km.box(size, at, KitMesh.all(material if material else DEFAULT_MATERIAL), solid)
-	_generated = km.add_to(self)
+	if models.is_empty():
+		km.box(size, at, KitMesh.all(material if material else DEFAULT_MATERIAL), solid)
+		_generated = km.add_to(self)
+		return
+	_generated = add_model(self, models, size, at.origin, material, solid)
+
+
+## The look from models on body (a box's or a container's), stretched to size
+## around center, painted in material; and body's collision: the model's own
+## shapes, or the box. Returns what it added.
+static func add_model(body: CollisionObject3D, choices: Array, box_size: Vector3, center: Vector3,
+		paint_with: Material, collide: bool) -> Array[Node]:
+	var prop := KitProp.make(null, choices, box_size, center)
+	prop.name = "Model"
+	body.add_child(prop, false, Node.INTERNAL_MODE_BACK)
+	prop.paint(paint_with)
+	for mesh in prop.meshes():
+		ViewDistance.limit_by_size(mesh, box_size)
+	var added: Array[Node] = [prop]
+	if collide and not prop.take_shapes(body):
+		var km := KitMesh.new()
+		km.box(box_size, Transform3D(Basis.IDENTITY, center), [null, null, null, null, null, null])
+		added.append_array(km.add_to(body))
+	return added

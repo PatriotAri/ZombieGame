@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_yudiv"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/chalkboard.tscn" id="2_xynvn"]
+
+[node name="Chalkboard" type="StaticBody3D" unique_id=105690264]
+script = ExtResource("1_yudiv")
+size = Vector3(2.4, 2.1, 0.08)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_xynvn")])

@@ -1,0 +1,33 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://world/kit/materials/cabinet.tres" id="1_xdito"]
+[ext_resource type="Material" path="res://world/kit/materials/concrete_slab.tres" id="2_uhqaf"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_b2g2q"]
+material = ExtResource("1_xdito")
+size = Vector3(0.8, 0.94, 3)
+
+[sub_resource type="BoxMesh" id="BoxMesh_4iw2k"]
+material = ExtResource("2_uhqaf")
+size = Vector3(0.86, 0.06, 3.04)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_no186"]
+albedo_color = Color(0.08, 0.08, 0.08, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_7rvov"]
+material = SubResource("StandardMaterial3D_no186")
+size = Vector3(0.02, 0.1, 3)
+
+[node name="Counter" type="Node3D" unique_id=1220386195]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=879823876]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.47, 0)
+mesh = SubResource("BoxMesh_b2g2q")
+
+[node name="@MeshInstance3D@31" type="MeshInstance3D" parent="." unique_id=1755904547]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.97, 0)
+mesh = SubResource("BoxMesh_4iw2k")
+
+[node name="@MeshInstance3D@32" type="MeshInstance3D" parent="." unique_id=470446719]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.4, 0.05, 0)
+mesh = SubResource("BoxMesh_7rvov")

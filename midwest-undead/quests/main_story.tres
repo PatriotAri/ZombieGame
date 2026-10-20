@@ -91,7 +91,7 @@ reward_items = Dictionary[String, int]({
 
 [sub_resource type="Resource" id="Resource_h2otp"]
 script = ExtResource("1_xenh3")
-lines = Array[String](["The streets around the station aren't safe yet. Check your map: anywhere red, they're still out there."])
+lines = Array[String](["There are still too many of them around the station. Keep thinning them out."])
 
 [sub_resource type="Resource" id="Resource_qj3wi"]
 script = ExtResource("3_1q70k")
@@ -100,14 +100,17 @@ nodes = Array[ExtResource("1_xenh3")]([SubResource("Resource_h2otp")])
 [sub_resource type="Resource" id="Resource_4xo8l"]
 script = ExtResource("5_f6hae")
 id = "clear_zone"
-objective = "Clear Zone 1: kill the zombies on the streets around the station (M for the map)"
-kind = "clear_zone"
-target = "Zone 1"
+objective = "Kill zombies near the police station ({count}/75)"
+kind = "kill_near"
+target = "Police Station"
+count = 75
+complete_story = "It's quiet around the station now.
+Word will get around."
 reminder = SubResource("Resource_qj3wi")
 
 [sub_resource type="Resource" id="Resource_yenkq"]
 script = ExtResource("1_xenh3")
-lines = Array[String](["You did it. The blocks around us are clear. First time in months.", "Give it time. Anyone out there with goods to sell will hear about it. Go see what else is out there."])
+lines = Array[String](["You did it. It's quiet around here. First time in months.", "Give it time. Anyone out there with goods to sell will hear about it. Go see what else is out there."])
 
 [sub_resource type="Resource" id="Resource_oatq0"]
 script = ExtResource("3_1q70k")
@@ -116,7 +119,7 @@ nodes = Array[ExtResource("1_xenh3")]([SubResource("Resource_yenkq")])
 [sub_resource type="Resource" id="Resource_0ubbd"]
 script = ExtResource("5_f6hae")
 id = "wait_for_trader"
-objective = "Zone 1 is clear. Head out and scavenge; word will get around"
+objective = "The station's quieter now. Head out and scavenge; word will get around"
 target = "trader_found"
 reminder = SubResource("Resource_oatq0")
 
@@ -170,7 +173,5 @@ event_stories = Dictionary[String, String]({
 Nobody answered the radio because nobody is left.",
 "trader_found": "A trader's wagon has pulled into the station yard.",
 "woodworker_found": "The woodworker has set up in the station yard.
-Bring him planks, plywood and scrap metal and he'll build for you.",
-"zone_cleared:Zone 1": "The streets around the station are clear.
-Word will get around."
+Bring him planks, plywood and scrap metal and he'll build for you."
 })

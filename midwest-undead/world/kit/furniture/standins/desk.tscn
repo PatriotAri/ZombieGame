@@ -1,0 +1,91 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://world/kit/materials/wood_planks.tres" id="1_1ihbu"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_jm43w"]
+material = ExtResource("1_1ihbu")
+size = Vector3(1, 0.05, 2.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_invdd"]
+material = ExtResource("1_1ihbu")
+size = Vector3(0.95, 0.78, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_5i4ib"]
+albedo_color = Color(0.35, 0.259, 0.168, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_rk1fi"]
+material = SubResource("StandardMaterial3D_5i4ib")
+size = Vector3(0.02, 0.2, 0.42)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ykaj5"]
+albedo_color = Color(0.6, 0.58, 0.5, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lxmiu"]
+material = SubResource("StandardMaterial3D_ykaj5")
+size = Vector3(0.03, 0.03, 0.12)
+
+[sub_resource type="BoxMesh" id="BoxMesh_1vcul"]
+material = SubResource("StandardMaterial3D_5i4ib")
+size = Vector3(0.02, 0.2, 0.42)
+
+[sub_resource type="BoxMesh" id="BoxMesh_spcdx"]
+material = SubResource("StandardMaterial3D_ykaj5")
+size = Vector3(0.03, 0.03, 0.12)
+
+[sub_resource type="BoxMesh" id="BoxMesh_785kf"]
+material = SubResource("StandardMaterial3D_5i4ib")
+size = Vector3(0.02, 0.2, 0.42)
+
+[sub_resource type="BoxMesh" id="BoxMesh_r2dah"]
+material = SubResource("StandardMaterial3D_ykaj5")
+size = Vector3(0.03, 0.03, 0.12)
+
+[sub_resource type="BoxMesh" id="BoxMesh_kk2t6"]
+material = ExtResource("1_1ihbu")
+size = Vector3(0.9, 0.78, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_e2ywk"]
+material = ExtResource("1_1ihbu")
+size = Vector3(0.9, 0.78, 0.04)
+
+[node name="Desk" type="Node3D" unique_id=931023248]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=124788079]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.825, 0)
+mesh = SubResource("BoxMesh_jm43w")
+
+[node name="@MeshInstance3D@6" type="MeshInstance3D" parent="." unique_id=1902190164]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.39, 0.8)
+mesh = SubResource("BoxMesh_invdd")
+
+[node name="@MeshInstance3D@7" type="MeshInstance3D" parent="." unique_id=1156906631]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.48, 0.14, 0.8)
+mesh = SubResource("BoxMesh_rk1fi")
+
+[node name="@MeshInstance3D@8" type="MeshInstance3D" parent="." unique_id=243353001]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.2, 0.8)
+mesh = SubResource("BoxMesh_lxmiu")
+
+[node name="@MeshInstance3D@9" type="MeshInstance3D" parent="." unique_id=1398608654]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.48, 0.39, 0.8)
+mesh = SubResource("BoxMesh_1vcul")
+
+[node name="@MeshInstance3D@10" type="MeshInstance3D" parent="." unique_id=813068683]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.45, 0.8)
+mesh = SubResource("BoxMesh_spcdx")
+
+[node name="@MeshInstance3D@11" type="MeshInstance3D" parent="." unique_id=1075882471]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.48, 0.64, 0.8)
+mesh = SubResource("BoxMesh_785kf")
+
+[node name="@MeshInstance3D@12" type="MeshInstance3D" parent="." unique_id=1705046247]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.7, 0.8)
+mesh = SubResource("BoxMesh_r2dah")
+
+[node name="@MeshInstance3D@13" type="MeshInstance3D" parent="." unique_id=102999963]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.39, -1.02)
+mesh = SubResource("BoxMesh_kk2t6")
+
+[node name="@MeshInstance3D@14" type="MeshInstance3D" parent="." unique_id=1693659457]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.39, 0.5)
+mesh = SubResource("BoxMesh_e2ywk")

@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4s7iu"]
+albedo_color = Color(0.9, 0.9, 0.87, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_8d6qv"]
+material = SubResource("StandardMaterial3D_4s7iu")
+size = Vector3(0.4, 0.4, 0.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_dvu3p"]
+material = SubResource("StandardMaterial3D_4s7iu")
+size = Vector3(0.45, 0.4, 0.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_1trjg"]
+material = SubResource("StandardMaterial3D_4s7iu")
+size = Vector3(0.42, 0.03, 0.48)
+
+[node name="Toilet" type="Node3D" unique_id=713207530]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=2010456233]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0.08)
+mesh = SubResource("BoxMesh_8d6qv")
+
+[node name="@MeshInstance3D@178" type="MeshInstance3D" parent="." unique_id=522119577]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, -0.25)
+mesh = SubResource("BoxMesh_dvu3p")
+
+[node name="@MeshInstance3D@179" type="MeshInstance3D" parent="." unique_id=1151047053]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.42, 0.08)
+mesh = SubResource("BoxMesh_1trjg")

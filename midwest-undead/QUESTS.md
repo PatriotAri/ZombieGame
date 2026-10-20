@@ -58,7 +58,7 @@ Each step has an **Id** (other steps and replies refer to it), an
 |---|---|---|
 | `go_to_place` | a Place marker's name (`Gas Station`, `Safe House`, `Police Station`, `Grocery Store`, once you've put them on the map: HOW_TO_MAP.md section 12) | you're within the place's radius |
 | `talk_to` | an NPC's name | you finish the step's **Dialogue** with them |
-| `clear_zone` | a zone's name (`Zone 1`, ...) | no zombies are left in it |
+| `kill_near` | a base camp's name (`Police Station`, ...) | you've killed **Count** zombies within 75 m of it, counting from the start of the game. Write `{count}` in the Objective to show how many so far, as in "Kill zombies near the police station ({count}/75)" |
 | `event` | an event name (below) | the game reports it |
 
 **Counts If Done Earlier** (on by default) means it's already done if it
@@ -70,7 +70,6 @@ The game reports these events:
 - `trader_found`
 - `woodworker_untied`
 - `woodworker_found`
-- `zone_cleared:<zone>` (for example `zone_cleared:Zone 1`)
 - `reached:<place>` (for example `reached:Gas Station`)
 
 **Talk** settings:

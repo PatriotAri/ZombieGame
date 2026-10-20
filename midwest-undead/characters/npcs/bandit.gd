@@ -38,6 +38,9 @@ const Ground := preload("res://world/ground.gd")
 const EYE_HEIGHT := 1.6
 const SENSE_INTERVAL := 0.25
 const ALERT_TIME := 6.0 # how long it stays on edge after hearing something
+## A new path when where it's going moves (a path costs; every frame would be
+## wasteful): at once if it moved more than a meter, else at most this often.
+const REPATH_INTERVAL := 0.3
 
 var home := Vector3.ZERO # camp center, set by main.gd before the bandit is added
 var drop_loot_on_death := true # off when restoring an already-dead bandit from a save
@@ -52,11 +55,10 @@ var _alert_pos := Vector3.ZERO
 var _alert_timer := 0.0
 var _wander_target := Vector3.ZERO
 var _wander_timer := 0.0
+var _repath_wait := 0.0
 var _day_night: Node
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
-@onready var gun: Node3D = $Gun
-@onready var muzzle_flash: OmniLight3D = $Gun/MuzzleFlash
 
 
 func _npc_ready() -> void:
@@ -75,7 +77,6 @@ func _npc_physics(delta: float) -> void:
 		_reload_left -= delta
 		if _reload_left <= 0.0:
 			rounds = magazine_size
-			gun.rotation_degrees = Vector3.ZERO
 
 	_sense_timer -= delta
 	if _sense_timer <= 0.0:
@@ -88,6 +89,7 @@ func _npc_physics(delta: float) -> void:
 		State.COMBAT:
 			var dist := global_position.distance_to(target.global_position)
 			_face(target.global_position)
+			_aim_at(target.global_position + Vector3(0, 1.1, 0))
 			if dist > fire_range * 0.8:
 				move_to = target.global_position # close the distance (within the leash)
 			if dist <= fire_range and _cooldown <= 0.0 and _reload_left <= 0.0:
@@ -107,6 +109,16 @@ func _npc_physics(delta: float) -> void:
 			move_speed_now = move_speed * 0.4
 
 	_walk(move_to, move_speed_now)
+
+
+## The rifle up in a fight (walking with it low when moving), low otherwise.
+func _animation() -> Array:
+	var pace := Vector2(velocity.x, velocity.z).length()
+	if state != State.COMBAT:
+		body.aim_pitch = 0.0
+	if pace > 0.15:
+		return ["rifle_walk", clampf(pace / WALK_PACE, 0.4, 2.2)]
+	return ["rifle_aim" if state == State.COMBAT else "rifle_idle", 1.0]
 
 
 ## Zombies, the player, and other bandits all call this through the
@@ -145,19 +157,24 @@ func die() -> void:
 ## The closest enemy it can see right now: the player or a zombie.
 func _pick_target() -> void:
 	var best: Node3D = null
-	var best_dist := INF
+	var best_sq := (sight_range * 1.2) ** 2 # (nobody further off can be seen)
 	var candidates: Array[Node] = get_tree().get_nodes_in_group("zombies")
 	var player := get_tree().get_first_node_in_group("player")
 	if player:
 		candidates.append(player)
+	var light := -1.0 # (looked up once, when first needed)
 	for node in candidates:
 		var candidate := node as Node3D
-		if not _is_enemy(candidate):
+		if candidate == null or not is_instance_valid(candidate):
 			continue
-		var dist := global_position.distance_to(candidate.global_position)
-		if dist < best_dist and _can_see(candidate, dist):
+		var dist_sq := global_position.distance_squared_to(candidate.global_position)
+		if dist_sq >= best_sq or not _is_enemy(candidate):
+			continue
+		if light < 0.0:
+			light = _light()
+		if _can_see(candidate, sqrt(dist_sq), light):
 			best = candidate
-			best_dist = dist
+			best_sq = dist_sq
 	if best:
 		if state != State.COMBAT:
 			# Just spotted them: a moment to react ("Hey!") before the first shot.
@@ -180,12 +197,15 @@ func _is_enemy(node: Node3D) -> bool:
 	return node.is_in_group("zombies") # (dead zombies leave the group)
 
 
-func _can_see(candidate: Node3D, dist: float) -> bool:
-	var light := 1.0
+## 0 at darkest night, 1 in full day.
+func _light() -> float:
 	if _day_night == null:
 		_day_night = get_tree().get_first_node_in_group("day_night")
-	if _day_night:
-		light = _day_night.call("light_level")
+	return _day_night.call("light_level") if _day_night else 1.0
+
+
+## light: _light() (passed in so it's looked up once for everyone).
+func _can_see(candidate: Node3D, dist: float, light: float) -> bool:
 	var sight := sight_range * lerpf(night_sight_factor, 1.0, light)
 	if candidate.is_in_group("player"):
 		if candidate.get("is_crouching"):
@@ -216,9 +236,6 @@ func _shoot_at(enemy: Node3D) -> void:
 		return
 	_cooldown = fire_interval * randf_range(0.8, 1.25)
 	var aim := enemy.global_position + Vector3(0, 1.1, 0)
-	var to_aim := aim - gun.global_position
-	if to_aim.length() > 0.1:
-		gun.look_at(aim, Vector3.FORWARD if absf(to_aim.normalized().y) > 0.99 else Vector3.UP)
 
 	var end := aim
 	var dist := global_position.distance_to(enemy.global_position)
@@ -234,16 +251,16 @@ func _shoot_at(enemy: Node3D) -> void:
 	else:
 		end += Vector3(randf_range(-1.2, 1.2), randf_range(-0.5, 0.9), randf_range(-1.2, 1.2))
 
-	_tracer(gun.global_transform * Vector3(0, 0, -0.35), end)
-	Sound.play_at(self, "gunshot", gun.global_position, -2.0, 70.0, 0.08)
-	muzzle_flash.visible = true
-	get_tree().create_timer(0.05).timeout.connect(func() -> void: muzzle_flash.visible = false)
+	_tracer(muzzle(), end)
+	Sound.play_at(self, "gunshot", muzzle(), -2.0, 70.0, 0.08)
+	_flash_muzzle()
+	body.one_shot("rifle_shoot")
 	get_tree().call_group("noise_listeners", "hear_noise", global_position, noise_radius)
 
 	rounds -= 1
 	if rounds <= 0:
 		_reload_left = reload_time
-		gun.rotation_degrees = Vector3(-50, 0, 0)
+		body.one_shot("rifle_reload", reload_time)
 
 
 # --- Movement ----------------------------------------------------------------
@@ -258,10 +275,11 @@ func _walk(point: Vector3, walk_speed: float) -> void:
 	from_home.y = 0.0
 	if from_home.length() > leash_radius:
 		point = home + from_home.normalized() * leash_radius
-	agent.target_position = point
-	if agent.is_navigation_finished():
-		_stop()
-		return
+	_repath_wait -= get_physics_process_delta_time()
+	var moved := point.distance_squared_to(agent.target_position)
+	if moved > 1.0 or (moved > 0.0001 and _repath_wait <= 0.0):
+		agent.target_position = point
+		_repath_wait = REPATH_INTERVAL
 	var dir := agent.get_next_path_position() - global_position
 	dir.y = 0.0
 	if dir.length() < 0.05:

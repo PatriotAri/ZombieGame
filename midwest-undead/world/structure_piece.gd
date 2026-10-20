@@ -28,7 +28,7 @@ var above: Node3D = null # what stands on it (scaffolding only)
 var gate_open := false
 var leaf: Node3D = null # fence gates: the part that swings (gate_leaf.gd)
 var ladder: Area3D = null # a guard post on scaffolding: the ladder's climbing area
-var worker: Node3D = null # garden plots and ammo benches: the survivor working it (base_camp.gd)
+var worker: Node3D = null # garden plots and ammo benches: the survivor working it; guard posts: who guards it (camps.gd)
 var health := MAX_HEALTH
 var plated := false
 var broken := false
@@ -43,6 +43,10 @@ func work_spot() -> Vector3:
 
 
 func interact_prompt() -> String:
+	if kind == "camp_kit":
+		return "take down the camp"
+	if kind == "lantern":
+		return "pick up the lantern"
 	var label := GameData.item_name(kind).to_lower()
 	return "take down the broken " + label if broken else "take down the " + label
 

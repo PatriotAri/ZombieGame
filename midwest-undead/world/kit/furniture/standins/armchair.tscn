@@ -1,0 +1,38 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rqoji"]
+albedo_color = Color(0.42, 0.36, 0.3, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_45k0j"]
+material = SubResource("StandardMaterial3D_rqoji")
+size = Vector3(0.9, 0.42, 0.85)
+
+[sub_resource type="BoxMesh" id="BoxMesh_fe7ij"]
+material = SubResource("StandardMaterial3D_rqoji")
+size = Vector3(0.9, 0.48, 0.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_tdvjf"]
+material = SubResource("StandardMaterial3D_rqoji")
+size = Vector3(0.16, 0.28, 0.85)
+
+[sub_resource type="BoxMesh" id="BoxMesh_xojvr"]
+material = SubResource("StandardMaterial3D_rqoji")
+size = Vector3(0.16, 0.28, 0.85)
+
+[node name="Armchair" type="Node3D" unique_id=1729792783]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=1401086343]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.21, 0)
+mesh = SubResource("BoxMesh_45k0j")
+
+[node name="Paint2" type="MeshInstance3D" parent="." unique_id=688009414]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.64, -0.32)
+mesh = SubResource("BoxMesh_fe7ij")
+
+[node name="Paint3" type="MeshInstance3D" parent="." unique_id=689678638]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.37, 0.55, 0)
+mesh = SubResource("BoxMesh_tdvjf")
+
+[node name="Paint4" type="MeshInstance3D" parent="." unique_id=616097247]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.37, 0.55, 0)
+mesh = SubResource("BoxMesh_xojvr")

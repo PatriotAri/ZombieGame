@@ -1,0 +1,33 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_f3qb7"]
+albedo_color = Color(0.78, 0.68, 0.38, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_33jlo"]
+material = SubResource("StandardMaterial3D_f3qb7")
+size = Vector3(1.2, 0.45, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ewdpc"]
+albedo_color = Color(0.55, 0.45, 0.25, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_wuvul"]
+material = SubResource("StandardMaterial3D_ewdpc")
+size = Vector3(0.02, 0.46, 0.51)
+
+[sub_resource type="BoxMesh" id="BoxMesh_cpub3"]
+material = SubResource("StandardMaterial3D_ewdpc")
+size = Vector3(0.02, 0.46, 0.51)
+
+[node name="HayBale" type="Node3D" unique_id=1625061194]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=829588444]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.225, 0)
+mesh = SubResource("BoxMesh_33jlo")
+
+[node name="@MeshInstance3D@230" type="MeshInstance3D" parent="." unique_id=929280616]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.35, 0.225, 0)
+mesh = SubResource("BoxMesh_wuvul")
+
+[node name="@MeshInstance3D@231" type="MeshInstance3D" parent="." unique_id=423088472]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.35, 0.225, 0)
+mesh = SubResource("BoxMesh_cpub3")

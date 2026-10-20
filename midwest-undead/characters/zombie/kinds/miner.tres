@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ZombieKind" format=3]
+
+[ext_resource type="Script" path="res://characters/zombie/zombie_kind.gd" id="1_miner"]
+
+[resource]
+script = ExtResource("1_miner")
+id = "miner"
+spawn_chance = 0.6
+mines_only = true
+health = 160.0
+min_speed = 1.0
+max_speed = 1.8
+skin_color = Color(0.42, 0.44, 0.4, 1)
+voice_pitch = 0.9
+hard_hat = true
+head_lamp = true

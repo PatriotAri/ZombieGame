@@ -53,6 +53,17 @@ const DEFAULT_INSIDE := preload("res://world/kit/materials/plaster.tres")
 		inside_material = value
 		_changed()
 
+@export_group("Models")
+## Its doors and windows, like a Building's Door Models and Window Models.
+@export var door_models: Array[PackedScene] = []:
+	set(value):
+		door_models = value
+		_changed()
+@export var window_models: Array[PackedScene] = []:
+	set(value):
+		window_models = value
+		_changed()
+
 var _generated: Array[Node] = []
 var _dirty := true
 var _queued := false
@@ -105,14 +116,14 @@ func _rebuild() -> void:
 		var node_name: String = op.kind.capitalize() + (str(counts[op.kind]) if counts[op.kind] > 1 else "")
 		var node: Node3D
 		if op.kind == "door":
-			var door := KitMesh.make_door(entry, op.door_color)
+			var door := KitMesh.make_door(entry, op.door_color, door_models)
 			door.start_open = op.start_open
 			door.boardable = boardable
 			door.boarded_at_start = op.boarded_at_start and boardable
 			node = door
 		elif not op.boarded_up:
 			var frame: Transform3D = entry["frame"]
-			node = KitMesh.make_window(entry, boardable, op.boarded_at_start and boardable, frame.origin.y - floor_height)
+			node = KitMesh.make_window(entry, boardable, op.boarded_at_start and boardable, frame.origin.y - floor_height, window_models)
 		if node:
 			node.name = node_name
 			add_child(node, false, Node.INTERNAL_MODE_BACK)

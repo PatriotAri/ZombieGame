@@ -11,12 +11,17 @@ extends RefCounted
 ## of the kit's scripts.
 
 const PATCH := 48.0 # meters: small enough that off-screen patches aren't drawn
-const MERGED_SCRIPTS := ["building.gd", "kit_wall.gd", "kit_floor.gd", "kit_stairs.gd", "kit_box.gd"]
+## Past this a patch isn't drawn at all (the fog has all but hidden it by
+## then); the View Distance setting scales it (core/view_distance.gd).
+const FAR := 700.0
+const ViewDistance := preload("res://core/view_distance.gd")
+const MERGED_SCRIPTS := ["building.gd", "kit_wall.gd", "kit_floor.gd", "kit_stairs.gd", "kit_box.gd", "kit_prop.gd",
+		"kit_sign.gd", "kit_steeple.gd", "kit_silo.gd", "kit_mine.gd"]
 
 
 ## Combines town's static meshes. Returns how many meshes it hid.
 static func merge(town: Node3D) -> int:
-	var buckets := {} # [patch x, patch z, material, shadows] -> Bucket
+	var buckets := {} # [patch x, patch z, material, shadows, render layers] -> Bucket
 	var hidden := 0
 	var to_local := town.global_transform.affine_inverse()
 	for node in town.find_children("*", "MeshInstance3D", true, false):
@@ -28,7 +33,7 @@ static func merge(town: Node3D) -> int:
 		var patch := Vector2i(floori(center.x / PATCH), floori(center.z / PATCH))
 		for s in mesh_inst.mesh.get_surface_count():
 			var mat := _material(mesh_inst, s)
-			var key := [patch.x, patch.y, mat, mesh_inst.cast_shadow]
+			var key := [patch.x, patch.y, mat, mesh_inst.cast_shadow, mesh_inst.layers] # (a mine's are underground)
 			if not buckets.has(key):
 				buckets[key] = Bucket.new()
 			(buckets[key] as Bucket).add(mesh_inst.mesh.surface_get_arrays(s), xform)
@@ -42,7 +47,9 @@ static func merge(town: Node3D) -> int:
 		merged.mesh = (buckets[key] as Bucket).commit()
 		merged.material_override = key[2]
 		merged.cast_shadow = key[3]
+		merged.layers = key[4]
 		holder.add_child(merged)
+		ViewDistance.limit(merged, FAR)
 	return hidden
 
 
@@ -55,7 +62,7 @@ static func _mergeable(mesh_inst: MeshInstance3D, town: Node3D) -> bool:
 	while node != null and node != town:
 		if node.has_meta("salvage_label"):
 			return false # can be stripped (it darkens)
-		if not scripted and node.get_script():
+		if node.get_script(): # every script up the way (a model sits in a container or a door too)
 			if not (node.get_script() as Script).resource_path.get_file() in MERGED_SCRIPTS:
 				return false # a container, a door, a window, an item...
 			scripted = true
@@ -70,9 +77,10 @@ static func _material(mesh_inst: MeshInstance3D, surface: int) -> Material:
 	return mat if mat else mesh_inst.mesh.surface_get_material(surface)
 
 
-## One merged surface being built: vertices, normals, UVs and tangents, moved
-## into the map's space.
+## One merged surface being built: vertices, normals, UVs, tangents and colors
+## (a flattened stand-in's, kit_prop.gd), moved into the map's space.
 class Bucket:
+	var colors := PackedColorArray()
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
@@ -85,6 +93,7 @@ class Bucket:
 		var uv = arrays[Mesh.ARRAY_TEX_UV]
 		var t = arrays[Mesh.ARRAY_TANGENT]
 		var idx = arrays[Mesh.ARRAY_INDEX]
+		var c = arrays[Mesh.ARRAY_COLOR]
 		var start := verts.size()
 		var basis := xform.basis
 		var normal_basis := basis.inverse().transposed() # right for stretched pieces too
@@ -92,6 +101,7 @@ class Bucket:
 			verts.append(xform * v[i])
 			normals.append((normal_basis * (n[i] as Vector3)).normalized() if n != null else Vector3.UP)
 			uvs.append(uv[i] if uv != null else Vector2.ZERO)
+			colors.append(c[i] if c != null else Color.WHITE)
 			if t != null:
 				var tangent := (basis * Vector3(t[i * 4], t[i * 4 + 1], t[i * 4 + 2])).normalized()
 				tangents.append_array([tangent.x, tangent.y, tangent.z, t[i * 4 + 3]])
@@ -111,6 +121,7 @@ class Bucket:
 		arrays[Mesh.ARRAY_NORMAL] = normals
 		arrays[Mesh.ARRAY_TEX_UV] = uvs
 		arrays[Mesh.ARRAY_TANGENT] = tangents
+		arrays[Mesh.ARRAY_COLOR] = colors
 		arrays[Mesh.ARRAY_INDEX] = indices
 		var mesh := ArrayMesh.new()
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)

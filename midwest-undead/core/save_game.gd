@@ -8,15 +8,17 @@ extends RefCounted
 ## are still up, the time of day, and how far the story has got.
 ##
 ## Every save is its own JSON file in user://saves/: save_1.json, save_2.json...
-## for the ones you make at the logbook, and autosave.json, which the game
-## overwrites when it autosaves. To find them, use Project > Open User Data
+## for the ones you make at the logbook (each can have a name you give it), and
+## autosave.json, which the game overwrites when it autosaves. To find them, use Project > Open User Data
 ## Folder in the editor.
 
 const DIR := "user://saves/"
 const AUTOSAVE := DIR + "autosave.json"
 const OLD_PATH := "user://savegame.json" # before there was a list: becomes save_1
 const GAME_SCENE := "res://world/main.tscn"
-const VERSION := 4 # bump whenever the save layout changes; older saves are ignored (4: the new map)
+const SceneFade := preload("res://ui/scene_fade.gd")
+const NAME_LENGTH := 40 # characters a save's name can have
+const VERSION := 5 # bump whenever the save layout changes; older saves are ignored (4: the new map; 5: base camps)
 
 ## Set by request_load(); main.gd picks it up after the scene reloads.
 static var pending_load: Dictionary = {}
@@ -28,7 +30,8 @@ static func exists() -> bool:
 
 
 ## Every save that can be loaded, newest first: {"path", "autosave": bool,
-## "title": "Day 3, 7:40 PM", "detail": the objective and when it was saved}.
+## "name": what you called it ("" if nothing), "title": its name, or
+## "Day 3, 7:40 PM", "detail": the objective and when it was saved}.
 static func list() -> Array[Dictionary]:
 	_move_old_save()
 	var saves: Array[Dictionary] = []
@@ -40,12 +43,16 @@ static func list() -> Array[Dictionary]:
 		if data.is_empty():
 			continue
 		var autosave := path == AUTOSAVE
+		var save_name := str(data.get("name", ""))
+		var clock := str(data.get("clock", "?"))
 		saves.append({
 			"path": path,
 			"autosave": autosave,
+			"name": save_name,
 			"saved_unix": float(data.get("saved_unix", 0.0)),
-			"title": ("Autosave  ·  " if autosave else "") + str(data.get("clock", "?")),
-			"detail": "%s\nSaved %s" % [data.get("objective", ""), _when(str(data.get("saved_at", "")))],
+			"title": ("Autosave  ·  " if autosave else "") + (save_name if save_name != "" else clock),
+			"detail": "%s%s\nSaved %s" % [clock + "  ·  " if save_name != "" else "", data.get("objective", ""),
+					_when(str(data.get("saved_at", "")))],
 		})
 	saves.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["saved_unix"] > b["saved_unix"])
 	return saves
@@ -79,6 +86,29 @@ static func write(data: Dictionary, path: String) -> bool:
 	return true
 
 
+## Names a save (or, with "", takes its name away). Everything else in it,
+## when it was saved included, stays as it was. False if it couldn't.
+static func rename(path: String, save_name: String) -> bool:
+	var data := read(path)
+	if data.is_empty() or path == AUTOSAVE:
+		return false
+	save_name = clean_name(save_name)
+	if save_name == "":
+		data.erase("name")
+	else:
+		data["name"] = save_name
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_string(JSON.stringify(data, "\t"))
+	return true
+
+
+## A save's name as it's kept: one line, no spaces at the ends, at most NAME_LENGTH long.
+static func clean_name(save_name: String) -> String:
+	return save_name.replace("\n", " ").replace("\t", " ").strip_edges().left(NAME_LENGTH)
+
+
 static func read(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return {}
@@ -97,14 +127,15 @@ static func delete(path: String) -> void:
 ## the one at `path`, or the newest if path is "". Returns false if there's no
 ## usable save.
 static func request_load(tree: SceneTree, path := "") -> bool:
+	if SceneFade.busy(tree):
+		return true # already on the way somewhere (a second press during the fade)
 	if path == "":
 		path = latest()
 	var data := read(path)
 	if data.is_empty():
 		return false
 	pending_load = data
-	tree.paused = false # pause survives a scene change, so clear it first
-	tree.change_scene_to_file(GAME_SCENE)
+	SceneFade.change_to(tree, GAME_SCENE)
 	return true
 
 

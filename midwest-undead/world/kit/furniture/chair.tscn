@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_1c1lq"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/chair.tscn" id="2_wnh3l"]
+
+[node name="Chair" type="StaticBody3D" unique_id=1254377178]
+script = ExtResource("1_1c1lq")
+size = Vector3(0.45, 0.9, 0.45)
+sits_on_floor = true
+solid = false
+models = Array[PackedScene]([ExtResource("2_wnh3l")])

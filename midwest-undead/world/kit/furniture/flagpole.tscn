@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_4n1yv"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/flagpole.tscn" id="2_dt48l"]
+
+[node name="Flagpole" type="StaticBody3D" unique_id=1647252808]
+script = ExtResource("1_4n1yv")
+size = Vector3(1.7, 7.5, 0.3)
+sits_on_floor = true
+solid = false
+models = Array[PackedScene]([ExtResource("2_dt48l")])

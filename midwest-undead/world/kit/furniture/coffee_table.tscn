@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_5phcn"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/coffee_table.tscn" id="2_ydeuv"]
+
+[node name="CoffeeTable" type="StaticBody3D" unique_id=1499003009]
+script = ExtResource("1_5phcn")
+size = Vector3(1.1, 0.45, 0.6)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_ydeuv")])

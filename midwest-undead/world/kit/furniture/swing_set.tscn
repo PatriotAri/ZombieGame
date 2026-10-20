@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_3fpe8"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/swing_set.tscn" id="2_3kfjb"]
+
+[node name="SwingSet" type="StaticBody3D" unique_id=1827798901]
+script = ExtResource("1_3fpe8")
+size = Vector3(3.2, 2.3, 1.6)
+sits_on_floor = true
+solid = false
+models = Array[PackedScene]([ExtResource("2_3kfjb")])

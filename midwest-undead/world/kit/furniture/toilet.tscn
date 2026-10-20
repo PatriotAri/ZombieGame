@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_v3t7s"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/toilet.tscn" id="2_xshky"]
+
+[node name="Toilet" type="StaticBody3D" unique_id=1220984758]
+script = ExtResource("1_v3t7s")
+size = Vector3(0.45, 0.8, 0.7)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_xshky")])

@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_5c2v1"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/workbench.tscn" id="2_2abt4"]
+
+[node name="Workbench" type="StaticBody3D" unique_id=1268985373]
+script = ExtResource("1_5c2v1")
+label = "Workbench"
+loot_table = "workshop"
+size = Vector3(2, 0.92, 0.7)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_2abt4")])

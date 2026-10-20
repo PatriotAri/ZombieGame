@@ -29,6 +29,9 @@ extends ItemData
 @export var noise := 40.0
 
 @export_group("Gun")
+## Which weapon slot it goes in (player.gd): Primary, a long gun, or Sidearm,
+## a handgun. (Melee weapons have their own slot.)
+@export_enum("Primary", "Sidearm") var gun_slot := "Primary"
 ## The item id it loads.
 @export var ammo := ""
 @export var magazine := 7
@@ -55,6 +58,8 @@ extends ItemData
 @export var stamina_cost := 15.0
 ## Can pry things apart for materials (hold interact on a car, a fence...).
 @export var salvages := false
+## Digs through things (hold interact on a mine's cave-in: world/map/mine_cave_in.gd).
+@export var digs := false
 
 
 func use_kind() -> String:

@@ -1,0 +1,27 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/props/kit_prop.gd" id="1_yxx2g"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xgxdn"]
+albedo_color = Color(0.5, 0.52, 0.55, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_dfv1y"]
+material = SubResource("StandardMaterial3D_xgxdn")
+size = Vector3(2.8, 2, 0.02)
+
+[sub_resource type="BoxMesh" id="BoxMesh_8s3tc"]
+material = SubResource("StandardMaterial3D_xgxdn")
+size = Vector3(2.8, 2, 0.02)
+
+[node name="GatePlating" type="Node3D" unique_id=1723648637]
+script = ExtResource("1_yxx2g")
+
+[node name="StandIn" type="Node3D" parent="." unique_id=1438291596]
+
+[node name="@MeshInstance3D@150" type="MeshInstance3D" parent="StandIn" unique_id=2079491544]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.42, 1.15, -0.06)
+mesh = SubResource("BoxMesh_dfv1y")
+
+[node name="@MeshInstance3D@151" type="MeshInstance3D" parent="StandIn" unique_id=877080773]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.42, 1.15, 0.1)
+mesh = SubResource("BoxMesh_8s3tc")

@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Script" path="res://items/item_data.gd" id="1_gascn"]
+
+[resource]
+script = ExtResource("1_gascn")
+id = "gas_can"
+display_name = "Gas can"
+color = Color(0.75, 0.12, 0.08, 1)
+size = Vector3(0.3, 0.32, 0.16)

@@ -1,0 +1,100 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/props/kit_prop.gd" id="1_2ss5m"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4lutd"]
+albedo_color = Color(0.4, 0.3, 0.19, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_7wbuu"]
+material = SubResource("StandardMaterial3D_4lutd")
+size = Vector3(0.08, 0.92, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_7414d"]
+material = SubResource("StandardMaterial3D_4lutd")
+size = Vector3(0.08, 0.92, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ryxm1"]
+material = SubResource("StandardMaterial3D_4lutd")
+size = Vector3(0.08, 0.92, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_jmbtm"]
+material = SubResource("StandardMaterial3D_4lutd")
+size = Vector3(0.08, 0.92, 0.08)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_l1xf4"]
+albedo_color = Color(0.58, 0.45, 0.28, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_swheo"]
+material = SubResource("StandardMaterial3D_l1xf4")
+size = Vector3(1.8, 0.08, 0.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_2r1yc"]
+material = SubResource("StandardMaterial3D_4lutd")
+size = Vector3(1.5999999, 0.05, 0.65000004)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_5v38p"]
+albedo_color = Color(0.42, 0.43, 0.45, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_cglnv"]
+material = SubResource("StandardMaterial3D_5v38p")
+size = Vector3(0.2, 0.55, 0.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_sau56"]
+material = SubResource("StandardMaterial3D_5v38p")
+size = Vector3(0.08, 0.3, 0.45)
+
+[sub_resource type="BoxMesh" id="BoxMesh_yiw2i"]
+material = SubResource("StandardMaterial3D_5v38p")
+size = Vector3(0.25, 0.15, 0.18)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_chrf7"]
+albedo_color = Color(0.7, 0.12, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_dy6lq"]
+material = SubResource("StandardMaterial3D_chrf7")
+size = Vector3(0.3, 0.1, 0.2)
+
+[node name="ShellBench" type="Node3D" unique_id=1977093302]
+script = ExtResource("1_2ss5m")
+
+[node name="StandIn" type="Node3D" parent="." unique_id=1452585773]
+
+[node name="@MeshInstance3D@215" type="MeshInstance3D" parent="StandIn" unique_id=1866781995]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.82, 0.46, -0.32)
+mesh = SubResource("BoxMesh_7wbuu")
+
+[node name="@MeshInstance3D@216" type="MeshInstance3D" parent="StandIn" unique_id=350016089]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.82, 0.46, 0.32)
+mesh = SubResource("BoxMesh_7414d")
+
+[node name="@MeshInstance3D@217" type="MeshInstance3D" parent="StandIn" unique_id=925909361]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.82, 0.46, -0.32)
+mesh = SubResource("BoxMesh_ryxm1")
+
+[node name="@MeshInstance3D@218" type="MeshInstance3D" parent="StandIn" unique_id=557450324]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.82, 0.46, 0.32)
+mesh = SubResource("BoxMesh_jmbtm")
+
+[node name="@MeshInstance3D@219" type="MeshInstance3D" parent="StandIn" unique_id=24545308]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.96, 0)
+mesh = SubResource("BoxMesh_swheo")
+
+[node name="@MeshInstance3D@220" type="MeshInstance3D" parent="StandIn" unique_id=770558951]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+mesh = SubResource("BoxMesh_2r1yc")
+
+[node name="@MeshInstance3D@221" type="MeshInstance3D" parent="StandIn" unique_id=180729142]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 1.27, -0.15)
+mesh = SubResource("BoxMesh_cglnv")
+
+[node name="@MeshInstance3D@222" type="MeshInstance3D" parent="StandIn" unique_id=374921711]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 1.5, 0.05)
+mesh = SubResource("BoxMesh_sau56")
+
+[node name="@MeshInstance3D@223" type="MeshInstance3D" parent="StandIn" unique_id=1293973046]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6, 1.08, 0.1)
+mesh = SubResource("BoxMesh_yiw2i")
+
+[node name="@MeshInstance3D@224" type="MeshInstance3D" parent="StandIn" unique_id=1212432072]
+transform = Transform3D(0.9553365, 0, 0.29552022, 0, 1, 0, -0.29552022, 0, 0.9553365, 0.1, 1.05, -0.1)
+mesh = SubResource("BoxMesh_dy6lq")

@@ -1,0 +1,35 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://world/kit/materials/wood_planks.tres" id="1_gefe6"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_uuxv7"]
+material = ExtResource("1_gefe6")
+size = Vector3(1.2, 0.5, 0.45)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bhqy4"]
+albedo_color = Color(0.12, 0.12, 0.12, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_uwiso"]
+material = SubResource("StandardMaterial3D_bhqy4")
+size = Vector3(0.9, 0.6, 0.35)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_3ejxq"]
+albedo_color = Color(0.2, 0.24, 0.26, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_yae77"]
+material = SubResource("StandardMaterial3D_3ejxq")
+size = Vector3(0.75, 0.48, 0.02)
+
+[node name="TV" type="Node3D" unique_id=1806671825]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=2067864741]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+mesh = SubResource("BoxMesh_uuxv7")
+
+[node name="@MeshInstance3D@105" type="MeshInstance3D" parent="." unique_id=1476041301]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.82, -0.02)
+mesh = SubResource("BoxMesh_uwiso")
+
+[node name="@MeshInstance3D@106" type="MeshInstance3D" parent="." unique_id=1405213130]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.83, 0.16)
+mesh = SubResource("BoxMesh_yae77")

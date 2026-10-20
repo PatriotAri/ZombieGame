@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_nh5jd"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/tv.tscn" id="2_twlv5"]
+
+[node name="Tv" type="StaticBody3D" unique_id=1228159250]
+script = ExtResource("1_nh5jd")
+size = Vector3(1.2, 1.15, 0.45)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_twlv5")])

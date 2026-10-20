@@ -1,7 +1,7 @@
 extends CanvasLayer
-## The logbook screen: save as a new save or over an old one, load one, or
-## delete one (ui/save_list.gd). main.gd supplies the save callback (it knows how
-## to collect the game state).
+## The logbook screen: save as a new save (named if you like) or over an old
+## one, load one, rename one, or delete one (ui/save_list.gd). main.gd supplies
+## the save callback (it knows how to collect the game state).
 
 const SaveList := preload("res://ui/save_list.gd")
 
@@ -40,7 +40,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("interact") \
 			or event.is_action_pressed("pause"):
-		close()
+		if not _list.cancel_edit(): # (typing a name: Esc stops that first)
+			close()
 		get_viewport().set_input_as_handled()
 
 

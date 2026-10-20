@@ -15,7 +15,7 @@ one step before starting the next; come back and change anything at any time.
 6. [Forests and plants](#6-forests-and-plants)
 7. [Crop fields](#7-crop-fields)
 8. [Cliffs and rocks](#8-cliffs-and-rocks)
-9. [Mine entrances](#9-mine-entrances)
+9. [Mines](#9-mines)
 10. [Buildings on hills](#10-buildings-on-hills)
 11. [The edge of the map](#11-the-edge-of-the-map)
 12. [Putting the story back: markers](#12-putting-the-story-back-markers)
@@ -48,8 +48,9 @@ to jump to it.
   appears when you select the **Terrain** node. It sculpts and paints the
   ground.
 - The **Map Tools** panel is a tab along the bottom of the editor, next to
-  Output. It adds roads, creeks, ponds, plants, fields, rocks and mine
-  entrances. If you can't see it, click **Map Tools** in the bottom bar.
+  Output. It adds roads, creeks, ponds, plants, fields, rocks, mines
+  and buildings (drawing their outlines, stairs, doors and windows:
+  `HOW_TO_BUILD.md`). If you can't see it, click **Map Tools** in the bottom bar.
 
 **Saving.** Ctrl+S saves the scene *and* the terrain (heights, paint and
 plants are kept in `world/map/terrain/`, one file per 256 m tile). Save
@@ -317,28 +318,143 @@ Rocks are solid, and zombies path around them.
 
 ---
 
-## 9. Mine entrances
+## 9. Mines
+
+A mine is one node (a **KitMine**) holding all its tunnels and chambers,
+laid out on a grid of 2.5 m squares (**cells**) under the hills. Tunnels are
+one cell wide and 3 m high, held up by timber frames; **chambers** are big
+rooms, taller than a tunnel. **Levels** are 4 m apart: level 0 is the node's
+own height, -1 the one under it, and so on. It's dark inside (no sun or moon
+gets in, and the sky's light stops a few meters in from each entrance), so
+bring a flashlight, a helmet lamp or a lantern.
 
 1. Make a steep hillside (section 2).
-2. Click **New mine entrance**. It appears where you're looking, facing away
-   from you.
-3. Move it to the **foot** of the hillside, with its floor at the ground, and
-   turn it so the tunnel (the side away from the timber frame) runs into the
-   hill.
-4. Press **Apply**. The hillside is opened where the tunnel comes through it;
-   deeper in, the hill stays closed over the tunnel.
-5. **Length**, **Width** and **Height** in the Inspector; Apply again after
-   changing them or moving it.
+2. In Map Tools' **Mines** section click **New mine**. It appears where
+   you're looking: an entrance and a tunnel running away from you.
+3. Move the node to the **foot** of the hillside, its floor at the ground,
+   and turn it so the tunnel runs into the hill (the green line in its plan
+   is the entrance).
+4. Pick a tool (the mine must be selected). Its plan shows over everything,
+   through the hill: the **Level** you're drawing on in yellow, the other
+   levels faint blue, entrances green, shafts a purple X, cave-ins a brown
+   box, floods outlined blue, and what a click would add in orange.
+   - **Draw tunnel**: click where it starts, then each corner. It runs
+     straight from corner to corner along the grid. **Esc** or **Enter**
+     ends it; the next click starts another. Start or end on another tunnel
+     or a chamber to join them. Right-click takes back the last corner, or
+     (when you're not drawing one) removes the tunnel under the mouse.
+   - **Draw chamber**: click one corner, then the opposite one. Right-click
+     removes the chamber under the mouse. Its **Height** is in the Inspector
+     (Chambers); taller than 4 m, a tunnel on the level above that reaches
+     its side opens onto a ledge over it.
+   - **Mark entrance**: click the end of a tunnel that comes out of the
+     hill (again to take it back). A mine can have as many as you like.
+5. **Rails** (in the Mines section) gives new tunnels rails; each tunnel's
+   **Rails** and **Carts** are in the Inspector (Tunnels). Carts stand at
+   the end of the rails where a tunnel stops dead (anywhere else they'd
+   block the way). Everything the tools do can also be typed in there.
+6. At each entrance the floor runs on 1.5 m past the timber portal. Make the
+   ground **level with the floor** where that ends, rising into the hill
+   over the portal.
+7. Press **Apply**. The hillside is opened where the mine comes through it
+   (wherever the ground is inside a tunnel or chamber, or less than a meter
+   over its ceiling); under plenty of hill it stays closed. Apply again after
+   moving it, drawing more, or re-sculpting the ground over it.
 
-For now the tunnel ends in a cave-in a few meters in. Mines to explore are a
-separate job, still to come.
+**Between levels:**
+
+- **Ramps.** While drawing a tunnel, change the **Level** before clicking the
+  next corner: the stretch between the two corners slopes from one level to
+  the other. It needs at least 3 cells for each level it climbs (about 28
+  degrees), and Map Tools lengthens it if you click closer; draw it longer
+  for a gentler slope. Zombies walk ramps.
+- **Shafts** (**Place shaft**): pick the kind (under the Rails box), click
+  where it goes on one Level, change the Level and click again. Tunnels on
+  the levels it passes that reach its side open into it. Right-click removes
+  the shaft under the mouse.
+  - **Ladder shaft:** a ladder up one wall (the one no tunnel comes in by),
+    and timber landings, half the shaft, on each level a tunnel comes in on.
+    You climb up the open half and step off onto a landing.
+  - **Open shaft:** just a drop. Falls hurt from 4 m up, and 12 m kills.
+  - **Cage shaft:** an elevator. It stops at the bottom and on each level a
+    tunnel comes in on. A lever inside sends it to the next stop; a call
+    button beside each stop's gate brings it there. The gates stay shut
+    unless the cage is at that stop. Zombies that follow you into it ride
+    along. It needs power (next).
+  - **To Surface** (in the Inspector, Shafts): the shaft comes out on the
+    surface, with a stone collar and a timber headframe at **Surface
+    Height** (meters over its top level's floor). Set that to where the
+    ground is, and press Apply.
+- **Generator** (**Place generator**): click where it goes. Every cage in
+  the mine works while one of its generators runs. In the game you pour in a
+  **gas can** (found in workshops, on farms and in cars) for an hour's
+  running, up to three. It's loud: zombies within 35 m hear it.
+
+**Hazards:**
+
+- **Cave-ins** (**Place cave-in**): click a tunnel's cell to fill it with
+  rock and broken timber, floor to roof (click again, or right-click, to take
+  it away). Zombies can't get past one either. In the game it takes a
+  **pickaxe** (found in workshops and on farms): hold interact on it for 12
+  seconds, noisily; stop and come back and you carry on where you were.
+  Dynamite blows one clear at once. Dug or blown through, it's gone for good
+  (the save remembers).
+- **Floods** (**Flood**): click one corner of the flooded stretch, then the
+  opposite one, on the Level set here; right-click removes the flood under
+  the mouse. Its **Depth** is in the Inspector (Floods): from 1.3 m you
+  swim, and from 3 m a tunnel's flooded to its roof, so you swim through
+  holding your breath (25 seconds; then you drown, losing health). Zombies
+  that wade in deep drown. Floods can't be drained.
+
+**Loot:**
+
+- **Place locker** / **Place cache**: click a cell and a **miner's locker**
+  (dynamite, batteries, food, ammo, now and then a lantern, a helmet lamp, a
+  gas can or a pickaxe: the `miner` loot table) or a **supply cache**
+  (dynamite, steel bars, scrap and sheet metal, gas cans, a lantern, shells:
+  `mine_cache`) goes against its wall. Right-click removes the one under the
+  mouse.
+- **Scatter Loot** (the mine, in the Inspector): how many it puts in by
+  itself, lockers and caches turn about, in its dead ends first, then round
+  its chambers. The same places every time, until you change the layout.
+
+**Zombies:**
+
+- **Place zombies**: click a cell for a **ZombieSpawn** marker (3 zombies;
+  its **Count**, **Chance** and **Spread** are in the Inspector). In a new
+  game they turn up on the mine's open floor within Spread of it: never in
+  rock, in the daylight by an entrance, in a cave-in or under a flood.
+  Right-click removes the marker under the mouse.
+- **Zombie Density** (the mine, in the Inspector): zombies it fills itself
+  with, per 100 m of its tunnels and chambers.
+- Down a mine, about 6 in 10 are **miners**: tougher than a walker, with a
+  hard hat that the first headshot only knocks off, and a lamp still
+  glowing on it, so you see them coming. Miners are only ever in mines.
+  The rest are the usual kinds. They're there once each new game: cleared
+  stays cleared.
+
+Mines are where to find **dynamite** (light it and throw it, or crouch to
+set it down on an 8 second fuse; within 6 m it kills zombies, blows cave-ins
+clear, wrecks your own fences and barricades, and hurts you too), the
+**helmet lamp** (put it on in your backpack: the flashlight key then switches
+it; brighter, and its batteries last twice as long), **lanterns** (hold one
+for light all round you, or set it down and pick it up again; it never runs
+out) and **steel bars**.
+
+Anything you put under the mine node (crates, lockers, carts of your own) is
+drawn in the dark with it, and so are you, zombies and lanterns while they're
+down there.
+
+The older **New mine entrance** (Fields and features) is still there: a
+single short tunnel that ends in a cave-in.
 
 ---
 
 ## 10. Buildings on hills
 
-Buildings are made the same way as before (see `HOW_TO_BUILD.md`): drag a
-building from `world/kit/pieces/` onto the map's **Buildings** node.
+Buildings are made the same way as before (see `HOW_TO_BUILD.md`): Map Tools'
+**New building**, or drag one from `world/kit/pieces/` onto the map's
+**Buildings** node. Any shape stands on its foundation the same way.
 
 On a slope:
 
@@ -387,22 +503,38 @@ markers on the new map (drag them from `world/markers/` onto the
 | Where you start | SpawnPoint, role **player** (there's one at the middle of the map) | you start in the middle |
 | The Quartermaster (trader) | SpawnPoint, role **trader** | no shop |
 | The Police Chief | SpawnPoint, role **chief** | the story stops at "Talk to the Police Chief" |
-| Guards on towers | SpawnPoint, role **guard** (under its tower) | none |
 | Bandits | SpawnPoint, role **bandit** (under the camp node) | none |
 | The woodworker | SpawnPoints **woodworker_captive** and **woodworker_home** | he stands in the middle of the map |
 | The wagon trader | SpawnPoints **wagon** and **wagon_trader** | the wagon turns up in the middle |
-| Survivors | SpawnPoints **survivor** (in their house) and **survivor_home**, with Person set | they're missing |
+| Survivors | SpawnPoint **survivor** (in their house), with Person set. Optional: **survivor_home** for their own spot at the police station | they're missing (without a survivor_home they stand round their camp) |
 | Bodies at the safe house | SpawnPoint, role **corpse** | none |
 | Zombies at the start | ZombieSpawn markers | only the ones scattered around |
-| Story places | Place markers named **Police Station**, **Safe House**, **Gas Station**, **Grocery Store** | quest steps there can't be reached |
+| Story places | Place markers named **Safe House**, **Gas Station**, **Grocery Store** | quest steps there can't be reached |
+| The police station camp | **Map Tools > Police station camp**: a Base Camp marker in the station, with its **Logbook**, **Board** and **Crate** markers dragged where they go | the camp is wherever you start, with no logbook, board or supply crate |
+| Zones (named areas) | **Map Tools > New zone**, then draw its outline (below) | no zone names |
 | Reaching the safe house | an Area3D in the group **safe_house_trigger** | that story step never happens |
-| The base's supply crate | a container in the group **base_supply_crate** | no morning supplies |
-| Zone 1 (the base area) | its squares in `world/zones.gd` (ZONES) | it's the 3 x 3 squares in the middle |
+**Zones** are named areas: a hollow, a town, a farm. Walking into one shows
+its name, and the map screen outlines them when you turn that on (interact
+while the map is open). They're just names: nothing else depends on them.
+To make one:
+1. Press **Map Tools > New zone**.
+2. In the Inspector, type its **Zone Name**.
+3. Turn on **Draw points** and click its corners on the ground, all the way
+   round. It closes itself, and right-click removes the last corner.
+4. Drag the points to reshape it any time.
 
-The map screen's grid is 26 x 26 squares of 40 m (A1 in the north-west
-corner). To move Zone 1 to wherever you build the police station, change its
-square names in `world/zones.gd`. Building fences and the wagon trader both
-go by Zone 1.
+**The police station camp** is the base you start with:
+- Its logbook saves and loads the game.
+- Its bulletin board shows who lives there.
+- Its supply crate fills with food and ammo each morning.
+- The wagon trader comes once you've killed 75 zombies within 75 m of it.
+
+Put one marker in the station (**Map Tools > Police station camp**), then drag
+its three child markers where you want those things. Other camps are built in
+the game, from the woodworker's camp kit.
+
+The station's old fixed guards are gone. You post your own survivors on guard
+posts you build instead.
 
 ---
 
@@ -413,10 +545,12 @@ go by Zone 1.
 | Uphill | slower: half speed on a 45 degree slope | slower still: 30% speed at 45 degrees |
 | Steeper than 45 degrees | can't climb (you slide back) | can't climb |
 | Shallow water (25 cm to 1.3 m) | wade at 60% speed | 40% speed |
-| Deep water (1.3 m or more) | swim slowly, no guns | sink, and drown after 4 seconds |
+| Deep water (1.3 m or more) | swim slowly, no guns; crouch dives, jump comes up | sink, and drown after 4 seconds |
+| Head under water | 25 seconds of breath, then you drown (10 health a second); it comes back three times as fast | (drowned already) |
 | Crops and bushes | crouch in them to hide | can't see you unless right next to you |
 | Trees | solid trunks block you and bullets, and block sight | the same |
 | Hills | block sight | the same |
+| Falling | nothing up to 4 m, then it hurts more the further you fall; 12 m kills | the same |
 
 Where to change the numbers:
 - You: `characters/player/player.tscn`, root node, Inspector, **Movement**
@@ -424,6 +558,10 @@ Where to change the numbers:
 - Zombies: the constants at the top of `characters/zombie/zombie.gd`
   (SLOPE_SLOWDOWN, WADE_FACTOR, DEEP_FACTOR, DROWN_SECONDS).
 - Water depths: `world/water.gd` (WADE_DEPTH, SWIM_DEPTH).
+- Breath: the constants by `breath` in `characters/player/player.gd`
+  (BREATH, DROWN_DAMAGE, BREATH_BACK).
+- Falls: `characters/fall.gd` (SAFE, DEADLY). Landing in water, holding on
+  to a ladder or riding a mine's cage down never hurts.
 
 Zombies find their way with the **navigation mesh**: a map of where they can
 walk, worked out from the ground and everything solid on it. The game works
@@ -483,6 +621,22 @@ forested map (about 65,000 plants) draws about 1 million triangles in about
 800 batches from inside the woods. Press **F3** in the game to see the
 numbers yourself (frames per second, and which part is slowest).
 
+Towns are kept cheap when a game starts, on their own:
+- Buildings, walls and furniture that never change are merged into a few big
+  meshes per 48 m patch of map, and a patch isn't drawn at all past about
+  700 m (the fog has hidden it by then; View Distance scales that).
+- Every piece of furniture, door and window is turned into one mesh (a
+  stand-in is dozens of little boxes), and the same ones nearby are drawn
+  together (GPU instancing).
+- Buildings hide what's behind them (occlusion culling): their walls, floors
+  and roofs, not their windows or doorways.
+
+Measured in a test town of 80 furnished buildings: from about 15,500 draw
+calls to about 1,300-1,900 from inside it (fewer close to buildings, where
+occlusion culling helps most), and about 2.5 ms more processor time per frame
+than the empty map (60 fps leaves 16.7 ms). A map can hold several towns that
+size without needing to load and unload parts of it.
+
 If it slows down:
 - **Plant view distance** (each plant file's View Distance): ferns and bushes
   far away cost a lot and nobody sees them. Lower it first.
@@ -490,7 +644,8 @@ If it slows down:
   little difference.
 - **Crop fields:** a big field is thousands of plants. Fewer, smaller fields,
   or wider Plant Spacing.
-- **Settings > Graphics** in the game: shadows, view distance, resolution.
+- **Settings > Graphics** in the game: shadows, view distance, resolution,
+  and hiding what's behind buildings (occlusion culling).
 - Real tree models later need *levels of detail* (simpler versions for far
   away): that comes with the models work.
 
@@ -510,6 +665,11 @@ If it slows down:
   want to draw (Draw points), or pick a brush (plants). If the panel is
   missing: Project > Project Settings > Plugins, and make sure **Map Tools**
   and **Terrain3D** are enabled.
+- **A mine's tunnel shows through the hill, or there's a hole in the
+  ground beside it:** the ground there is within a meter of the tunnel's
+  ceiling. Raise the hill over it (or lower the mine a level) and Apply again.
+- **I can't get into a mine:** the ground where the floor ends outside an
+  entrance must be level with the floor (section 9, step 6). Apply again.
 - **The terrain didn't save:** it saves with Ctrl+S on the map scene. Saved
   tiles are listed in the Output panel.
 - **The first time the project opens** Godot sets up the Terrain3D plugin; if

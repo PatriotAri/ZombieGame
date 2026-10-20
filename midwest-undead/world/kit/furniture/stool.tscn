@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_grx5a"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/stool.tscn" id="2_srr5w"]
+
+[node name="Stool" type="StaticBody3D" unique_id=296656472]
+script = ExtResource("1_grx5a")
+size = Vector3(0.4, 0.75, 0.4)
+sits_on_floor = true
+solid = false
+models = Array[PackedScene]([ExtResource("2_srr5w")])

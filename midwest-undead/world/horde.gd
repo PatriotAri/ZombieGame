@@ -28,6 +28,8 @@ const SaveGame := preload("res://core/save_game.gd")
 const Ground := preload("res://world/ground.gd")
 const NavTiles := preload("res://world/nav_tiles.gd")
 
+const GATHER_DISTANCE := 110.0 # a horde gathers at least this far from you, so you never see it appear
+const OUTSKIRTS := 35.0 # ...within this of the map's edge
 const DAYS_BETWEEN := Vector2i(10, 18)
 const FIRST_SIZE := 20
 const GROWTH := Vector2i(3, 7) # more each time, until...
@@ -235,12 +237,12 @@ func _reaches(start: Vector3, goal: Vector3) -> bool:
 ## The middle of the group: on the outskirts, outdoors, far from you, with a
 ## way across.
 func _anchor(center: Vector3) -> Vector3:
-	var inner := _population.bounds.grow(-ZombiePopulation.OUTSKIRTS)
+	var inner := _population.bounds.grow(-OUTSKIRTS)
 	for attempt in 400:
 		var pos := _population.random_point(_rng)
 		if not Ground.is_ground_level(pos) or inner.has_point(Vector2(pos.x, pos.z)):
 			continue
-		if pos.distance_to(_player.global_position) < ZombiePopulation.MIN_SPAWN_DISTANCE + SPREAD:
+		if pos.distance_to(_player.global_position) < GATHER_DISTANCE + SPREAD:
 			continue
 		var outdoors := NavigationServer3D.map_get_closest_point(outdoor_map, pos)
 		var across := Vector3(center.x - pos.x, 0.0, center.z - pos.z).normalized()
@@ -257,7 +259,7 @@ func _near(anchor: Vector3) -> Vector3:
 		var wanted := anchor + Vector3(cos(angle), 0.0, sin(angle)) * SPREAD * sqrt(_rng.randf())
 		var pos := NavigationServer3D.map_get_closest_point(outdoor_map, wanted)
 		if Vector2(pos.x - wanted.x, pos.z - wanted.z).length() < 2.0 and Ground.is_ground_level(pos) \
-				and pos.distance_to(_player.global_position) >= ZombiePopulation.MIN_SPAWN_DISTANCE:
+				and pos.distance_to(_player.global_position) >= GATHER_DISTANCE:
 			return pos
 	return anchor # crowded in: they shove apart
 

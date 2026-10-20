@@ -62,6 +62,8 @@ func close() -> void:
 func _input(event: InputEvent) -> void:
 	if _player == null:
 		return
+	if get_viewport().gui_get_focus_owner() is LineEdit:
+		return # typing (a save's name): the keys are letters, not this screen's
 	if event.is_action_pressed("journal"):
 		if visible:
 			close()
@@ -100,8 +102,8 @@ func _refresh() -> void:
 	if focus:
 		focus.grab_focus.call_deferred()
 	_show_selected(entries)
-	_footer.text = ("A: pick   ·   Y / B: close" if Controls.using_gamepad else "Click: pick   ·   J / Esc: close") \
-			+ "   ·   ◆ tracked"
+	_footer.text = ("A: pick   ·   %s / B: close" if Controls.using_gamepad else "Click: pick   ·   %s / Esc: close") \
+			% Controls.hint("journal") + "   ·   ◆ tracked"
 
 
 func _show_selected(entries: Array[Dictionary]) -> void:

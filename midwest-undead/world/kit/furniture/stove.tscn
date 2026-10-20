@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_va7fc"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/stove.tscn" id="2_7h8u5"]
+
+[node name="Stove" type="StaticBody3D" unique_id=1087873526]
+script = ExtResource("1_va7fc")
+size = Vector3(0.76, 0.95, 0.65)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_7h8u5")])
+metadata/salvage_label = "Stove"

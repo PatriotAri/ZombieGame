@@ -6,12 +6,15 @@ extends StaticBody3D
 ## loot table (a file in items/loot/; see world/loot.gd). The inventory screen moves items
 ## in and out.
 ## It's a box of `size` in `material`, made fresh from those settings (in the
-## editor too). Ready-made ones are in world/kit/furniture/.
+## editor too), or with Models one of those, stretched to the size (the kit's
+## furniture: a shaped stand-in until there's a model; see KitBox). Ready-made
+## ones are in world/kit/furniture/.
 
 const Inventory := preload("res://items/inventory.gd")
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
 const ViewDistance := preload("res://core/view_distance.gd")
 const DEFAULT_MATERIAL := preload("res://world/kit/materials/wood_planks.tres")
+const KitBoxScript := preload("res://world/kit/kit_box.gd")
 
 ## What the prompt calls it ("search the Dresser"). Salvage (world/salvage.gd) goes by it too.
 @export var label := "Boxes"
@@ -35,6 +38,14 @@ const DEFAULT_MATERIAL := preload("res://world/kit/materials/wood_planks.tres")
 @export var sits_on_floor := false:
 	set(value):
 		sits_on_floor = value
+		_changed()
+@export_group("Model")
+## What it looks like: model scenes, stretched to Size. With several, each spot
+## picks one (always the same one there). Meshes named Paint take Material.
+## Empty: the plain box.
+@export var models: Array[PackedScene] = []:
+	set(value):
+		models = value
 		_changed()
 
 var inventory := Inventory.new()
@@ -79,6 +90,8 @@ func darken(amount: float) -> void:
 	for node in _generated:
 		if node is MeshInstance3D:
 			KitMesh.darken(node, amount)
+		elif node is KitProp:
+			(node as KitProp).darken(amount)
 
 
 func _changed() -> void:
@@ -96,8 +109,11 @@ func _rebuild() -> void:
 			remove_child(node)
 			node.queue_free()
 	_generated.clear()
-	var km := KitMesh.new()
 	var at := Transform3D(Basis.IDENTITY, Vector3(0, size.y / 2.0 if sits_on_floor else 0.0, 0))
+	if not models.is_empty():
+		_generated = KitBoxScript.add_model(self, models, size, at.origin, material, true)
+		return
+	var km := KitMesh.new()
 	km.box(size, at, KitMesh.all(material if material else DEFAULT_MATERIAL))
 	_generated = km.add_to(self)
 	for node in _generated:

@@ -1,8 +1,12 @@
 extends CanvasLayer
 ## Your inventory (Tab, or Y on a controller): everything you're carrying, your
-## money and the flashlight's charge. The things you can hold are buttons,
-## numbered like the 1-9 keys; pick one to hold it (that closes the screen).
-## Ammo, batteries and trade goods are just listed.
+## money and the flashlight's charge. First your weapons: the equipped ones
+## (the three you switch between: player.gd's slots) have a small square by
+## them; picking another one equips it in place of its kind and holds it. Then
+## the other things you can hold (health packs, food, planks...): this is where
+## you put those in your hands. Picking anything closes the screen.
+## The helmet lamp is a button too: put it on (the flashlight key then switches
+## it) or take it off. Ammo, batteries and trade goods are just listed.
 ## Like the map, it doesn't pause the game. Tab or Esc closes it (so does dying).
 ## (Containers have their own two-column screen: ui/inventory_menu.gd.)
 
@@ -14,6 +18,8 @@ var player: Player
 var _info: Label
 var _list: VBoxContainer
 var _footer: Label
+var _mark: Texture2D # the square by an equipped weapon
+var _no_mark: Texture2D # the same size, empty, so names line up
 
 
 func _ready() -> void:
@@ -49,6 +55,8 @@ func close() -> void:
 func _input(event: InputEvent) -> void:
 	if player == null:
 		return
+	if get_viewport().gui_get_focus_owner() is LineEdit:
+		return # typing (a save's name): the keys are letters, not this screen's
 	if event.is_action_pressed("inventory"):
 		if visible:
 			close()
@@ -67,36 +75,63 @@ func _hold(id: String) -> void:
 
 func _refresh() -> void:
 	_info.text = "$%d    ·    %s" % [player.money, player.flashlight_text()]
-	var base := get_tree().get_first_node_in_group("base_camp")
-	if base:
-		_info.text += "    ·    Base: %d / %d people" % [base.call("population"), base.call("capacity")]
-	_footer.text = ("A: hold it   ·   Y / B: close" if Controls.using_gamepad
-			else "Click: hold it   ·   Tab / Esc: close")
+	_footer.text = ("A: hold it   ·   %s / B: close" if Controls.using_gamepad
+			else "Click: hold it   ·   %s / Esc: close") % Controls.hint("inventory")
 	for child in _list.get_children():
 		_list.remove_child(child)
 		child.queue_free()
 
-	var holdable := player.holdable()
-	for i in holdable.size():
-		var id := holdable[i]
-		var button := Button.new()
-		button.text = "%s  %s" % [str(i + 1) if i < 9 else " ", _item_text(id)]
-		if id == player.held:
-			button.text += "   (holding)"
-		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		button.custom_minimum_size = Vector2(340, 36)
-		button.pressed.connect(_hold.bind(id))
-		_list.add_child(button)
-		if id == player.held:
-			button.grab_focus.call_deferred() # a controller starts on what you hold
+	# The equipped weapons (slot order), then the others (picking one equips it).
+	var shown: Array[String] = ["hands"]
+	for id in player.weapons():
+		shown.append(id)
+		_add_button(_item_text(id), id, _hold.bind(id), true)
+	for id in player.inventory.ids():
+		if Player.slot_of(id) != "" and not id in shown:
+			shown.append(id)
+			_add_button(_item_text(id), id, func() -> void:
+				player.equip_weapon(id)
+				_hold(id))
+	# Everything else you can hold.
+	for id in player.holdable():
+		if not id in shown:
+			shown.append(id)
+			_add_button(_item_text(id), id, _hold.bind(id))
 
 	for id in player.inventory.ids():
-		if id in holdable:
+		if id in shown:
+			continue
+		if id == "helmet_lamp": # worn, not held: a button to put it on or take it off
+			var wear := Button.new()
+			wear.text = "Helmet lamp   " + ("(wearing: take it off)" if player.lamp_worn else "(put it on)")
+			wear.icon = _no_mark
+			wear.add_theme_constant_override("h_separation", 10)
+			wear.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			wear.custom_minimum_size = Vector2(340, 36)
+			wear.pressed.connect(func() -> void:
+				player.wear_lamp(not player.lamp_worn)
+				_refresh())
+			_list.add_child(wear)
 			continue
 		var label := Label.new()
 		label.text = "     " + _item_text(id)
 		label.add_theme_color_override("font_color", Color(1, 1, 1, 0.7))
 		_list.add_child(label)
+
+
+## A button for something you can hold (id: what's in your hands, for
+## "(holding)"); equipped: a square by it.
+func _add_button(text: String, id: String, pressed: Callable, equipped := false) -> void:
+	var button := Button.new()
+	button.text = text + ("   (holding)" if id == player.held else "")
+	button.icon = _mark if equipped else _no_mark
+	button.add_theme_constant_override("h_separation", 10)
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.custom_minimum_size = Vector2(340, 36)
+	button.pressed.connect(pressed)
+	_list.add_child(button)
+	if id == player.held:
+		button.grab_focus.call_deferred() # a controller starts on what you hold
 
 
 func _item_text(id: String) -> String:
@@ -109,6 +144,11 @@ func _item_text(id: String) -> String:
 
 
 func _build_ui() -> void:
+	var square := Image.create(10, 10, false, Image.FORMAT_RGBA8)
+	square.fill(Color(0.95, 0.82, 0.45)) # (the HUD's objective yellow)
+	_mark = ImageTexture.create_from_image(square)
+	square.fill(Color(0, 0, 0, 0))
+	_no_mark = ImageTexture.create_from_image(square)
 	var dim := ColorRect.new()
 	dim.color = Color(0.0, 0.0, 0.0, 0.55)
 	add_child(dim)

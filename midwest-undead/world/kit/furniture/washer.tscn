@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_ydpxe"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/washer.tscn" id="2_oasfw"]
+
+[node name="Washer" type="StaticBody3D" unique_id=71278198]
+script = ExtResource("1_ydpxe")
+size = Vector3(0.65, 0.9, 0.65)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_oasfw")])
+metadata/salvage_label = "Washer"

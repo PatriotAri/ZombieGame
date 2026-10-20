@@ -1,0 +1,54 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rqoji"]
+albedo_color = Color(0.42, 0.36, 0.3, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_q3twb"]
+material = SubResource("StandardMaterial3D_rqoji")
+size = Vector3(2, 0.42, 0.9)
+
+[sub_resource type="BoxMesh" id="BoxMesh_x81mi"]
+material = SubResource("StandardMaterial3D_rqoji")
+size = Vector3(2, 0.45, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_bt8w7"]
+material = SubResource("StandardMaterial3D_rqoji")
+size = Vector3(0.2, 0.3, 0.9)
+
+[sub_resource type="BoxMesh" id="BoxMesh_7wnk8"]
+material = SubResource("StandardMaterial3D_rqoji")
+size = Vector3(0.2, 0.3, 0.9)
+
+[sub_resource type="BoxMesh" id="BoxMesh_tn1gp"]
+material = SubResource("StandardMaterial3D_rqoji")
+size = Vector3(0.78, 0.12, 0.62)
+
+[sub_resource type="BoxMesh" id="BoxMesh_f67oa"]
+material = SubResource("StandardMaterial3D_rqoji")
+size = Vector3(0.78, 0.12, 0.62)
+
+[node name="Couch" type="Node3D" unique_id=833801382]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=64326175]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.21, 0)
+mesh = SubResource("BoxMesh_q3twb")
+
+[node name="Paint2" type="MeshInstance3D" parent="." unique_id=1028083255]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.62, -0.34)
+mesh = SubResource("BoxMesh_x81mi")
+
+[node name="Paint3" type="MeshInstance3D" parent="." unique_id=1868080762]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.9, 0.55, 0)
+mesh = SubResource("BoxMesh_bt8w7")
+
+[node name="Paint4" type="MeshInstance3D" parent="." unique_id=138998533]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, 0.55, 0)
+mesh = SubResource("BoxMesh_7wnk8")
+
+[node name="@MeshInstance3D@94" type="MeshInstance3D" parent="." unique_id=1049310979]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45, 0.48, 0.1)
+mesh = SubResource("BoxMesh_tn1gp")
+
+[node name="@MeshInstance3D@95" type="MeshInstance3D" parent="." unique_id=2115679707]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.45, 0.48, 0.1)
+mesh = SubResource("BoxMesh_f67oa")

@@ -9,6 +9,7 @@ held_model = ExtResource("1_idyei")
 draw_time = 0.3
 damage = 55.0
 ammo = "pistol_ammo"
+gun_slot = "Sidearm"
 id = "pistol"
 display_name = "Pistol"
 order = 10

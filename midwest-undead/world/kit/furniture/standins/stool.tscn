@@ -1,0 +1,45 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xxvkd"]
+albedo_color = Color(0.55, 0.12, 0.1, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_g2tg0"]
+material = SubResource("StandardMaterial3D_xxvkd")
+top_radius = 0.18
+bottom_radius = 0.18
+height = 0.06
+radial_segments = 12
+rings = 1
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_b4uh6"]
+albedo_color = Color(0.7, 0.7, 0.72, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_xbrc0"]
+material = SubResource("StandardMaterial3D_b4uh6")
+top_radius = 0.03
+bottom_radius = 0.03
+height = 0.7
+radial_segments = 12
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_wymky"]
+material = SubResource("StandardMaterial3D_b4uh6")
+top_radius = 0.17
+bottom_radius = 0.17
+height = 0.03
+radial_segments = 12
+rings = 1
+
+[node name="Stool" type="Node3D" unique_id=1284387706]
+
+[node name="@MeshInstance3D@217" type="MeshInstance3D" parent="." unique_id=1193469035]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.72, 0)
+mesh = SubResource("CylinderMesh_g2tg0")
+
+[node name="@MeshInstance3D@218" type="MeshInstance3D" parent="." unique_id=837328992]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0)
+mesh = SubResource("CylinderMesh_xbrc0")
+
+[node name="@MeshInstance3D@219" type="MeshInstance3D" parent="." unique_id=1922566093]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.015, 0)
+mesh = SubResource("CylinderMesh_wymky")

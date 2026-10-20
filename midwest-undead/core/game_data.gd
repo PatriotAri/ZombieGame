@@ -15,6 +15,10 @@ const LAYER_OPENINGS := 64
 ## Seen only by the navigation bake, never by physics: stand-ins like the shut
 ## compound gate (CompoundFence/GateNavBlocker in world/town/districts/police_station.tscn).
 const LAYER_NAV_ONLY := 128
+## A render layer (what lights and cameras draw), not a collision one: mines
+## (world/map/kit_mine.gd) are drawn on it alone, so the sun and moon, which
+## leave it out (main.gd), don't light them; lamps and fires still do.
+const RENDER_UNDERGROUND := 2
 
 # --- Items -----------------------------------------------------------------------
 # Every file in items/data/ is an item (ItemData, or WeaponData for guns and

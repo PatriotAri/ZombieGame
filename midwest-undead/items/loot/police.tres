@@ -1,0 +1,77 @@
+[gd_resource type="Resource" script_class="LootTable" format=3]
+
+[ext_resource type="Script" path="res://items/loot_roll.gd" id="1_bsk0h"]
+[ext_resource type="Script" path="res://items/loot_pick.gd" id="2_6wa3o"]
+[ext_resource type="Script" path="res://items/loot_table.gd" id="3_q6yxv"]
+
+[sub_resource type="Resource" id="Resource_2qyee"]
+script = ExtResource("2_6wa3o")
+item = "pistol_ammo"
+min_amount = 4
+max_amount = 10
+
+[sub_resource type="Resource" id="Resource_8spm5"]
+script = ExtResource("1_bsk0h")
+chance = 0.6
+items = Array[ExtResource("2_6wa3o")]([SubResource("Resource_2qyee")])
+
+[sub_resource type="Resource" id="Resource_fkw7a"]
+script = ExtResource("2_6wa3o")
+item = "shotgun_shells"
+min_amount = 3
+max_amount = 8
+
+[sub_resource type="Resource" id="Resource_wehek"]
+script = ExtResource("1_bsk0h")
+chance = 0.4
+items = Array[ExtResource("2_6wa3o")]([SubResource("Resource_fkw7a")])
+
+[sub_resource type="Resource" id="Resource_v2gsp"]
+script = ExtResource("2_6wa3o")
+item = "rifle_rounds"
+min_amount = 2
+max_amount = 6
+
+[sub_resource type="Resource" id="Resource_15n7y"]
+script = ExtResource("1_bsk0h")
+chance = 0.25
+items = Array[ExtResource("2_6wa3o")]([SubResource("Resource_v2gsp")])
+
+[sub_resource type="Resource" id="Resource_xdf16"]
+script = ExtResource("2_6wa3o")
+item = "health_pack"
+
+[sub_resource type="Resource" id="Resource_67x7w"]
+script = ExtResource("1_bsk0h")
+chance = 0.25
+items = Array[ExtResource("2_6wa3o")]([SubResource("Resource_xdf16")])
+
+[sub_resource type="Resource" id="Resource_1xgba"]
+script = ExtResource("2_6wa3o")
+item = "pistol"
+
+[sub_resource type="Resource" id="Resource_21wee"]
+script = ExtResource("1_bsk0h")
+items = Array[ExtResource("2_6wa3o")]([SubResource("Resource_1xgba")])
+
+[sub_resource type="Resource" id="Resource_nrfac"]
+script = ExtResource("2_6wa3o")
+item = "shotgun"
+
+[sub_resource type="Resource" id="Resource_amhui"]
+script = ExtResource("1_bsk0h")
+chance = 0.08
+items = Array[ExtResource("2_6wa3o")]([SubResource("Resource_nrfac")])
+
+[sub_resource type="Resource" id="Resource_p6pda"]
+script = ExtResource("2_6wa3o")
+item = "rifle"
+
+[sub_resource type="Resource" id="Resource_s8vuc"]
+script = ExtResource("1_bsk0h")
+chance = 0.05
+items = Array[ExtResource("2_6wa3o")]([SubResource("Resource_p6pda")])
+
+[resource]
+script = ExtResource("3_q6yxv")
+rolls = Array[ExtResource("1_bsk0h")]([SubResource("Resource_8spm5"), SubResource("Resource_wehek"), SubResource("Resource_15n7y"), SubResource("Resource_67x7w"), SubResource("Resource_21wee"), SubResource("Resource_amhui"), SubResource("Resource_s8vuc")])

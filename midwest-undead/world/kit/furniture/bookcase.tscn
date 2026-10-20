@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_yujqg"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/bookcase.tscn" id="2_m6xf8"]
+
+[node name="Bookcase" type="StaticBody3D" unique_id=1897192338]
+script = ExtResource("1_yujqg")
+size = Vector3(1, 2, 0.35)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_m6xf8")])
+metadata/salvage_label = "Bookcase"
