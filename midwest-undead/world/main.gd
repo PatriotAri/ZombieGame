@@ -161,7 +161,7 @@ func _setup_characters() -> void:
 	zombies = Zombies.new()
 	zombies.name = "Zombies"
 	add_child(zombies)
-	zombies.setup(map, rng)
+	zombies.setup(map, rng, day_night)
 	zombies.spawn_at_markers()
 	zombies.spawn_in_mines()
 
@@ -183,6 +183,7 @@ func _setup_camps_and_zombies() -> void:
 	zombie_population_node.respawn_seconds_day = zombie_respawn_seconds_day
 	zombie_population_node.respawn_seconds_night = zombie_respawn_seconds_night
 	zombie_population_node.setup(zombies, map.nav_region, player, day_night, camps)
+	zombies.seen = zombie_population_node.seen # (only where you can't see one does it become data)
 	zombie_population_node.populate(extra_zombies, rng, map.player_spawn.origin)
 	horde = Horde.new()
 	add_child(horde)

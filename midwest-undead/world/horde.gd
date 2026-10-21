@@ -185,9 +185,7 @@ func _on_outdoor_baked(meshes: Dictionary) -> void:
 		if not is_inside_tree():
 			return
 	_outdoor_ready = true
-	for zombie: Zombie in _zombies.all:
-		if zombie.march_to != Vector3.INF:
-			zombie.march_map = outdoor_map # (after loading a save)
+	_zombies.set_march_map(outdoor_map) # (after loading a save)
 	if _sending > 0:
 		_send_now()
 
@@ -296,6 +294,6 @@ func load_state(data: Dictionary) -> void:
 	_pending.clear()
 	for entry: Dictionary in data.get("pending", []):
 		_pending.append({"position": SaveGame.array_to_vec(entry["position"]), "march": SaveGame.array_to_vec(entry["march"])})
-	var marching: bool = _zombies.all.any(func(z: Zombie) -> bool: return z.march_to != Vector3.INF)
+	var marching := _zombies.any_marching()
 	if marching or _sending > 0 or not _pending.is_empty():
 		_bake_outdoor() # a horde on its way: the marchers need their map back

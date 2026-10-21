@@ -7,6 +7,7 @@ extends GutTest
 const MainScene := preload("res://world/main.tscn")
 const Zombie := preload("res://characters/zombie/zombie.gd")
 const Ground := preload("res://world/ground.gd")
+const Door := preload("res://world/door.gd")
 
 var main: Node
 
@@ -27,7 +28,7 @@ func _add(offset: Vector3) -> Zombie:
 
 
 func test_far_zombies_glide_and_stay_on_the_ground() -> void:
-	var far := _add(Vector3(120, 0, 0))
+	var far := _add(Vector3(90, 0, 0)) # (gliding range: past GLIDE_DISTANCE, short of turning into data)
 	far.roaming = true
 	far.wander_target = Ground.snap(far.global_position + Vector3(0, 0, 30), 0.1)
 	var glided := 0
@@ -40,7 +41,7 @@ func test_far_zombies_glide_and_stay_on_the_ground() -> void:
 
 
 func test_near_a_door_or_window_it_doesnt_glide() -> void:
-	main.zombies._add_opening(Vector3(300, 0, 300))
+	main.zombies._add_opening(Vector3(300, 0, 300), autofree(Door.new()))
 	assert_true(main.zombies._near_opening(Vector3(301.5, 0, 300)))
 	assert_false(main.zombies._near_opening(Vector3(310, 0, 300)))
 
@@ -49,7 +50,7 @@ func test_every_zombie_gets_its_turn_however_small_the_budget() -> void:
 	main.zombies.budget_usec = 0
 	var crowd: Array[Zombie] = []
 	for i in 20:
-		crowd.append(_add(Vector3(150 + i * 3, 0, 40)))
+		crowd.append(_add(Vector3(70 + i * 2, 0, 20)))
 	await wait_physics_frames(60)
 	for zombie in crowd:
 		assert_lt(zombie.frames_waited, 60, "had a turn in the last second")
@@ -57,7 +58,7 @@ func test_every_zombie_gets_its_turn_however_small_the_budget() -> void:
 
 func test_a_far_body_out_of_sight_holds_still() -> void:
 	var near := _add(Vector3(10, 0, 0))
-	var far := _add(Vector3(150, 0, 0))
+	var far := _add(Vector3(90, 0, 0))
 	await wait_physics_frames(5)
 	var near_at: float = near.body.animator.current_animation_position
 	var far_at: float = far.body.animator.current_animation_position

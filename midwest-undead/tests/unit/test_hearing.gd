@@ -49,3 +49,12 @@ func test_without_hearing_every_listener_is_asked() -> void:
 	var far := _listener(Vector3(500, 0, 0))
 	Hearing.make_noise(self, Vector3.ZERO, 25.0)
 	assert_eq(far.asked, 1)
+
+
+func test_a_game_on_its_way_out_isnt_the_one_listening() -> void:
+	var leaving := Hearing.new()
+	add_child(leaving)
+	leaving.queue_free() # (like the last game, still there until the frame ends)
+	var far := _listener(Vector3(500, 0, 0))
+	Hearing.make_noise(self, Vector3.ZERO, 25.0)
+	assert_eq(far.asked, 1, "no game listening: everyone asked")

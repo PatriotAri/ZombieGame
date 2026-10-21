@@ -23,7 +23,11 @@ var _built_ms := -MAX_AGE_MS
 ## A noise at pos that carries radius meters.
 static func make_noise(context: Node, pos: Vector3, radius: float) -> void:
 	var tree := context.get_tree()
-	var hearing := tree.get_first_node_in_group(GROUP)
+	var hearing: Node = null
+	for node in tree.get_nodes_in_group(GROUP): # (not a game on its way out: a scene change overlaps a frame)
+		if not node.is_queued_for_deletion():
+			hearing = node
+			break
 	if hearing == null or radius > WIDE:
 		tree.call_group(LISTENERS, "hear_noise", pos, radius)
 	else:

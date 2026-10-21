@@ -633,6 +633,12 @@ Towns are kept cheap when a game starts, on their own:
 - Buildings hide what's behind them (occlusion culling): their walls, floors
   and roofs, not their windows or doorways.
 
+Zombie crowds are kept cheap too (`world/zombies.gd`): far ones think less
+often and follow their paths without physics, and past 120 m, out of sight,
+they're only data that keeps walking until you come back within 100 m. On
+this map, 400 zombies cost about 10 ms of processor time a frame (13 ms with
+80 of them on top of you), against 14-15 ms before.
+
 Measured in a test town of 80 furnished buildings: from about 15,500 draw
 calls to about 1,300-1,900 from inside it (fewer close to buildings, where
 occlusion culling helps most), and about 2.5 ms more processor time per frame

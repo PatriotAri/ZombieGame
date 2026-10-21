@@ -131,7 +131,7 @@ func _process(delta: float) -> void:
 
 
 func _alive() -> int:
-	return get_tree().get_nodes_in_group("zombies").size() # the dead leave the group
+	return _zombies.alive_count() # (data ones too)
 
 
 ## A random point on the ground within radius of center.

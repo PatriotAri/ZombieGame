@@ -223,6 +223,12 @@ godot --headless --path . -s res://characters/mannequin/make_mannequin.gd
   - how far it's drawn.
 - `world/zombie_population.gd`: **BODY_CLEANUP_DISTANCE**. Bodies are cleared
   away once you're this far and not looking.
+- `world/zombies.gd`, how a crowd stays cheap: past **GLIDE_DISTANCE** zombies
+  follow their paths without physics (not near doors and windows); past
+  **DORMANT_PAST** and out of sight they're only data until they're back
+  within **AWAKE_WITHIN** (never near guards or bandits: **PEOPLE_NEAR**);
+  **BUDGET_USEC** is the time a frame the far ones get.
+- `core/sound.gd`: **MAX_WORLD_SOUNDS** play at once, the nearest winning.
 
 ## People
 

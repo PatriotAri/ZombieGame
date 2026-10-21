@@ -11,12 +11,19 @@ func before_each() -> void:
 	_camera = Camera3D.new()
 	add_child(_camera)
 	_camera.make_current()
+	_quiet() # (what earlier tests' games left playing would take up room)
 
 
 func after_each() -> void:
 	_camera.free()
-	for player in get_tree().root.get_node(Sound.POOL_NAME).get_children():
-		player.call("stop")
+	_quiet()
+
+
+func _quiet() -> void:
+	var pool := get_tree().root.get_node_or_null(Sound.POOL_NAME)
+	if pool:
+		for player in pool.get_children():
+			player.call("stop")
 
 
 func test_only_the_nearest_play_once_its_full() -> void:
