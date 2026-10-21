@@ -4,8 +4,10 @@ extends Node
 ## furniture (dressers, cabinets, shelves, beds, pews...) for plywood or
 ## planks. Each thing can only be stripped once. It's loud work. player.gd
 ## does the holding; this knows what gives what.
-## Saved: which things have been stripped (by their place in the map scene, the
-## "town_id" main.gd gives them).
+## Saved: which things have been stripped (by the "save_key" main.gd gives
+## them: core/save_ids.gd).
+
+const SaveIds := preload("res://core/save_ids.gd")
 
 const YIELDS := {
 	"Car": ["scrap_metal", 3],
@@ -37,6 +39,7 @@ var _stripped := {} # target -> true
 
 func _ready() -> void:
 	add_to_group("salvage")
+	Saveable.section(self, "salvaged", save_state, load_state, Saveable.SALVAGE)
 
 
 ## loot_spots: the map's containers; others: anything else on the map that has
@@ -83,12 +86,13 @@ func _mark(thing: Node3D) -> void:
 func save_state() -> Array:
 	var data := []
 	for thing in _targets:
-		if _stripped.has(thing):
-			data.append(str(thing.get_meta("town_id", "")))
+		var key := str(thing.get_meta(SaveIds.KEY, ""))
+		if _stripped.has(thing) and key != "":
+			data.append(key)
 	return data
 
 
 func load_state(data: Array) -> void:
 	for thing in _targets:
-		if str(thing.get_meta("town_id", "")) in data and not _stripped.has(thing):
+		if str(thing.get_meta(SaveIds.KEY, "")) in data and not _stripped.has(thing):
 			_mark(thing)

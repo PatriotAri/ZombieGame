@@ -28,6 +28,8 @@ extends EditorPlugin
 ## tunnels (click each corner; Esc or Enter ends one), chambers (click two
 ## opposite corners), and entrances (click a tunnel's end). Right-click takes
 ## back the last corner, or removes the tunnel or chamber under the mouse.
+## Saving a scene also gives everything in it that a save file has to find
+## again its save ID (core/save_ids.gd).
 
 const TerrainEdit := preload("res://world/map/terrain_edit.gd")
 const Road := preload("res://world/map/road.gd")
@@ -39,6 +41,7 @@ const CropField := preload("res://world/map/crop_field.gd")
 const Rock := preload("res://world/map/rock.gd")
 const MineEntrance := preload("res://world/map/mine_entrance.gd")
 const PlantsLayer := preload("res://world/map/plants_layer.gd")
+const SaveIds := preload("res://core/save_ids.gd")
 const Plants := preload("res://world/map/plants.gd")
 const PlantPainter := preload("res://world/map/plant_painter.gd")
 const Zone := preload("res://world/markers/zone.gd")
@@ -88,6 +91,15 @@ func _enter_tree() -> void:
 	add_control_to_bottom_panel(_panel, "Map Tools")
 	EditorInterface.get_selection().selection_changed.connect(_on_selection_changed)
 	_on_selection_changed()
+
+
+## The editor calls this just before it saves: every open scene gets its save
+## IDs then, so they're in the file.
+func _apply_changes() -> void:
+	for root in EditorInterface.get_open_scene_roots():
+		var given := SaveIds.assign(root)
+		if given > 0:
+			print("Map Tools: gave %d save ID(s) in %s." % [given, root.scene_file_path])
 
 
 func _exit_tree() -> void:

@@ -52,6 +52,7 @@ const QuestManager := preload("res://quests/quest_manager.gd")
 const JournalMenu := preload("res://ui/journal_menu.gd")
 const SaveGame := preload("res://core/save_game.gd")
 const SaveIO := preload("res://world/save_io.gd")
+const SaveIds := preload("res://core/save_ids.gd")
 const MapSummary := preload("res://world/map_summary.gd")
 const SceneFade := preload("res://ui/scene_fade.gd")
 const SaveMenu := preload("res://ui/save_menu.gd")
@@ -129,7 +130,7 @@ var terrain: Node # the map's Terrain3D node, or null
 var _trunks: Array[RID] = [] # painted trees' solid trunks (world/map/plants.gd)
 var day_night: DayNight
 # What's on the map, found when it's loaded. Everything that's saved carries a
-# "town_id" (its path in the map scene), so saves find it again.
+# "save_key" (core/save_ids.gd), so saves find it again.
 var loot_spots: Array[LootSpot] = []
 var doors: Array[Door] = [] # moved out of the map, under main (see _load_town)
 var mines: Array[KitMine] = [] # their generators' fuel and cages are saved
@@ -179,6 +180,7 @@ func _ready() -> void:
 	_setup_camps_and_zombies()
 	_setup_menus()
 	_setup_story()
+	_setup_saving()
 	# Coming from "Load": the map is freshly loaded; now put the saved state on top.
 	if not SaveGame.pending_load.is_empty():
 		_apply_save(SaveGame.pending_load)
@@ -339,8 +341,8 @@ func _setup_story() -> void:
 ## Puts the map scene under nav_region and finds what the game needs in it.
 ## Doors move out first, under main, so the navigation bake ignores them (zombie
 ## paths run through doorways; see door.gd); garage doors stay in it.
-## Everything that's saved gets its "town_id" before that, while it still has
-## its place in the map.
+## Everything that's saved gets its "save_key" before that, while it's still
+## part of the map scene (core/save_ids.gd).
 func _load_town() -> void:
 	town = map_scene.instantiate() as Node3D
 	for node in town.find_children("*", "", true, false):
@@ -357,10 +359,14 @@ func _load_town() -> void:
 	var door_holder := Node3D.new()
 	door_holder.name = "Doors"
 	add_child(door_holder)
+	var unsaved := 0
 	for node in town.find_children("*", "", true, false):
-		if node is LootSpot or node is Door or node is WindowPane or node is SpawnPoint \
-				or node.has_meta("salvage_label"):
-			node.set_meta("town_id", _town_path(node))
+		if SaveIds.is_saveable(node):
+			var key := SaveIds.key_of(node, town)
+			node.set_meta(SaveIds.KEY, key)
+			node.set_meta(SaveIds.MADE_IN_GAME, SaveIds.is_made_in_game(node))
+			if key == "":
+				unsaved += 1
 		if node is LootSpot:
 			loot_spots.append(node)
 		elif node is WindowPane:
@@ -376,8 +382,10 @@ func _load_town() -> void:
 		if node.has_meta("salvage_label") and not node is LootSpot:
 			salvage_others.append(node)
 		if node is KitMine:
-			node.set_meta("town_id", _town_path(node))
 			mines.append(node)
+	if unsaved > 0:
+		push_warning(("%d things on the map have no save ID, so they won't be saved: open the map scene "
+				+ "(and any scene placed in it that holds them) in the editor and save it.") % unsaved)
 	var moving: Array[Node3D] = [] # moving parts that aren't doors: a mine's cage and its gates
 	for node in town.find_children("*", "", true, false):
 		if node.is_in_group(&"not_in_navigation"):
@@ -406,15 +414,6 @@ func _load_town() -> void:
 	var start := _spawn_point("player")
 	player_spawn = Transform3D(Basis(Vector3.UP, start.global_rotation.y), start.global_position) if start \
 			else Transform3D(Basis.IDENTITY, Ground.snap(Vector3.ZERO, 0.1))
-
-
-## A node's path in the map scene, from its root ("Buildings/Shop3/FrontDoor").
-func _town_path(node: Node) -> String:
-	var parts := PackedStringArray()
-	while node != town:
-		parts.insert(0, str(node.name))
-		node = node.get_parent()
-	return "/".join(parts)
 
 
 ## The first SpawnPoint with this role, or null (with a warning).
@@ -650,12 +649,110 @@ func _player_threatened() -> bool:
 ## Saves the game to `path` (the logbook's new save or the one you picked, or
 ## the autosave): world/save_io.gd gathers it.
 func _save_game(path: String) -> bool:
-	return SaveGame.write(SaveIO.collect(self), path)
+	var data := SaveIO.collect(self)
+	data["clock"] = day_night.clock_text() # (what the save list shows)
+	data["objective"] = quests.objective_text()
+	return SaveGame.write(data, path)
 
 
 ## Put a save on top of the freshly loaded town (world/save_io.gd).
 func _apply_save(data: Dictionary) -> void:
 	SaveIO.apply(self, data)
+
+
+## What main.gd itself looks after goes in the save: the map's containers,
+## doors and mines (by their keys), the items lying around, the zombies and
+## the bandits. Everything else saves its own (components/saveable.gd).
+func _setup_saving() -> void:
+	for spot in loot_spots:
+		_save_thing(spot, spot.save_state, spot.load_state)
+	for door in doors:
+		_save_thing(door, door.save_state, door.load_state)
+	for mine in mines:
+		_save_thing(mine, mine.save_state, mine.load_state)
+	if trader: # (a map without a "trader" SpawnPoint has none)
+		Saveable.section(trader, "shop", trader.save_state, trader.load_state, Saveable.SHOP)
+	Saveable.section(self, "ground_items", _save_ground_items, _load_ground_items, Saveable.GROUND_ITEMS)
+	Saveable.section(self, "zombies", _save_zombies, _load_zombies, Saveable.ZOMBIES)
+	Saveable.section(self, "bandits", _save_bandits, _load_bandits, Saveable.BANDITS)
+
+
+func _save_thing(node: Node3D, saves: Callable, loads: Callable) -> void:
+	var key := str(node.get_meta(SaveIds.KEY, ""))
+	if key != "":
+		Saveable.thing(node, key, saves, loads)
+
+
+func _save_ground_items() -> Array:
+	var ground := []
+	for item in get_tree().get_nodes_in_group("ground_items"):
+		if not item.is_queued_for_deletion(): # (picked up this frame)
+			ground.append({"id": item.item_id, "amount": item.amount,
+					"position": SaveGame.vec_to_array(item.global_position), "yaw": item.rotation.y})
+	return ground
+
+
+## Throws away the fresh ones and puts down exactly what the save recorded.
+func _load_ground_items(data: Array) -> void:
+	for item in get_tree().get_nodes_in_group("ground_items"):
+		item.remove_from_group("ground_items")
+		item.queue_free()
+	for entry: Dictionary in data:
+		if GameData.has_item(str(entry.get("id", ""))):
+			add_ground_item(entry["id"], int(entry.get("amount", 1)),
+					SaveGame.array_to_vec(entry["position"]), float(entry.get("yaw", 0.0)))
+
+
+func _save_zombies() -> Array:
+	var data := [] # the ones still up
+	for zombie in zombies:
+		if is_instance_valid(zombie) and not zombie.is_dead:
+			var entry := {"position": SaveGame.vec_to_array(zombie.global_position),
+					"yaw": zombie.rotation.y, "health": zombie.health, "kind": zombie.kind}
+			if zombie.march_to != Vector3.INF:
+				entry["march"] = SaveGame.vec_to_array(zombie.march_to)
+			data.append(entry)
+	return data
+
+
+## Throws away the fresh ones and puts up exactly what the save recorded.
+## (Nothing is aiming at a zombie yet: the game hasn't run a frame.)
+func _load_zombies(data: Array) -> void:
+	for zombie in zombies:
+		zombie.get_parent().remove_child(zombie) # out of the "zombies" group right away
+		zombie.queue_free()
+	zombies.clear()
+	for entry: Dictionary in data:
+		var zombie := _add_zombie(SaveGame.array_to_vec(entry["position"]), null, str(entry.get("kind", "walker")))
+		zombie.rotation.y = float(entry.get("yaw", 0.0))
+		zombie.health = float(entry.get("health", zombie.max_health))
+		if entry.has("march"):
+			zombie.march_to = SaveGame.array_to_vec(entry["march"])
+
+
+## By the key of the SpawnPoint each started at.
+func _save_bandits() -> Dictionary:
+	var data := {}
+	for bandit in bandits:
+		var key := str(bandit.get_meta(SaveIds.KEY, ""))
+		if key != "":
+			data[key] = {"position": SaveGame.vec_to_array(bandit.global_position),
+					"yaw": bandit.rotation.y, "health": bandit.health, "dead": bandit.is_dead}
+	return data
+
+
+func _load_bandits(data: Dictionary) -> void:
+	for bandit in bandits:
+		var entry: Dictionary = data.get(str(bandit.get_meta(SaveIds.KEY, "")), {})
+		if entry.is_empty():
+			continue
+		bandit.global_position = SaveGame.array_to_vec(entry["position"])
+		bandit.rotation.y = float(entry.get("yaw", 0.0))
+		if entry.get("dead", false):
+			bandit.drop_loot_on_death = false # their drops are already in ground_items
+			bandit.die()
+		else:
+			bandit.health = float(entry.get("health", bandit.max_health))
 
 
 ## An item lying on the ground, outside nav_region (items don't change zombie paths).
@@ -711,7 +808,7 @@ func _spawn_npcs() -> void:
 				var bandit := BanditScene.instantiate() as Bandit
 				bandit.home = (spot.get_parent() as Node3D).global_position # their camp
 				bandit.transform = xform
-				bandit.set_meta("spawn_id", spot.get_meta("town_id"))
+				bandit.set_meta(SaveIds.KEY, spot.get_meta(SaveIds.KEY))
 				add_child(bandit)
 				bandits.append(bandit)
 			"corpse":

@@ -59,6 +59,9 @@ var _quiet := false # loading a save: no story moments
 func _ready() -> void:
 	add_to_group("quests")
 	process_mode = Node.PROCESS_MODE_ALWAYS # moves the markers; hides them while paused
+	# No story moments while a save goes back on: quiet from the quests' turn
+	# until everything but you is back (components/saveable.gd).
+	Saveable.section(self, "quest", save_state, _load_saved, Saveable.STORY, end_load, Saveable.STORY_END)
 
 
 func setup(main: Node, player: Node3D, dialogue: Node, choices: Node, camps: Node, day_night: Node) -> void:
@@ -599,6 +602,11 @@ func end_load() -> void:
 	_quiet = false
 	_last_hours = _game_hours()
 	_announce()
+
+
+func _load_saved(data: Dictionary) -> void:
+	begin_load()
+	load_state(data)
 
 
 func load_state(data: Dictionary) -> void:

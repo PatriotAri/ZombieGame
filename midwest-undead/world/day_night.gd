@@ -24,6 +24,19 @@ var sun: DirectionalLight3D
 var moon: DirectionalLight3D
 
 
+func _ready() -> void:
+	Saveable.section(self, "time", save_state, load_state, Saveable.TIME)
+
+
+func save_state() -> Dictionary:
+	return {"hour": hour, "day": day}
+
+
+func load_state(data: Dictionary) -> void:
+	hour = float(data.get("hour", hour))
+	day = int(data.get("day", day))
+
+
 func setup(environment: Environment, sky_material: ShaderMaterial,
 		sun_light: DirectionalLight3D, moon_light: DirectionalLight3D) -> void:
 	add_to_group("day_night")

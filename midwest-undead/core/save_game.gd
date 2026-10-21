@@ -1,11 +1,16 @@
 extends RefCounted
 ## Reading and writing saves. Never instanced.
 ##
-## How loading works: the town is a scene (world/town/town.tscn), the same every
-## time. Loading therefore just reloads the game scene (loading the town fresh)
-## and then main.gd applies the saved changes on top:
+## How loading works: the map is a scene (world/map/map.tscn), the same every
+## time. Loading therefore just reloads the game scene (loading the map fresh)
+## and then main.gd applies the saved changes on top (world/save_io.gd):
 ## where you are, what you carry, what's been looted, which zombies and bandits
 ## are still up, the time of day, and how far the story has got.
+##
+## Versions: every save says which VERSION of the layout it has. A save from
+## an older one is brought up to date as it's read, one version at a time
+## (_upgrades()); one older than OLDEST, or from a newer game, can't be read
+## and doesn't show in the list.
 ##
 ## Every save is its own JSON file in user://saves/: save_1.json, save_2.json...
 ## for the ones you make at the logbook (each can have a name you give it), and
@@ -18,7 +23,13 @@ const OLD_PATH := "user://savegame.json" # before there was a list: becomes save
 const GAME_SCENE := "res://world/main.tscn"
 const SceneFade := preload("res://ui/scene_fade.gd")
 const NAME_LENGTH := 40 # characters a save's name can have
-const VERSION := 5 # bump whenever the save layout changes; older saves are ignored (4: the new map; 5: base camps)
+## The save layout. Change the layout: add one to it, and add the step that
+## brings the version before up to date to _upgrades().
+## (5: base camps; 6: things on the map saved by their save IDs, systems in sections.)
+const VERSION := 6
+## The oldest layout that can still be read. 5 and before can't: they found
+## things on the map by where they were in the map scene.
+const OLDEST := 6
 
 ## Set by request_load(); main.gd picks it up after the scene reloads.
 static var pending_load: Dictionary = {}
@@ -112,10 +123,38 @@ static func clean_name(save_name: String) -> String:
 static func read(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return {}
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
-	if typeof(parsed) != TYPE_DICTIONARY or int(parsed.get("version", 0)) != VERSION:
-		return {} # damaged, or from an older version of the game
-	return parsed
+	var json := JSON.new() # (parse_string() would print an error for every damaged save)
+	if json.parse(FileAccess.get_file_as_string(path)) != OK or typeof(json.data) != TYPE_DICTIONARY:
+		return {} # damaged
+	return upgrade(json.data)
+
+
+## data brought up to the current VERSION, a step at a time; {} if it can't
+## be (older than OLDEST, from a newer game, or a step is missing). steps,
+## newest and oldest are for tests: the game uses its own.
+static func upgrade(data: Dictionary, steps := _upgrades(), newest := VERSION, oldest := OLDEST) -> Dictionary:
+	var version := int(data.get("version", 0))
+	if version < oldest or version > newest:
+		return {}
+	while version < newest:
+		var step: Callable = steps.get(version, Callable())
+		if not step.is_valid():
+			push_error("Saves of version %d can't be brought up to date: no upgrade step." % version)
+			return {}
+		data = step.call(data)
+		version += 1
+		data["version"] = version
+	return data
+
+
+## version -> the step that turns a save of that version into one of the next:
+## a static func (data: Dictionary) -> Dictionary. None yet.
+## e.g. {6: _from_6} with
+##     static func _from_6(data: Dictionary) -> Dictionary:
+##         data["sections"]["player"]["stamina"] = 100.0 # (what changed in 7)
+##         return data
+static func _upgrades() -> Dictionary:
+	return {}
 
 
 static func delete(path: String) -> void:

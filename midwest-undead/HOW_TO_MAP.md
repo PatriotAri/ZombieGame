@@ -54,7 +54,9 @@ to jump to it.
 
 **Saving.** Ctrl+S saves the scene *and* the terrain (heights, paint and
 plants are kept in `world/map/terrain/`, one file per 256 m tile). Save
-often.
+often. Saving also gives everything a save game has to find again its save
+ID (`HOW_TO_BUILD.md`, "Things the game relies on": rename or move it and
+saves still find it).
 
 **Undo.** Ctrl+Z undoes almost anything: sculpting, painting, Apply, a plant
 brush stroke. The **History** tab (next to the Inspector tab) lists every
@@ -672,5 +674,8 @@ If it slows down:
   entrance must be level with the floor (section 9, step 6). Apply again.
 - **The terrain didn't save:** it saves with Ctrl+S on the map scene. Saved
   tiles are listed in the Output panel.
+- **"... has no save ID" or "... share the key"** (a test, or a warning when
+  the game starts): open the scene it names in the editor and save it; that
+  gives out the missing and duplicated IDs.
 - **The first time the project opens** Godot sets up the Terrain3D plugin; if
   it asks to restart the editor, let it.

@@ -60,6 +60,10 @@ var _check_timer := 0.0
 var _rng := RandomNumberGenerator.new()
 
 
+func _ready() -> void:
+	Saveable.section(self, "horde", save_state, load_state, Saveable.HORDE)
+
+
 func setup(main: Node, population: ZombiePopulation, nav_region: NavTiles, player: Node3D, day_night: Node) -> void:
 	_main = main
 	_population = population

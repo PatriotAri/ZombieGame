@@ -59,6 +59,10 @@ var _timer := 0.0
 
 
 ## spots: the map's SpawnPoints. Puts everyone in place.
+func _ready() -> void:
+	Saveable.section(self, "survivors", save_state, load_state, Saveable.SURVIVORS)
+
+
 func setup(spots: Array) -> void:
 	for person in _load_people():
 		var start := _spot(spots, "survivor", person.display_name)

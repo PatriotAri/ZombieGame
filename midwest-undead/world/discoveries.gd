@@ -16,6 +16,10 @@ var _found := {} # name -> true
 var _timer := 0.0
 
 
+func _ready() -> void:
+	Saveable.section(self, "discovered", save_state, load_state, Saveable.DISCOVERIES)
+
+
 func setup(player: Node3D, the_places: Array[Dictionary]) -> void:
 	_player = player
 	places = the_places

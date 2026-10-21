@@ -42,6 +42,10 @@ var _bench: Node3D
 var _timer := 0.0
 
 
+func _ready() -> void:
+	Saveable.section(self, "woodworker", save_state, load_state, Saveable.WOODWORKER)
+
+
 func setup(player: Node3D, dialogue: Node, captive: Transform3D, home: Transform3D) -> void:
 	_player = player
 	_dialogue = dialogue

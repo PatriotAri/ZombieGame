@@ -43,6 +43,10 @@ var _station_center := Vector3.ZERO
 var _timer := 0.0
 
 
+func _ready() -> void:
+	Saveable.section(self, "wagon_trader", save_state, load_state, Saveable.WAGON_TRADER)
+
+
 func setup(player: Node3D, camps: Node, day_night: Node, station_center: Vector3,
 		wagon: Transform3D, trader_at: Transform3D) -> void:
 	_player = player

@@ -87,6 +87,17 @@ func sell_price(id: String) -> int:
 
 
 ## Can't trade with someone who's dead.
+## What they have and when they last restocked, for the save file (main.gd
+## saves the Quartermaster's).
+func save_state() -> Dictionary:
+	return {"stock": stock.to_dict(), "restocked_day": restocked_day}
+
+
+func load_state(data: Dictionary) -> void:
+	stock.from_dict(data.get("stock", stock.to_dict()))
+	restocked_day = int(data.get("restocked_day", restocked_day))
+
+
 func can_trade() -> bool:
 	return not is_dead
 

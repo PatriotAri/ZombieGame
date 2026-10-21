@@ -100,6 +100,7 @@ var _room_query: PhysicsShapeQueryParameters3D # _room()'s, made once (its box r
 
 func _ready() -> void:
 	add_to_group("structures")
+	Saveable.section(self, "structures", save_state, load_state, Saveable.STRUCTURES)
 
 
 func setup(nav_region: Node3D, fortifications: Node) -> void:

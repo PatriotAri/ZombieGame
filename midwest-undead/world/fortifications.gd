@@ -18,14 +18,17 @@ extends Node
 ## start" get their planks when a new game starts, like the survivors' houses.
 ##
 ## Saved state: which openings are boarded, every window's damage, and where the
-## barricades stand. Openings are saved by their place in the map scene (main.gd
-## gives each one a "town_id").
+## barricades stand. Openings are saved by their door's or window's key
+## (core/save_ids.gd); one a building made that has moved since keeps its
+## fresh state.
 
 const GameData := preload("res://core/game_data.gd")
 const Building := preload("res://world/building.gd")
 const Door := preload("res://world/door.gd")
 const WindowPane := preload("res://world/window_pane.gd")
 const Fortification := preload("res://world/fortification.gd")
+const SaveIds := preload("res://core/save_ids.gd")
+const SaveGame := preload("res://core/save_game.gd")
 const Player := preload("res://characters/player/player.gd")
 const Sound := preload("res://core/sound.gd")
 const Ground := preload("res://world/ground.gd")
@@ -48,9 +51,10 @@ const WINDOW_LINK_LAYER := 2
 
 var nav_region: NavTiles # where planks and barricades go (they're in the navigation bake)
 ## One per boardable opening: {"kind": "door"/"window", "door"/"window": the node,
-## "id": its town_id (for saving), "width", "height", "transform" (world: see
-## _add_opening), "area" (what the planks aim at), "link" (windows only),
-## "planks" (or null), "at_start": boarded when a new game starts}.
+## "id": its key (for saving; "" if it has none), "width", "height",
+## "transform" (world: see _add_opening), "area" (what the planks aim at),
+## "link" (windows only), "planks" (or null), "at_start": boarded when a new
+## game starts}.
 var openings: Array[Dictionary] = []
 var barricades: Array[Fortification] = []
 var _room_query: PhysicsShapeQueryParameters3D # can_place_barricade()'s, made once
@@ -58,6 +62,7 @@ var _room_query: PhysicsShapeQueryParameters3D # can_place_barricade()'s, made o
 
 func _ready() -> void:
 	add_to_group("fortifications")
+	Saveable.section(self, "fortifications", save_state, load_state, Saveable.FORTIFICATIONS)
 
 
 ## windows and doors: every WindowPane and Door on the map. Boards up the ones
@@ -211,47 +216,51 @@ func take_down(piece: Fortification, quiet := false) -> String:
 # --- Saving --------------------------------------------------------------------
 
 func save_state() -> Dictionary:
-	var boarded := []
-	var used := [] # the boarded ones nailed up from used planks
-	var windows := {}
+	var saved := {} # key -> {"boarded", "used": nailed up from used planks, "window": its damage, "at"}
 	for o in openings:
-		if o["planks"] != null:
-			boarded.append(o["id"])
-			if (o["planks"] as Fortification).used:
-				used.append(o["id"])
+		if o["id"] == "":
+			continue
+		var entry := {"boarded": o["planks"] != null}
+		if o["planks"] != null and (o["planks"] as Fortification).used:
+			entry["used"] = true
 		if o["kind"] == "window":
 			var pane: WindowPane = o["window"]
 			if pane.is_broken or pane.health < pane.max_health:
-				windows[o["id"]] = pane.save_state()
+				entry["window"] = pane.save_state()
+		var node := _node_of(o)
+		if SaveIds.is_made_in_game(node):
+			entry["at"] = SaveGame.vec_to_array(SaveIds.where(node))
+		saved[o["id"]] = entry
 	var placed := []
 	for b in barricades:
 		placed.append([b.global_position.x, b.global_position.y, b.global_position.z, b.rotation.y])
-	return {"boarded": boarded, "used": used, "windows": windows, "barricades": placed}
+	return {"openings": saved, "barricades": placed}
 
 
 ## On top of a new town (its "boarded at start" planks already up).
 func load_state(data: Dictionary) -> void:
-	var index := {}
-	for i in openings.size():
-		index[openings[i]["id"]] = i
-	var boarded: Array = data.get("boarded", [])
-	var used: Array = data.get("used", [])
-	var windows: Dictionary = data.get("windows", {})
+	var saved: Dictionary = data.get("openings", {})
 	for i in openings.size():
 		var o := openings[i]
-		var want: bool = o["id"] in boarded
-		var was_used: bool = o["id"] in used
+		var entry: Dictionary = saved.get(o["id"], {})
+		if entry.is_empty() or not SaveIds.still_there(_node_of(o), entry.get("at")):
+			continue # keeps its fresh state
+		var want := bool(entry.get("boarded", false))
+		var was_used := bool(entry.get("used", false))
 		# Planks you'd taken down, or put back up from used planks: off first.
 		if o["planks"] != null and (not want or (o["planks"] as Fortification).used != was_used):
 			_unboard(i)
 		if want:
 			board(i, true, was_used)
-	for id in windows:
-		if index.has(id) and openings[index[id]]["kind"] == "window":
-			(openings[index[id]]["window"] as WindowPane).load_state(windows[id])
+		if entry.has("window") and o["kind"] == "window":
+			(o["window"] as WindowPane).load_state(entry["window"])
 	for b in data.get("barricades", []):
 		place_barricade(Transform3D(Basis(Vector3.UP, float(b[3])), Vector3(float(b[0]), float(b[1]), float(b[2]))), true)
 	rebake()
+
+
+func _node_of(o: Dictionary) -> Node3D:
+	return o["door"] if o["kind"] == "door" else o["window"]
 
 
 # --- Building the pieces ---------------------------------------------------------
@@ -262,7 +271,7 @@ func load_state(data: Dictionary) -> void:
 func _add_opening(record: Dictionary, floor_y: float) -> void:
 	var o := record
 	var node: Node = o["door"] if o["kind"] == "door" else o["window"]
-	o["id"] = str(node.get_meta("town_id", node.get_path()))
+	o["id"] = str(node.get_meta(SaveIds.KEY, ""))
 	o["planks"] = null
 	var index := openings.size()
 

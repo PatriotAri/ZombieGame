@@ -113,6 +113,7 @@ func setup(marker: KitBaseCamp, station_homes: Dictionary, survivors: Node, wood
 
 func _ready() -> void:
 	add_to_group("kill_listeners")
+	Saveable.section(self, "camps", save_state, load_state, Saveable.CAMPS)
 
 
 ## A zombie died (zombie.gd tells everyone in "kill_listeners"); yours count

@@ -73,6 +73,18 @@ func _ready() -> void:
 		Interactable.attach(self, _prompt).interacted.connect(_on_interacted)
 
 
+## What's in it and whether it's been searched, for the save file (main.gd
+## saves it by its key: core/save_ids.gd).
+func save_state() -> Dictionary:
+	return {"opened": opened, "inventory": inventory.to_dict()}
+
+
+func load_state(data: Dictionary) -> void:
+	inventory.from_dict(data.get("inventory", {}))
+	if data.get("opened", false):
+		open() # darkens it like when you searched it
+
+
 func _prompt() -> String:
 	if not opened:
 		return "search " + label

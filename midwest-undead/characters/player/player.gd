@@ -212,6 +212,7 @@ var _look_nothing := false
 func _ready() -> void:
 	add_to_group("player")
 	add_to_group("zombie_targets")
+	Saveable.section(self, "player", save_state, load_state, Saveable.PLAYER)
 	# The same speed along the ground on a slope as on the flat, so slope_slowdown
 	# alone decides how much a hill slows you.
 	floor_constant_speed = true

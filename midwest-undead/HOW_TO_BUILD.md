@@ -400,9 +400,15 @@ label. `HOW_TO_MAP.md` (section 12) lists which ones the story needs.
   - `map_road`: drawn as road on the map screen.
   - `map_fence`: drawn as the compound fence.
   - `safe_house_trigger`: walking into it counts as reaching the safe house.
-- **Saves find things by their path in the map scene** (folder / building
-  / name). Renaming or moving something to another parent means an older save
-  won't find it.
+- **Saves find things by their save ID**, which the editor gives to each
+  container, door, window, spawn point, mine and salvageable thing (and to a
+  building or placed scene holding them) when you save the scene: it's
+  `save_id` in the Inspector's Metadata section. Rename or move something and
+  saves still find it. Don't type or copy one by hand; a Ctrl+D copy gets its
+  own the next time you save. The doors and windows a building makes from its
+  Openings go by the building's ID and their place in it: change a building's
+  openings, and a door that moved starts fresh in older saves instead of
+  getting another door's state (`core/save_ids.gd`).
 - **Buildings and modular pieces are merged when a game starts.** To keep the
   game fast, every Building and modular piece (wall, floor, stairs, box) is
   combined into a few big meshes by material (`world/static_merge.gd`). This
