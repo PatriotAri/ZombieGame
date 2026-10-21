@@ -10,18 +10,17 @@ extends CharacterBody3D
 signal died
 signal damaged
 signal notify(text: String)
+# What you used asks for a screen: main.gd opens it. (A UI service will, in
+# re-architecture step 4.) Things you use call the methods further down that
+# emit these: open_container(), talk_to(), open_save_menu(), read().
 signal container_opened(spot: Node)
-## You pressed interact on a living NPC that offers something (trade, talk...).
-## main.gd decides what to open.
 signal npc_interacted(npc: HumanNPC)
-## You pressed interact on an object that offers something (e.g. the logbook).
-signal object_interacted(obj: Node)
+signal save_menu_requested
+signal reading_requested(title: String, text: String)
 
 const GameData := preload("res://core/game_data.gd")
 const Controls := preload("res://core/controls.gd")
 const Inventory := preload("res://items/inventory.gd")
-const LootSpot := preload("res://items/loot_spot.gd")
-const GroundItem := preload("res://items/ground_item.gd")
 const Fall := preload("res://characters/fall.gd")
 const Sound := preload("res://core/sound.gd")
 const Settings := preload("res://core/settings.gd")
@@ -837,60 +836,63 @@ func _update_prompt() -> void:
 	prompt_text = ""
 	var key := Controls.hint("interact")
 	var target := _looked_at()
-	if target is GroundItem:
-		prompt_text = "%s: pick up %s" % [key, (target as GroundItem).get_label()]
-	elif target is LootSpot:
-		var spot := target as LootSpot
-		if not spot.opened:
-			prompt_text = "%s: search %s" % [key, spot.label]
-		elif spot.inventory.is_empty():
-			prompt_text = "%s: open %s (empty)" % [key, spot.label]
-		else:
-			prompt_text = "%s: open %s" % [key, spot.label]
-	elif _offers_interaction(target):
-		prompt_text = "%s: %s" % [key, target.call("interact_prompt")]
+	var it := Interactable.of(target)
+	if it:
+		var words := it.get_prompt()
+		if words != "":
+			prompt_text = "%s: %s" % [key, words]
 	if prompt_text == "":
 		prompt_text = building.fortify_prompt()
 	prompt_text = building.salvage_prompt(target, key, prompt_text)
 
 
 func _interact() -> void:
-	var target := _looked_at()
-	if target is GroundItem:
-		var item := target as GroundItem
-		give_item(item.item_id, item.amount)
-		notify.emit("Picked up " + item.get_label())
-		Sound.play_ui(self, "pickup", -6.0)
-		item.queue_free()
-	elif target is LootSpot:
-		var spot := target as LootSpot
-		if spot.open():
-			make_noise(noise_search) # rummaging isn't quiet
-			Sound.play_ui(self, "rummage", -4.0)
-		container_opened.emit(spot)
-	elif _offers_interaction(target):
-		if target is HumanNPC:
-			npc_interacted.emit(target)
-		else:
-			object_interacted.emit(target)
+	var it := Interactable.of(_looked_at())
+	if it:
+		it.interact(self)
 
 
-## Whether interact would do something with target: pick it up, search or open
-## it, talk to it, use it, or (holding the crowbar) salvage it.
+## Whether interact would do something with target: anything with an
+## Interactable that has a prompt (see components/interactable.gd), or (holding
+## the crowbar) salvage it.
 func _has_interaction(target: Node3D) -> bool:
-	if target is GroundItem or target is LootSpot or _offers_interaction(target):
+	var it := Interactable.of(target)
+	if it and it.get_prompt() != "":
 		return true
 	return _can_salvage() and not building.salvage_yield(target).is_empty()
 
 
-## Anything (an NPC, the logbook...) with an interact_prompt() that isn't empty.
-## Dead NPCs offer nothing.
-func _offers_interaction(target: Node3D) -> bool:
-	if target == null or not target.has_method("interact_prompt"):
-		return false
-	if target is HumanNPC and (target as HumanNPC).is_dead:
-		return false
-	return target.call("interact_prompt") != ""
+# --- What the things you use ask of you ------------------------------------------
+
+## An item on the ground (items/ground_item.gd): into your inventory.
+func pick_up(id: String, amount: int, label: String) -> void:
+	give_item(id, amount)
+	notify.emit("Picked up " + label)
+	Sound.play_ui(self, "pickup", -6.0)
+
+
+## A container (items/loot_spot.gd). first_time: you're rummaging through it,
+## which isn't quiet.
+func open_container(spot: Node, first_time: bool) -> void:
+	if first_time:
+		make_noise(noise_search)
+		Sound.play_ui(self, "rummage", -4.0)
+	container_opened.emit(spot)
+
+
+## Someone to talk to (characters/npcs/human_npc.gd).
+func talk_to(npc: HumanNPC) -> void:
+	npc_interacted.emit(npc)
+
+
+## The logbook (world/save_point.gd).
+func open_save_menu() -> void:
+	save_menu_requested.emit()
+
+
+## Something to read in full (world/bulletin_board.gd).
+func read(title: String, text: String) -> void:
+	reading_requested.emit(title, text)
 
 
 # --- Dynamite (world/dynamite.gd) -------------------------------------------------

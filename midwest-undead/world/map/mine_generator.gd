@@ -9,6 +9,7 @@ extends StaticBody3D
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
 const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
+const Player := preload("res://characters/player/player.gd")
 const FUEL_ITEM := "gas_can"
 const HOURS_PER_CAN := 1.0
 const MAX_HOURS := 3.0
@@ -48,6 +49,8 @@ func _ready() -> void:
 	_lamp.visible = false
 	add_child(_lamp, false, Node.INTERNAL_MODE_BACK)
 	set_physics_process(not Engine.is_editor_hint())
+	if not Engine.is_editor_hint():
+		Interactable.attach(self, interact_prompt).interacted.connect(_on_interacted)
 
 
 func running() -> bool:
@@ -60,15 +63,16 @@ func interact_prompt() -> String:
 	return "pour a gas can into the generator" + (" (%s left)" % _left() if running() else "")
 
 
-func interact(player: Node) -> void:
-	if fuel >= MAX_HOURS - 0.01:
+func _on_interacted(actor: Node3D) -> void:
+	var player := actor as Player
+	if player == null or fuel >= MAX_HOURS - 0.01:
 		return
-	if player.call("take_item", FUEL_ITEM) <= 0:
-		player.emit_signal("notify", "It needs a gas can.")
+	if player.take_item(FUEL_ITEM) <= 0:
+		player.notify.emit("It needs a gas can.")
 		return
 	var was_running := running()
 	fuel = minf(fuel + HOURS_PER_CAN, MAX_HOURS)
-	player.emit_signal("notify", "The generator %s." % ("runs on" if was_running else "coughs and starts"))
+	player.notify.emit("The generator %s." % ("runs on" if was_running else "coughs and starts"))
 	_update_lamp()
 
 

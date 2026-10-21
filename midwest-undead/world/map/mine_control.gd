@@ -8,10 +8,15 @@ var prompt: Callable # () -> String
 var action: Callable # (player) -> void
 
 
+func _ready() -> void:
+	if not Engine.is_editor_hint():
+		Interactable.attach(self, interact_prompt).interacted.connect(_on_interacted)
+
+
 func interact_prompt() -> String:
 	return prompt.call() if prompt.is_valid() else ""
 
 
-func interact(player: Node) -> void:
+func _on_interacted(actor: Node3D) -> void:
 	if action.is_valid():
-		action.call(player)
+		action.call(actor)

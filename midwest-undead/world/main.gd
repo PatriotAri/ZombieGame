@@ -54,7 +54,6 @@ const SaveGame := preload("res://core/save_game.gd")
 const SaveIO := preload("res://world/save_io.gd")
 const MapSummary := preload("res://world/map_summary.gd")
 const SceneFade := preload("res://ui/scene_fade.gd")
-const SavePoint := preload("res://world/save_point.gd")
 const SaveMenu := preload("res://ui/save_menu.gd")
 const Bandit := preload("res://characters/npcs/bandit.gd")
 const BanditScene := preload("res://characters/npcs/bandit.tscn")
@@ -73,7 +72,6 @@ const TraderArrival := preload("res://world/trader_arrival.gd")
 const WoodworkerRescue := preload("res://world/woodworker_rescue.gd")
 const Survivors := preload("res://world/survivors.gd")
 const Camps := preload("res://world/camps.gd")
-const BulletinBoard := preload("res://world/bulletin_board.gd")
 const Salvage := preload("res://world/salvage.gd")
 const Recipes := preload("res://core/recipes.gd")
 const CraftMenu := preload("res://ui/craft_menu.gd")
@@ -85,10 +83,8 @@ const PerfOverlay := preload("res://ui/perf_overlay.gd")
 const Loot := preload("res://world/loot.gd")
 const SkyShader := preload("res://world/sky_clouds.gdshader")
 const Fortifications := preload("res://world/fortifications.gd")
-const Fortification := preload("res://world/fortification.gd")
 const Structures := preload("res://world/structures.gd")
 const StructurePiece := preload("res://world/structure_piece.gd")
-const GateLeaf := preload("res://world/gate_leaf.gd")
 const SpawnPoint := preload("res://world/markers/spawn_point.gd")
 const ZombieSpawn := preload("res://world/markers/zombie_spawn.gd")
 const Place := preload("res://world/markers/place.gd")
@@ -288,7 +284,10 @@ func _setup_menus() -> void:
 	backpack_menu = BackpackMenu.new()
 	add_child(backpack_menu)
 	backpack_menu.setup(player)
-	player.object_interacted.connect(_on_object_interacted)
+	player.save_menu_requested.connect(func() -> void: save_menu.open(player, _save_game))
+	player.reading_requested.connect(func(title: String, text: String) -> void:
+		choice_menu.open(player, title, text, [["Close", Callable(), true]]))
+	structures.camp_take_down_requested.connect(_take_down_camp)
 	# Getting hurt never closes a menu or a conversation: only Esc (each menu
 	# handles its own) or dying does.
 	for menu: Callable in [inventory_menu.close, shop_menu.close, dialogue.close, save_menu.close, map_menu.close,
@@ -333,35 +332,6 @@ func _setup_story() -> void:
 	salvage.setup(loot_spots, salvage_others)
 	camps.attach_woodworker(woodworker_rescue)
 	survivors.attach(player, dialogue, choice_menu, craft_menu, camps, woodworker_rescue)
-
-
-## Pressing interact on something that isn't a person, an item or a container.
-func _on_object_interacted(obj: Node) -> void:
-	if obj is SavePoint:
-		save_menu.open(player, _save_game)
-	elif obj is BulletinBoard:
-		var board := obj as BulletinBoard
-		choice_menu.open(player, board.title, board.summary + "\n\n" + board.details, [["Close", Callable(), true]])
-	elif obj is StructurePiece and (obj as StructurePiece).kind == "camp_kit":
-		_take_down_camp(obj as StructurePiece)
-	elif obj is Door:
-		(obj as Door).toggle()
-	elif obj is Fortification:
-		var back := fortifications.take_down(obj as Fortification)
-		if back == "":
-			hud.show_toast("The used planks splinter apart. Nothing left to save.")
-		else:
-			player.give_item(back)
-	elif obj is GateLeaf:
-		structures.toggle_gate((obj as GateLeaf).piece)
-	elif obj is StructurePiece:
-		var back := structures.take_down(obj as StructurePiece)
-		if back.is_empty():
-			hud.show_toast("Take down what's on top of it first.")
-		for id: String in back:
-			player.give_item(id, back[id])
-	elif obj.has_method("interact"): # a mine's generator, cage lever, call button
-		obj.call("interact", player)
 
 
 # --- The map ---------------------------------------------------------------------

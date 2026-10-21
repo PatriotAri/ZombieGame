@@ -1,19 +1,22 @@
 # How to test the game
 
-Two kinds of checks run on every push and pull request (on GitHub, see
-`.github/workflows/ci.yml` in the folder above this one), and you can run both
+Three kinds of checks run on every push and pull request (on GitHub, see
+`.github/workflows/ci.yml` in the folder above this one), and you can run them
 yourself:
 
 - **Unit tests** (`tests/unit/`): small scripts that check one piece of code
   does what it should, such as an inventory giving back only what it holds.
   They use [GUT](https://gut.readthedocs.io/en/v9.6.1/) (Godot Unit Test), in
   `addons/gut/`.
+- **Integration tests** (`tests/integration/`): the same, but in the real game
+  scene, for things that only work with everything else around them: using
+  doors, containers, people and what you built.
 - **The smoke test** (`tests/smoke/smoke.gd`): opens the main menu, then the
   game, with no window, lets it play for 10 seconds and fails if anything
   printed an error. Warnings (like a marker missing from the map) are printed
   but don't fail it.
 
-If either fails, the change broke something: fix it before merging.
+If any fails, the change broke something: fix it before merging.
 
 ## Running the unit tests in the editor
 
@@ -61,6 +64,11 @@ documentation lists every check and how to test nodes and scenes.
 
 Test one thing per function, and keep tests away from randomness and the
 clock: give random rolls a fixed seed so a test does the same every time.
+
+`tests/unit/test_interactable.gd` shows nodes made in a test: `autofree()`
+frees them after the test. It returns no type, so give the variable one:
+`var door: Node3D = autofree(Node3D.new())` (`:=` won't load).
+`tests/integration/test_interactions.gd` shows a test of the whole game scene.
 
 ## When the smoke test fails
 

@@ -9,6 +9,7 @@ extends StaticBody3D
 
 signal dug_out(cell: Vector3i)
 
+const Player := preload("res://characters/player/player.gd")
 const DIG_TIME := 12.0 # seconds of digging
 
 var cell := Vector3i.ZERO
@@ -19,8 +20,14 @@ func interact_prompt() -> String:
 	return "a cave-in: it would take a pickaxe to dig through"
 
 
-func interact(player: Node) -> void:
-	player.emit_signal("notify", "Rock and broken timber, floor to roof. It would take a pickaxe.")
+func _ready() -> void:
+	if not Engine.is_editor_hint():
+		Interactable.attach(self, interact_prompt).interacted.connect(_on_interacted)
+
+
+func _on_interacted(actor: Node3D) -> void:
+	if actor is Player:
+		(actor as Player).notify.emit("Rock and broken timber, floor to roof. It would take a pickaxe.")
 
 
 ## How far through it's been dug, 0-1.

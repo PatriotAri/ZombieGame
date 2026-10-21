@@ -11,6 +11,7 @@ extends StaticBody3D
 ## ones are in world/kit/furniture/.
 
 const Inventory := preload("res://items/inventory.gd")
+const Player := preload("res://characters/player/player.gd")
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
 const ViewDistance := preload("res://core/view_distance.gd")
 const DEFAULT_MATERIAL := preload("res://world/kit/materials/wood_planks.tres")
@@ -68,6 +69,19 @@ func _validate_property(property: Dictionary) -> void:
 
 func _ready() -> void:
 	ensure_built()
+	if not Engine.is_editor_hint():
+		Interactable.attach(self, _prompt).interacted.connect(_on_interacted)
+
+
+func _prompt() -> String:
+	if not opened:
+		return "search " + label
+	return "open %s (empty)" % label if inventory.is_empty() else "open " + label
+
+
+func _on_interacted(actor: Node3D) -> void:
+	if actor is Player:
+		(actor as Player).open_container(self, open())
 
 
 func ensure_built() -> void:

@@ -42,6 +42,10 @@ func work_spot() -> Vector3:
 	return global_transform * Vector3(0, 0.1, out)
 
 
+func _ready() -> void:
+	Interactable.attach(self, interact_prompt)
+
+
 func interact_prompt() -> String:
 	if kind == "camp_kit":
 		return "take down the camp"

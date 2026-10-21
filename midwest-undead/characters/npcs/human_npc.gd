@@ -33,6 +33,7 @@ const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
 const Blood := preload("res://effects/blood.gd")
 const HumanoidBody := preload("res://characters/humanoid_body.gd")
+const Player := preload("res://characters/player/player.gd")
 
 const WALK_PACE := 1.4 # meters per cycle of the walk animation
 const RUN_PACE := 2.8
@@ -98,6 +99,8 @@ func _ready() -> void:
 	name_tag.visible = show_name_tag
 	_setup_body()
 	_npc_ready()
+	Interactable.attach(self, func() -> String: return "" if is_dead else interact_prompt()) \
+			.interacted.connect(_on_interacted)
 
 
 func _physics_process(delta: float) -> void:
@@ -147,9 +150,15 @@ func is_targetable() -> bool:
 
 ## The action shown in the "E: ..." prompt when you look at this NPC, e.g.
 ## "trade with Quartermaster". Empty means there's nothing to do with them.
-## Subclasses override this; main.gd decides what pressing E actually opens.
+## Subclasses override this; main.gd decides what pressing E actually opens
+## (Player.talk_to()).
 func interact_prompt() -> String:
 	return ""
+
+
+func _on_interacted(actor: Node3D) -> void:
+	if actor is Player:
+		(actor as Player).talk_to(self)
 
 
 ## Hits from weapons (player or NPC). Same signature zombies use, so attackers

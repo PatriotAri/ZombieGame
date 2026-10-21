@@ -126,6 +126,8 @@ func _ready() -> void:
 	_base_color = _material.albedo_color
 	if start_open and not Engine.is_editor_hint(): # the editor shows it shut
 		set_open(true, false)
+	if not Engine.is_editor_hint():
+		Interactable.attach(self, interact_prompt).interacted.connect(func(_actor: Node3D) -> void: toggle())
 
 
 func _build() -> void:
@@ -164,7 +166,7 @@ func interact_prompt() -> String:
 	return ("close the %s" if is_open else "open the %s") % label
 
 
-## The player pressed interact on it.
+## Opens it if it's shut, shuts it if it's open (you pressed interact on it).
 func toggle() -> void:
 	if is_broken or boarded:
 		return

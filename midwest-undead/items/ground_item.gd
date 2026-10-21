@@ -5,6 +5,7 @@ extends Area3D
 ## detect areas on the items layer.
 
 const GameData := preload("res://core/game_data.gd")
+const Player := preload("res://characters/player/player.gd")
 const ViewDistance := preload("res://core/view_distance.gd")
 const VIEW_METERS := 30.0 # past this it isn't drawn (core/view_distance.gd)
 
@@ -18,13 +19,18 @@ func setup(id: String, count := 1) -> void:
 	amount = count
 
 
-## Items in the map scene come with their meshes and pickup zone already (made
-## when the town was frozen); one placed with just an item_id gets them here. An
-## item with a model (items/data/) shows that instead of the saved boxes.
 func _ready() -> void:
 	add_to_group("ground_items")
 	collision_layer = GameData.LAYER_ITEMS
 	collision_mask = 0
+	_dress()
+	Interactable.attach(self, func() -> String: return "pick up " + get_label()).interacted.connect(_on_interacted)
+
+
+## Items in the map scene come with their meshes and pickup zone already (made
+## when the town was frozen); one placed with just an item_id gets them here. An
+## item with a model (items/data/) shows that instead of the saved boxes.
+func _dress() -> void:
 	var item := GameData.item(item_id)
 	if item == null:
 		return
@@ -68,6 +74,12 @@ func _build(item: ItemData) -> void:
 func _limit_view() -> void:
 	for geom: GeometryInstance3D in find_children("*", "GeometryInstance3D", true, false):
 		ViewDistance.limit(geom, VIEW_METERS)
+
+
+func _on_interacted(actor: Node3D) -> void:
+	if actor is Player:
+		(actor as Player).pick_up(item_id, amount, get_label())
+		queue_free()
 
 
 func get_label() -> String:

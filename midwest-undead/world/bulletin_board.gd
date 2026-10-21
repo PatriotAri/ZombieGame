@@ -3,12 +3,14 @@ extends StaticBody3D
 ## how many live there out of how many it can hold, and who they are (written
 ## on the board itself, and read out in full when you look at it and press
 ## interact). world/camps.gd makes one for each camp and keeps it up to date;
-## main.gd opens it. Its look is world/props/bulletin_board.tscn (set Models
-## there to swap in a model; HOW_TO_MODEL.md, "Props"; the writing goes on the
-## board's face, BOARD centered 1.3 m up).
+## main.gd shows it in full (Player.read()). Its look is
+## world/props/bulletin_board.tscn (set Models there to swap in a model;
+## HOW_TO_MODEL.md, "Props"; the writing goes on the board's face, BOARD
+## centered 1.3 m up).
 
 const LOOK := preload("res://world/props/bulletin_board.tscn")
 const BOARD := Vector2(1.3, 0.95)
+const Player := preload("res://characters/player/player.gd")
 
 var title := "" # the camp's name
 var summary := "" # "Members 3 / 12"
@@ -39,6 +41,7 @@ func _ready() -> void:
 	_text.position = Vector3(0, 1.3 + BOARD.y / 2.0 - 0.06, 0.03)
 	add_child(_text)
 	_refresh()
+	Interactable.attach(self, interact_prompt).interacted.connect(_on_interacted)
 
 
 ## What it says: the camp's name, the head count, and a line per member.
@@ -56,4 +59,9 @@ func _refresh() -> void:
 
 func interact_prompt() -> String:
 	return "read the bulletin board"
+
+
+func _on_interacted(actor: Node3D) -> void:
+	if actor is Player:
+		(actor as Player).read(title, summary + "\n\n" + details)
 

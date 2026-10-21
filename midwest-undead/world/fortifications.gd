@@ -26,6 +26,7 @@ const Building := preload("res://world/building.gd")
 const Door := preload("res://world/door.gd")
 const WindowPane := preload("res://world/window_pane.gd")
 const Fortification := preload("res://world/fortification.gd")
+const Player := preload("res://characters/player/player.gd")
 const Sound := preload("res://core/sound.gd")
 const Ground := preload("res://world/ground.gd")
 const NavTiles := preload("res://world/nav_tiles.gd")
@@ -157,6 +158,7 @@ func place_barricade(xform: Transform3D, quiet := false) -> void:
 	body.kind = "barricade"
 	body.transform = xform
 	nav_region.add_child(body)
+	Interactable.of(body).interacted.connect(_on_interacted.bind(body))
 	if not _add_look(body, BARRICADE):
 		_box_collision(body, BARRICADE_SIZE, Vector3(0, BARRICADE_SIZE.y / 2.0, 0))
 	barricades.append(body)
@@ -169,6 +171,18 @@ func place_barricade(xform: Transform3D, quiet := false) -> void:
 func _unboard(index: int) -> void:
 	var piece: Fortification = openings[index]["planks"]
 	take_down(piece, true)
+
+
+## You pressed interact on planks or a barricade: down it comes, into your hands.
+func _on_interacted(actor: Node3D, piece: Fortification) -> void:
+	var player := actor as Player
+	if player == null:
+		return
+	var back := take_down(piece)
+	if back == "":
+		player.notify.emit("The used planks splinter apart. Nothing left to save.")
+	else:
+		player.give_item(back)
 
 
 ## Takes down planks or a barricade. Returns the item to give back: a
@@ -289,6 +303,7 @@ func _make_planks(o: Dictionary) -> Fortification:
 	var at := Transform3D(xform.basis, xform.origin + xform.basis.x * 0.17) # just outside the wall
 	body.transform = nav_region.global_transform.affine_inverse() * at
 	nav_region.add_child(body) # in the bake: zombies path around a boarded opening
+	Interactable.of(body).interacted.connect(_on_interacted.bind(body))
 	# The boards reach from the middle of the top one to the middle of the bottom one, plus a board.
 	var boards := Vector3(0.06, height - height / count + 0.22, width + 0.3)
 	if not _add_look(body, DOOR_PLANKS if o["kind"] == "door" else WINDOW_PLANKS, boards):

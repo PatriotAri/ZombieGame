@@ -26,6 +26,11 @@ extends Node
 ## How each looks is a prop scene in world/props/ (PROPS and the ones below it):
 ## set Models on one to swap in a model (HOW_TO_MODEL.md, "Props"). A model's
 ## own collision shapes are used; without any, the boxes in _collision().
+## Pressing interact on a piece takes it down (on a gate's leaf, opens or shuts
+## it); on a camp kit, main.gd packs up the camp (camp_take_down_requested).
+
+## You pressed interact on a camp kit: main.gd packs up the camp.
+signal camp_take_down_requested(piece: StructurePiece)
 
 const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
@@ -34,6 +39,7 @@ const GateLeaf := preload("res://world/gate_leaf.gd")
 const CampSite := preload("res://world/camp_site.gd")
 const Ground := preload("res://world/ground.gd")
 const ClimbArea := preload("res://world/climb_area.gd")
+const Player := preload("res://characters/player/player.gd")
 
 const KINDS := ["scaffold", "guard_post", "fence", "fence_gate", "garden_plot", "ammo_bench", "shell_bench", "rifle_bench", "camp_kit", "lantern"]
 ## A lantern is set down, not built: no hammering, and it's too small to change
@@ -280,6 +286,7 @@ func build(kind: String, xform: Transform3D, on: StructurePiece, quiet := false)
 		piece.below = on
 		on.above = piece
 	_nav_region.add_child(piece) # in the bake: zombies path around it
+	Interactable.of(piece).interacted.connect(_on_piece_interacted.bind(piece))
 	if not _model(kind, piece, null).take_shapes(piece):
 		_collision(kind, piece)
 	if KitMine.contains(piece.global_position + Vector3.UP * 0.3):
@@ -293,6 +300,20 @@ func build(kind: String, xform: Transform3D, on: StructurePiece, quiet := false)
 		Sound.play_at(piece, "hammer", piece.global_position + Vector3.UP, 0.0, 30.0)
 		_fortifications.call("rebake", piece.global_position)
 	return piece
+
+
+func _on_piece_interacted(actor: Node3D, piece: StructurePiece) -> void:
+	if piece.kind == "camp_kit":
+		camp_take_down_requested.emit(piece)
+		return
+	var player := actor as Player
+	if player == null:
+		return
+	var back := take_down(piece)
+	if back.is_empty():
+		player.notify.emit("Take down what's on top of it first.")
+	for id: String in back:
+		player.give_item(id, back[id])
 
 
 ## Takes a piece down. Returns what to give back ({item: how many}): the piece,
@@ -568,6 +589,7 @@ func _add_leaf(piece: StructurePiece) -> void:
 	leaf.position = Vector3(-FENCE.x / 2.0 + 0.08, 0, 0)
 	piece.add_child(leaf)
 	piece.leaf = leaf
+	Interactable.of(leaf).interacted.connect(func(_actor: Node3D) -> void: toggle_gate(piece))
 	if not _add_prop(leaf, GATE_LEAF).take_shapes(leaf):
 		_shape(leaf, Vector3(FENCE.x - 0.2, FENCE.y - 0.15, 0.1), Vector3(FENCE.x / 2.0 - 0.08, FENCE.y / 2.0 + 0.05, 0))
 
