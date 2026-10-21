@@ -56,3 +56,11 @@ func test_dying_shows_the_death_screen_and_frees_the_mouse() -> void:
 	assert_true(main.player.is_dead)
 	assert_true(main.ui.hud.message_label.visible)
 	assert_eq(Input.mouse_mode, Input.MOUSE_MODE_VISIBLE)
+
+
+func test_a_zombie_near_a_noise_comes_to_look() -> void:
+	var near: Zombie = main.zombies.add(main.player.global_position + Vector3(15, 0, 0))
+	var far: Zombie = main.zombies.add(main.player.global_position + Vector3(200, 0, 0))
+	main.player.make_noise(30.0)
+	assert_eq(near.state, Zombie.State.INVESTIGATE)
+	assert_ne(far.state, Zombie.State.INVESTIGATE)

@@ -13,6 +13,7 @@ extends AnimatableBody3D
 ## bake, as it does doors.
 
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
+const Hearing := preload("res://world/hearing.gd")
 const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
 const SPEED := 1.6 # meters a second
@@ -146,7 +147,7 @@ func _physics_process(delta: float) -> void:
 	_noise_wait -= delta
 	if _noise_wait <= 0.0:
 		_noise_wait = 1.5
-		get_tree().call_group("noise_listeners", "hear_noise", global_position, NOISE)
+		Hearing.make_noise(self, global_position, NOISE)
 		Sound.play_at(self, "cage_move", global_position + Vector3.UP, -2.0, 30.0)
 	if is_equal_approx(global_position.y, target):
 		_set_moving(false)

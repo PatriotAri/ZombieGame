@@ -7,6 +7,7 @@ extends StaticBody3D
 ## MAX_HOURS). While it runs it's loud: zombies within NOISE meters hear it.
 
 const KitMesh := preload("res://world/kit/kit_mesh.gd")
+const Hearing := preload("res://world/hearing.gd")
 const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
 const Player := preload("res://characters/player/player.gd")
@@ -90,7 +91,7 @@ func _physics_process(delta: float) -> void:
 	_noise_wait -= delta
 	if _noise_wait <= 0.0:
 		_noise_wait = NOISE_EVERY
-		get_tree().call_group("noise_listeners", "hear_noise", global_position, NOISE)
+		Hearing.make_noise(self, global_position, NOISE)
 	_hum_wait -= delta
 	if _hum_wait <= 0.0:
 		_hum_wait = 1.0

@@ -19,6 +19,7 @@ signal save_menu_requested
 signal reading_requested(title: String, text: String)
 
 const GameData := preload("res://core/game_data.gd")
+const Hearing := preload("res://world/hearing.gd")
 const Controls := preload("res://core/controls.gd")
 const Inventory := preload("res://items/inventory.gd")
 const Fall := preload("res://characters/fall.gd")
@@ -624,10 +625,11 @@ func select(id: String) -> void:
 	_refresh_weapon_visuals()
 
 
-## Everything that listens (zombies, bandits) is told about the sound; each one
-## decides whether it was close enough to hear it.
+## Everything that listens (zombies, bandits) near enough is told about the
+## sound (world/hearing.gd); each one decides whether it was close enough to
+## hear it.
 func make_noise(radius: float) -> void:
-	get_tree().call_group("noise_listeners", "hear_noise", global_position, radius)
+	Hearing.make_noise(self, global_position, radius)
 
 
 # --- Saving ------------------------------------------------------------------

@@ -11,6 +11,7 @@ extends RigidBody3D
 ## and it's heard NOISE meters away.
 
 const GameData := preload("res://core/game_data.gd")
+const Hearing := preload("res://world/hearing.gd")
 const Sound := preload("res://core/sound.gd")
 const THROW_FUSE := 4.0
 const PLACE_FUSE := 8.0
@@ -75,7 +76,7 @@ func _physics_process(delta: float) -> void:
 ## The blast, at `at` (also used for one that goes off in your hand).
 static func explode(tree: SceneTree, at: Vector3) -> void:
 	var world := tree.root.get_world_3d()
-	tree.call_group("noise_listeners", "hear_noise", at, NOISE)
+	Hearing.make_noise(tree.root, at, NOISE)
 	_effect(tree, at)
 	for zombie in tree.get_nodes_in_group("zombies"):
 		var z := zombie as Node3D

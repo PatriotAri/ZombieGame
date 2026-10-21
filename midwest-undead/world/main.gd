@@ -34,6 +34,7 @@ extends Node3D
 ## node, use the Inspector).
 
 const Player := preload("res://characters/player/player.gd")
+const Hearing := preload("res://world/hearing.gd")
 const Controls := preload("res://core/controls.gd")
 const GameData := preload("res://core/game_data.gd")
 const GroundItem := preload("res://items/ground_item.gd")
@@ -112,6 +113,7 @@ func _ready() -> void:
 	Controls.setup()
 	Settings.load_settings() # before anything can play a sound: it creates the Effects bus
 	rng.randomize()
+	add_child(Hearing.new()) # who hears a noise (world/hearing.gd)
 	_setup_world()
 	_setup_characters()
 	_setup_camps_and_zombies()
@@ -213,7 +215,7 @@ func _setup_story() -> void:
 		(trigger as Area3D).body_entered.connect(func(body: Node3D) -> void:
 			if body.is_in_group("player") and not quests.happened("safe_house_reached"):
 				# You stumbled in on them: everything inside comes to see what made that noise.
-				get_tree().call_group("noise_listeners", "hear_noise", safe_house_point, 30.0)
+				Hearing.make_noise(self, safe_house_point, 30.0)
 				quests.event("safe_house_reached"))
 
 	trader_arrival = TraderArrival.new()

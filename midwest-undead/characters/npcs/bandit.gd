@@ -10,6 +10,7 @@ extends HumanNPC
 enum State { IDLE, ALERT, COMBAT }
 
 const GroundItem := preload("res://items/ground_item.gd")
+const Hearing := preload("res://world/hearing.gd")
 const Ground := preload("res://world/ground.gd")
 
 @export_group("Senses")
@@ -255,7 +256,7 @@ func _shoot_at(enemy: Node3D) -> void:
 	Sound.play_at(self, "gunshot", muzzle(), -2.0, 70.0, 0.08)
 	_flash_muzzle()
 	body.one_shot("rifle_shoot")
-	get_tree().call_group("noise_listeners", "hear_noise", global_position, noise_radius)
+	Hearing.make_noise(self, global_position, noise_radius)
 
 	rounds -= 1
 	if rounds <= 0:

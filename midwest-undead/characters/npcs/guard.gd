@@ -7,6 +7,8 @@ extends HumanNPC
 ## stop and reload. It won't fire if you or another person is in the line of fire.
 ## TUNING: open guard.tscn, select the Guard node, and use the Inspector.
 
+const Hearing := preload("res://world/hearing.gd")
+
 @export_group("Rifle")
 @export var fire_range := 45.0
 ## Only zombies this close (meters, along the ground) to what it guards are shot.
@@ -139,7 +141,7 @@ func _fire_at(target: Node3D) -> void:
 	Sound.play_at(self, "rifle_shot", muzzle(), 0.0, 90.0, 0.06)
 	_flash_muzzle()
 	body.one_shot("rifle_shoot")
-	get_tree().call_group("noise_listeners", "hear_noise", global_position, noise_radius)
+	Hearing.make_noise(self, global_position, noise_radius)
 
 	rounds -= 1
 	if rounds <= 0:
