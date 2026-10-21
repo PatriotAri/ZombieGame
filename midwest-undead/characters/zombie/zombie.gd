@@ -128,6 +128,9 @@ const VERY_FAR_TICK := 6
 ## many per physics frame. Without a limit, a crowd that all wants a new path at
 ## once makes the game stutter; the rest wait a frame or two (_walk_to).
 const PATHS_PER_FRAME := 4
+## Gliding (_glide_along_path), it keeps this far above its path: the
+## navigation mesh is within a cell (0.25 m) of the real floor, either way.
+const GLIDE_LIFT := 0.3
 
 var state := State.IDLE
 var max_health := 100.0 # its kind's
@@ -184,6 +187,12 @@ var _far_phase := 0 # which of the frames is its turn when it skips some (spread
 var _far_frame := 0
 var _far_delta := 0.0 # time saved up between its turns
 var _step_scale := 1.0 # how many frames' worth this physics step moves it
+var _glide := false # this turn it may glide along its path (world/zombies.gd says)
+## world/zombies.gd drives it (think()), instead of its own _physics_process:
+## how long since its last turn, in seconds and in frames.
+var driven := false
+var waited := 0.0
+var frames_waited := 0
 
 @onready var agent: NavigationAgent3D = $NavigationAgent3D
 @onready var visual: Node3D = $Visual # its body, scaled to its size
@@ -334,21 +343,34 @@ func _hunt_speed() -> float:
 	return kind_data.hunt_speed if kind_data.hunt_speed > 0.0 else speed
 
 
+## On its own (not driven by world/zombies.gd): it thinks every frame up
+## close, less often further off (_update_every).
 func _physics_process(delta: float) -> void:
-	if _vaulting:
-		return # a tween is carrying it over a windowsill
-	_step_scale = 1.0
+	if driven:
+		return
+	var scale := 1.0
 	var every := _update_every()
 	if every > 1:
 		_far_delta += delta
 		_far_frame += 1
 		if _far_frame % every != _far_phase % every:
 			return
-		_step_scale = _far_delta / delta
+		scale = _far_delta / delta
 		delta = _far_delta
 		_far_delta = 0.0
 	else:
 		_far_delta = 0.0
+	think(delta, scale, false)
+
+
+## One turn of thinking and moving, delta seconds' worth (step_scale physics
+## frames). glide: far from you and from doors and windows, so it may follow
+## its path without the physics engine (_glide_along_path()).
+func think(delta: float, step_scale: float, glide: bool) -> void:
+	if _vaulting or is_dead:
+		return # a tween is carrying it over a windowsill
+	_step_scale = step_scale
+	_glide = glide
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 	_update_layers(delta)
@@ -1005,12 +1027,30 @@ static func _take_path_request() -> bool:
 ## move_and_slide covers one physics frame; on a far zombie's turn it covers the
 ## frames it skipped.
 func _move(frames: float) -> void:
+	if _glide and is_on_floor() and _water_depth <= 0.0 and not MineCage.any_moving():
+		_glide_along_path(frames)
+		return
 	if frames == 1.0:
 		move_and_slide()
 		return
 	velocity *= frames
 	move_and_slide()
 	velocity /= frames
+
+
+## Far off, where nobody looks closely: along its path at its speed, without
+## the physics engine (move_and_slide is most of what a zombie costs). The path
+## keeps it on the right floor; it stays GLIDE_LIFT above the path, which lies
+## within a cell of the real floor, and settles back onto it with its next
+## physics step. Not near doors or windows (world/zombies.gd), so it never
+## glides through one.
+func _glide_along_path(frames: float) -> void:
+	var step := Vector2(velocity.x, velocity.z).length() * get_physics_process_delta_time() * frames
+	if step <= 0.0:
+		return
+	var next := agent.get_next_path_position() + Vector3(0, GLIDE_LIFT, 0)
+	var to := next - global_position
+	global_position = next if to.length() <= step else global_position + to.normalized() * step
 
 
 ## How often it thinks and moves: every physics frame up close or while after
@@ -1023,7 +1063,13 @@ func _update_every() -> int:
 	var camera := _camera()
 	if camera == null:
 		return 1
-	var dist_sq := global_position.distance_squared_to(camera.global_position)
+	return tick_every(global_position.distance_squared_to(camera.global_position))
+
+
+## The same, dist_sq (squared) from the camera (world/zombies.gd works it out).
+func tick_every(dist_sq: float) -> int:
+	if state == State.HUNT or stagger_timer > 0.0:
+		return 1
 	if dist_sq > VERY_FAR_DISTANCE * VERY_FAR_DISTANCE:
 		return VERY_FAR_TICK
 	if dist_sq > FAR_DISTANCE * FAR_DISTANCE:

@@ -3,6 +3,16 @@ extends Node3D
 ## them, the ones a new game starts with (at the map's ZombieSpawn markers and
 ## in its mines), and saving them. world/zombie_population.gd tops them up over
 ## time and world/horde.gd sends them across the map; both add theirs here.
+##
+## It also gives out their turns to think and move (_physics_process), so 400
+## of them fit in a frame: near you (MID_DISTANCE), after someone or reeling
+## from a hit, a zombie has a turn every frame; further off, every few frames
+## (Zombie.tick_every()), taking turns round the crowd within BUDGET_USEC a
+## frame (a turn put off is just longer, next frame). Past GLIDE_DISTANCE and
+## not after anyone, it glides along its path instead of going through the
+## physics engine (Zombie._glide_along_path), except within OPENING_MARGIN of a
+## door or window, and its body (its animation) stops while you can't see it.
+## Each one's body is driven from here too (HumanoidBody.step()).
 
 const Zombie := preload("res://characters/zombie/zombie.gd")
 const ZombieScene := preload("res://characters/zombie/zombie.tscn")
@@ -12,10 +22,26 @@ const SaveGame := preload("res://core/save_game.gd")
 
 ## Street zombies (a ZombieSpawn with a spread) don't start this close to a car or other container.
 const ZOMBIE_CONTAINER_CLEARANCE := 2.5
+## Time a frame for the turns of the zombies that don't need one every frame.
+const BUDGET_USEC := 3000
+const GLIDE_DISTANCE := 50.0
+const OPENING_MARGIN := 3.0
+const OPENING_CELL := 8.0 # meters: the grid doors and windows are looked up on
+## The most one turn covers (one put off and off doesn't jump).
+const MAX_TURN := 0.25
 
 var all: Array[Zombie] = [] # every zombie up (and bodies not yet cleared away)
 var rng: RandomNumberGenerator # the game's dice (main.gd's)
 var _map: GameMap
+var _cursor := 0 # where in the crowd the next frame's turns start
+var _openings := {} # Vector2i (OPENING_CELL squares) -> PackedVector3Array: the map's doors and windows
+## Time a frame for the waiting turns (BUDGET_USEC; tests change it). However
+## little, one gets its turn every frame, so the crowd always moves on.
+var budget_usec := BUDGET_USEC
+## Last frame (for tests and the performance readout): turns given, and how
+## many of them glided.
+var turns := 0
+var glides := 0
 
 
 func _ready() -> void:
@@ -25,6 +51,76 @@ func _ready() -> void:
 func setup(map: GameMap, dice: RandomNumberGenerator) -> void:
 	_map = map
 	rng = dice
+	for door in map.doors:
+		_add_opening(door.closed_transform().origin)
+	for window in map.windows:
+		_add_opening(window.global_position)
+
+
+func _physics_process(delta: float) -> void:
+	var count := all.size()
+	if count == 0:
+		return
+	var camera := get_viewport().get_camera_3d()
+	turns = 0
+	glides = 0
+	var spent := 0
+	var put_off := -1
+	for k in count:
+		var i := (_cursor + k) % count
+		var zombie := all[i]
+		if not is_instance_valid(zombie) or zombie.is_dead:
+			continue
+		zombie.waited += delta
+		zombie.frames_waited += 1
+		var dist_sq := zombie.global_position.distance_squared_to(camera.global_position) if camera else 0.0
+		if dist_sq <= GLIDE_DISTANCE * GLIDE_DISTANCE or zombie.body.on_screen():
+			zombie.body.step(delta) # (held still while it's far off and out of sight)
+		var every := zombie.tick_every(dist_sq)
+		if every == 1:
+			_turn(zombie, delta, dist_sq)
+		elif zombie.frames_waited >= every:
+			if spent > budget_usec:
+				if put_off < 0:
+					put_off = i
+				continue
+			var started := Time.get_ticks_usec()
+			_turn(zombie, delta, dist_sq)
+			spent += Time.get_ticks_usec() - started
+	_cursor = put_off if put_off >= 0 else 0
+
+
+func _turn(zombie: Zombie, delta: float, dist_sq: float) -> void:
+	var glide := dist_sq > GLIDE_DISTANCE * GLIDE_DISTANCE and zombie.state != Zombie.State.HUNT \
+			and not _near_opening(zombie.global_position)
+	var turn := minf(zombie.waited, MAX_TURN)
+	zombie.think(turn, turn / delta, glide)
+	zombie.waited = 0.0
+	zombie.frames_waited = 0
+	turns += 1
+	if glide:
+		glides += 1
+
+
+func _add_opening(at: Vector3) -> void:
+	var cell := _cell_of(at)
+	var here: PackedVector3Array = _openings.get(cell, PackedVector3Array())
+	here.append(at)
+	_openings[cell] = here # (a packed array is a copy: put it back)
+
+
+func _near_opening(at: Vector3) -> bool:
+	var cell := _cell_of(at)
+	for x in range(cell.x - 1, cell.x + 2):
+		for y in range(cell.y - 1, cell.y + 2):
+			for opening: Vector3 in _openings.get(Vector2i(x, y), PackedVector3Array()):
+				if opening.distance_squared_to(at) < OPENING_MARGIN * OPENING_MARGIN:
+					return true
+	return false
+
+
+static func _cell_of(at: Vector3) -> Vector2i:
+	return Vector2i(floori(at.x / OPENING_CELL), floori(at.z / OPENING_CELL))
 
 
 ## Whether any zombie is after target.
@@ -47,7 +143,10 @@ func add(pos: Vector3, dice: RandomNumberGenerator = null, kind := "") -> Zombie
 	zombie.kind = kind
 	zombie.position = pos
 	zombie.rotation.y = dice.randf_range(0.0, TAU)
+	zombie.driven = true
+	zombie.frames_waited = dice.randi() % Zombie.VERY_FAR_TICK # (their turns spread over the frames)
 	add_child(zombie)
+	zombie.body.driven = true
 	all.append(zombie)
 	return zombie
 

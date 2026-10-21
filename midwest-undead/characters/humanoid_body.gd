@@ -17,6 +17,8 @@ extends Node3D
 ## or out of sight less often (nobody can tell, and it saves a lot with a horde):
 ##   under NEAR_DISTANCE: every frame; under MID_DISTANCE: every MID_EVERY
 ##   frames; beyond, or off screen: every FAR_EVERY frames.
+## A zombie's body is driven by world/zombies.gd (driven, step()), which stops
+## it altogether while it's far off and out of sight.
 ##
 ## Ragdoll: when it dies its limbs go limp and fall by physics (physical bones,
 ## made for the bones in RAGDOLL), pushed by the blow that killed it. Once it's
@@ -89,6 +91,9 @@ var _one_shot_left := 0.0 # > 0: a one-off (flinch, climb) is playing; set_actio
 var _pending := 0.0 # time saved up since the last animation step
 var _frame := 0
 var _phase := 0
+## world/zombies.gd calls step() instead of _process doing it (a ragdoll still
+## runs on its own).
+var driven := false
 var _notifier: VisibleOnScreenNotifier3D
 var _meshes: Array[MeshInstance3D] = []
 var _tinted: Array[MeshInstance3D] = [] # the ones using the body shader
@@ -203,6 +208,13 @@ func _process(delta: float) -> void:
 		if not is_settled:
 			_update_ragdoll(delta)
 		return
+	if not driven:
+		step(delta)
+
+
+## A frame of its animation: advanced, aimed, its head hitbox on its head (as
+## often as _update_every says).
+func step(delta: float) -> void:
 	if animator == null:
 		return
 	_one_shot_left = maxf(_one_shot_left - delta, 0.0)
