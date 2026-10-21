@@ -38,6 +38,10 @@ The first line only matters after adding or changing files outside the
 editor. Each command ends with "passed" or a list of what failed. The smoke
 test ends with `SMOKE TEST: passed` or `SMOKE TEST: FAILED`.
 
+A test script with a mistake that stops it loading (a parse error) is
+skipped, and GUT still says all tests passed: look for `Parse Error` above the
+summary. CI checks every test script ran and fails if one didn't.
+
 ## Writing a unit test
 
 1. Make a script in `tests/unit/` (or a folder under it) whose name starts with

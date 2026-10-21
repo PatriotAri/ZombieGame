@@ -54,6 +54,16 @@ jobs:
           # GUT exits 0 without running anything if the import didn't finish:
           # make sure it actually wrote its results.
           test -s "$RUNNER_TEMP/gut.xml" || { echo "GUT wrote no results: did the import fail?"; exit 1; }
+          # A test script that doesn't parse is skipped and the rest still
+          # "all pass": make sure every one of them ran.
+          missing=0
+          for file in $(cd "$PROJECT" && find tests -name 'test_*.gd'); do
+            if ! grep -q "<testsuite name=\"$file[\".]" "$RUNNER_TEMP/gut.xml"; then
+              echo "::error file=$PROJECT/$file::$file didn't run: it probably has a parse error (see the log above)."
+              missing=1
+            fi
+          done
+          exit $missing
 
       - name: Smoke test
         run: ~/godot/godot --headless --path "$PROJECT" --script res://tests/smoke/smoke.gd
