@@ -135,16 +135,15 @@ func _waypoint_goal(step: QuestStep) -> Array:
 				target = step.target
 			_:
 				return ["at", Vector3.INF]
-	var main: Node = _q._main
 	match mode:
 		"npc":
 			return ["npc", target]
 		"place":
-			for place: Node3D in main.get("places"):
+			for place: Node3D in _q._map.places:
 				if place.get("place_name") == target:
 					return ["at", place.global_position]
 		"spawn_point":
-			for spot: Node3D in main.get("spawn_points"):
+			for spot: Node3D in _q._map.spawn_points:
 				if spot.get("role") == target:
 					return ["at", spot.global_position]
 	return ["at", Vector3.INF]

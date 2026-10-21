@@ -4,7 +4,7 @@ extends RefCounted
 ## change while you play) are combined into a few big meshes, one per material
 ## for each 48 m patch of town, instead of hundreds. Their own meshes are then
 ## hidden; their collision stays as it was. Nothing changes in the editor: this
-## only happens in the game. Never instanced: main.gd calls merge().
+## only happens in the game. Never instanced: world/game_map.gd calls merge().
 ##
 ## Left alone: anything that changes or moves (containers, doors, windows,
 ## items on the ground, things that can be salvaged) and anything without one

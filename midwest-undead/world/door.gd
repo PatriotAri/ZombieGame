@@ -5,11 +5,11 @@ extends AnimatableBody3D
 ## blows and it bursts open for good. Unbreakable ones (the police compound
 ## gate) just hold.
 ##
-## In the map scene a building's door sits under the building, but main.gd
+## In the map scene a building's door sits under the building, but world/game_map.gd
 ## moves every door out of nav_region when the game starts, so the navigation
 ## bake ignores them: zombie paths run straight through doorways, and a closed door is
 ## something they run into and break down. The compound gate is the exception:
-## main.gd bakes a stand-in wall where it is, and the gate switches on
+## the navigation bake gets a stand-in wall where it is, and the gate switches on
 ## NavigationLinks across the gap only while it's open.
 ##
 ## The body sits on the pivot (the hinge, for a swinging door). Opening turns it

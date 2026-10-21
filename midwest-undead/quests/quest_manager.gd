@@ -11,7 +11,8 @@ extends Node
 ##   - timers, people dying, and the "!" / "?" over quest givers' heads
 ##     (quest_markers.gd);
 ##   - the tracked quest: its objective on the HUD and its waypoint.
-## main.gd creates it, routes NPC conversations here, and saves it.
+## main.gd creates it; world/people.gd routes NPC conversations here; it saves
+## itself.
 
 signal objective_changed(text: String)
 ## A big story moment shown in the middle of the screen.
@@ -21,6 +22,7 @@ signal changed
 
 const Conversation := preload("res://quests/conversation.gd")
 const QuestMarkers := preload("res://quests/quest_markers.gd")
+const GameMap := preload("res://world/game_map.gd")
 
 const MAIN_STORY := "res://quests/main_story.tres"
 const SIDE_DIR := "res://quests/side/"
@@ -41,7 +43,7 @@ var _state := {} # quest id -> {"status", "step", "step_seq", "hours_left", "ste
 var _events := {} # event name -> its order (1, 2, 3...)
 var _seq := 0
 var _autosaved: Array[String] = [] # "quest:step" keys already autosaved near
-var _main: Node # main.gd: places, spawn points
+var _map: GameMap # world/game_map.gd: places, spawn points
 var _player: Node3D
 var _dialogue: Node # ui/dialogue_box.gd
 var _choices: Node # ui/choice_menu.gd
@@ -64,8 +66,8 @@ func _ready() -> void:
 	Saveable.section(self, "quest", save_state, _load_saved, Saveable.STORY, end_load, Saveable.STORY_END)
 
 
-func setup(main: Node, player: Node3D, dialogue: Node, choices: Node, camps: Node, day_night: Node) -> void:
-	_main = main
+func setup(map: GameMap, player: Node3D, dialogue: Node, choices: Node, camps: Node, day_night: Node) -> void:
+	_map = map
 	_player = player
 	_markers = QuestMarkers.new(self)
 	_dialogue = dialogue
@@ -418,7 +420,7 @@ func _process(delta: float) -> void:
 
 ## "reached:<place>" for every Place you're within the radius of.
 func _note_places() -> void:
-	for place: Node3D in _main.get("places"):
+	for place: Node3D in _map.places:
 		var at: Vector3 = place.global_position
 		var flat := Vector2(_player.global_position.x - at.x, _player.global_position.z - at.z)
 		if flat.length() <= float(place.get("radius")):
@@ -476,7 +478,7 @@ func _game_hours() -> float:
 # --- Talking -----------------------------------------------------------------------
 
 ## What this NPC has to say about quests: [label, callable] for each (the main
-## story first). main.gd shows them in a choice menu next to the NPC's own
+## story first). world/people.gd shows them in a choice menu next to the NPC's own
 ## business (trading, building...), or plays a lone one straight away.
 func talk_options(npc: Node) -> Array:
 	var who: String = npc.get("display_name")

@@ -73,8 +73,8 @@ func _ready() -> void:
 		Interactable.attach(self, _prompt).interacted.connect(_on_interacted)
 
 
-## What's in it and whether it's been searched, for the save file (main.gd
-## saves it by its key: core/save_ids.gd).
+## What's in it and whether it's been searched, for the save file
+## (world/game_map.gd saves it by its key: core/save_ids.gd).
 func save_state() -> Dictionary:
 	return {"opened": opened, "inventory": inventory.to_dict()}
 

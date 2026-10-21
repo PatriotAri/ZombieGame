@@ -1,7 +1,7 @@
 extends Node
 ## Making places safe: planks over doors and windows, and freestanding barricades.
 ## Neither has health; zombies can't get through or break them. The player places
-## them with held items (player.gd) and can take them down again (main.gd).
+## them with held items (player.gd) and can take them down again (interact).
 ##
 ## It also owns the zombies' way in through windows: every unboarded ground-floor
 ## window gets a NavigationLink, so a zombie whose path is shorter through it walks

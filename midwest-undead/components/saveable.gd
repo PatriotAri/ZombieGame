@@ -5,8 +5,8 @@ extends Node
 ##   - a section: one of the game's systems ("structures", "camps", the
 ##     player). Each adds its own in _ready():
 ##         Saveable.section(self, "horde", save_state, load_state, Saveable.HORDE)
-##   - a thing on the map, by its key (core/save_ids.gd). main.gd adds these
-##     when the map loads.
+##   - a thing on the map, by its key (core/save_ids.gd). world/game_map.gd
+##     adds these when the map loads.
 ## saves returns the state (anything JSON can hold); loads gets it back on a
 ## freshly loaded game, only if the save has it: otherwise the thing keeps the
 ## state a new game gives it.

@@ -5,7 +5,7 @@ extends Marker3D
 ##   discoverable - found by coming within `radius` of the marker
 ##                  (world/discoveries.gd); the map names it only after that.
 ##   street       - a street name, always shown.
-## main.gd reads every Place in the map scene. The quest and the wagon trader
+## world/game_map.gd reads every Place in the map scene. The quest and the wagon trader
 ## also go by the "Safe House" and "Police Station" places.
 
 @export var place_name := "":

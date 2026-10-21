@@ -1,7 +1,7 @@
 extends CanvasLayer
 ## The logbook screen: save as a new save (named if you like) or over an old
-## one, load one, rename one, or delete one (ui/save_list.gd). main.gd supplies
-## the save callback (it knows how to collect the game state).
+## one, load one, rename one, or delete one (ui/save_list.gd). ui/game_ui.gd
+## opens it with main.gd's save callback (it knows how to collect the game state).
 
 const SaveList := preload("res://ui/save_list.gd")
 

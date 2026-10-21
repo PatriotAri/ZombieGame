@@ -27,7 +27,7 @@ func after_all() -> void:
 
 
 func after_each() -> void:
-	for menu: Node in [main.inventory_menu, main.save_menu, main.choice_menu, main.dialogue, main.shop_menu]:
+	for menu: Node in [main.ui.inventory_menu, main.ui.save_menu, main.ui.choice_menu, main.ui.dialogue, main.ui.shop_menu]:
 		menu.call("close")
 
 

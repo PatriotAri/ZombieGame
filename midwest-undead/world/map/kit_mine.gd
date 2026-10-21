@@ -184,7 +184,7 @@ func zombie_count() -> int:
 	return roundi(_cells.size() * CELL / 100.0 * zombie_density)
 
 
-## Builds it now if anything changed (main.gd calls this before the map is in
+## Builds it now if anything changed (world/game_map.gd calls this before the map is in
 ## the tree; in the game it's built once).
 func ensure_built() -> void:
 	if _dirty:
@@ -192,7 +192,7 @@ func ensure_built() -> void:
 
 
 ## Draws everything under node on the underground layer only: out of the
-## sun's and moon's light (main.gd), still in every lamp's.
+## sun's and moon's light (world/game_map.gd), still in every lamp's.
 static func underground(node: Node) -> void:
 	if node.has_meta("daylight"):
 		return
@@ -202,7 +202,7 @@ static func underground(node: Node) -> void:
 		underground(child)
 
 
-## Its generators' fuel and its cages' stops (main.gd saves them).
+## Its generators' fuel and its cages' stops (world/game_map.gd saves them).
 func save_state() -> Dictionary:
 	var data := {"generators": [], "cages": [], "dug": _dug.keys().map(func(c: Vector3i) -> Array: return [c.x, c.y, c.z])}
 	for generator in find_children("*", "MineGenerator", true, false):
@@ -228,7 +228,7 @@ func load_state(data: Dictionary) -> void:
 				(cave_in as MineCaveIn).dig_out()
 
 
-## Its cages (in the game they're moved out from under it: main.gd).
+## Its cages (in the game they're moved out from under it: world/game_map.gd).
 func _cages() -> Array:
 	return _generated.filter(func(n: Node) -> bool: return is_instance_valid(n) and n is MineCage)
 

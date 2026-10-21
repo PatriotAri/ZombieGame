@@ -3,7 +3,7 @@ extends StaticBody3D
 ## how many live there out of how many it can hold, and who they are (written
 ## on the board itself, and read out in full when you look at it and press
 ## interact). world/camps.gd makes one for each camp and keeps it up to date;
-## main.gd shows it in full (Player.read()). Its look is
+## ui/game_ui.gd shows it in full (Player.read()). Its look is
 ## world/props/bulletin_board.tscn (set Models there to swap in a model;
 ## HOW_TO_MODEL.md, "Props"; the writing goes on the board's face, BOARD
 ## centered 1.3 m up).

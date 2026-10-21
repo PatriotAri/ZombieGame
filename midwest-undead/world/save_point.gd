@@ -1,6 +1,6 @@
 extends StaticBody3D
 ## The logbook on the Quartermaster's counter. Look at it and press interact to
-## open the save / load menu (main.gd opens it: Player.open_save_menu()).
+## open the save / load menu (ui/game_ui.gd opens it: Player.open_save_menu()).
 
 const LOOK := preload("res://world/props/logbook.tscn")
 const Player := preload("res://characters/player/player.gd")

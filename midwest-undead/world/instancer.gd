@@ -8,7 +8,7 @@ extends RefCounted
 ## The moment one changes (darkened when searched, bashed or stripped, its
 ## glass smashed, a door swinging, a placement preview) it leaves its batch:
 ## its own mesh shows again, where it is, and the batch's copy is hidden
-## (unbatch()). Never instanced: main.gd calls batch() once the map is in.
+## (unbatch()). Never instanced: world/game_map.gd calls batch() once the map is in.
 
 const ViewDistance := preload("res://core/view_distance.gd")
 const PATCH := 48.0

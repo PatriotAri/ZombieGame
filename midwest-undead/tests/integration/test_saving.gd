@@ -76,7 +76,7 @@ func _save_and_quit(game: Node) -> Dictionary:
 
 
 func _door(game: Node) -> Node3D:
-	for door: Node3D in game.doors:
+	for door: Node3D in game.map.doors:
 		if str(door.get_meta(SaveIds.KEY, "")).begins_with("house1/"):
 			return door
 	return null
@@ -92,7 +92,7 @@ func _window_opening(game: Node) -> int:
 ## A game with things changed in it, saved and ended: the save.
 func _played_and_saved(map: PackedScene) -> Dictionary:
 	var game := _start(map)
-	var crate: Node = game.loot_spots[0]
+	var crate: Node = game.map.loot_spots[0]
 	crate.inventory.add("canned_food", 3)
 	crate.open()
 	_door(game).set_open(true, false)
@@ -118,7 +118,7 @@ func test_everything_comes_back() -> void:
 	var data: Dictionary = await _played_and_saved(_map())
 	var game := _start(_map())
 	var ammo_before_load: int = game.player.inventory.count("pistol_ammo")
-	var crate: Node = game.loot_spots[0]
+	var crate: Node = game.map.loot_spots[0]
 	var food_before_load: int = crate.inventory.count("canned_food") # what a new game's crate has
 	game._apply_save(data)
 	assert_true(crate.opened)
@@ -133,7 +133,7 @@ func test_everything_comes_back() -> void:
 func test_a_renamed_and_moved_crate_keeps_its_state() -> void:
 	var data: Dictionary = await _played_and_saved(_map())
 	var game := _start(_map(-2.0, "Shed", "MovedCrate"))
-	var crate: Node = game.loot_spots[0]
+	var crate: Node = game.map.loot_spots[0]
 	var food_before_load: int = crate.inventory.count("canned_food")
 	game._apply_save(data)
 	assert_eq(str(crate.name), "MovedCrate")
@@ -147,4 +147,4 @@ func test_a_door_moved_along_its_wall_starts_fresh_and_the_rest_comes_back() -> 
 	game._apply_save(data)
 	assert_false(_door(game).is_open, "not where it was saved: its state is dropped")
 	assert_true(game.fortifications.is_boarded(_window_opening(game)), "the window didn't move")
-	assert_true(game.loot_spots[0].opened)
+	assert_true(game.map.loot_spots[0].opened)

@@ -3,7 +3,7 @@ extends Node
 ## Other scripts find this node through the "day_night" group and call
 ## light_level() (0 = darkest night, 1 = full daylight).
 
-# Tunable values, set by main.gd from its inspector before setup().
+# Tunable values, set by world/game_map.gd (from main.gd's Inspector) before setup().
 var start_hour := 8.0 # morning: most of a day before dusk
 var seconds_per_game_hour := 120.0 # a full day is 48 real minutes
 var night_ambient := Color(0.05, 0.06, 0.1) # dark, but you can make out shapes

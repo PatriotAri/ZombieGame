@@ -18,11 +18,12 @@ extends Node
 ##
 ## They come on top of the map's usual number: zombie_population.gd doesn't
 ## top the map back up until there are fewer than its population again.
-## main.gd creates it and saves it.
+## main.gd creates it; it saves itself.
 ## TUNING: the constants below.
 
 const ZombiePopulation := preload("res://world/zombie_population.gd")
 const Zombie := preload("res://characters/zombie/zombie.gd")
+const Zombies := preload("res://world/zombies.gd")
 const Door := preload("res://world/door.gd")
 const SaveGame := preload("res://core/save_game.gd")
 const Ground := preload("res://world/ground.gd")
@@ -51,7 +52,8 @@ var _baking := false
 var _outdoor_ready := false
 var _sending := 0 # a horde this size waits on the bake
 var _pending: Array[Dictionary] = [] # {"position", "march"}: still to put in the world
-var _main: Node # main.gd: _add_zombie, zombies, doors
+var _zombies: Zombies # world/zombies.gd: every zombie up, and adding them
+var _doors: Array # the map's doors (world/game_map.gd)
 var _population: ZombiePopulation # the walkable area, random spots on it
 var _nav_region: NavTiles
 var _player: Node3D
@@ -64,8 +66,10 @@ func _ready() -> void:
 	Saveable.section(self, "horde", save_state, load_state, Saveable.HORDE)
 
 
-func setup(main: Node, population: ZombiePopulation, nav_region: NavTiles, player: Node3D, day_night: Node) -> void:
-	_main = main
+func setup(zombies: Zombies, doors: Array, population: ZombiePopulation, nav_region: NavTiles, player: Node3D,
+		day_night: Node) -> void:
+	_zombies = zombies
+	_doors = doors
 	_population = population
 	_nav_region = nav_region
 	_player = player
@@ -85,7 +89,7 @@ func _process(delta: float) -> void:
 	if _outdoor_ready:
 		for i in mini(PER_FRAME, _pending.size()):
 			var entry: Dictionary = _pending.pop_back()
-			var zombie: Zombie = _main.call("_add_zombie", entry["position"], _rng)
+			var zombie: Zombie = _zombies.add(entry["position"], _rng)
 			zombie.march_to = entry["march"]
 			zombie.march_map = outdoor_map
 	_check_timer -= delta
@@ -128,7 +132,7 @@ func _bake_outdoor() -> void:
 		return
 	_baking = true
 	var doors := NavigationMeshSourceGeometryData3D.new()
-	for door: Door in _main.get("doors"):
+	for door: Door in _doors:
 		if door.is_broken:
 			continue
 		var size := Vector3(maxf(door.leaf_size.x, DOOR_THICKNESS), door.leaf_size.y, door.leaf_size.z)
@@ -181,7 +185,7 @@ func _on_outdoor_baked(meshes: Dictionary) -> void:
 		if not is_inside_tree():
 			return
 	_outdoor_ready = true
-	for zombie: Zombie in _main.get("zombies"):
+	for zombie: Zombie in _zombies.all:
 		if zombie.march_to != Vector3.INF:
 			zombie.march_map = outdoor_map # (after loading a save)
 	if _sending > 0:
@@ -278,7 +282,7 @@ func save_state() -> Dictionary:
 			"sending": _sending, "pending": pending}
 
 
-## After main.gd has put the zombies back. A save from before hordes has none:
+## After the zombies are back (world/zombies.gd). A save from before hordes has none:
 ## the first comes 10 to 18 days after the day it was saved on.
 func load_state(data: Dictionary) -> void:
 	if data.is_empty():
@@ -292,6 +296,6 @@ func load_state(data: Dictionary) -> void:
 	_pending.clear()
 	for entry: Dictionary in data.get("pending", []):
 		_pending.append({"position": SaveGame.array_to_vec(entry["position"]), "march": SaveGame.array_to_vec(entry["march"])})
-	var marching: bool = (_main.get("zombies") as Array).any(func(z: Zombie) -> bool: return z.march_to != Vector3.INF)
+	var marching: bool = _zombies.all.any(func(z: Zombie) -> bool: return z.march_to != Vector3.INF)
 	if marching or _sending > 0 or not _pending.is_empty():
 		_bake_outdoor() # a horde on its way: the marchers need their map back

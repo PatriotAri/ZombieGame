@@ -27,7 +27,7 @@ extends CharacterBody3D
 ## once it's down it walks through the gap (_through_gap).
 ## Its kind (walker, runner, crawler...) is a file in characters/zombie/kinds/
 ## (ZombieKind): health, speeds, shape, skin, voice, and its model. Set `kind`
-## to its id before adding it to the tree; main.gd rolls it.
+## to its id before adding it to the tree; world/zombies.gd rolls it.
 ## Its body (characters/humanoid_body.gd) is the kind's model, or the mannequin
 ## stand-in: animated by what it's doing (_animate), flinching where it's hit,
 ## going limp (a ragdoll) when it dies. Each one gets its own colors and a
@@ -155,7 +155,7 @@ var last_seen_pos := Vector3.ZERO
 var wander_target := Vector3.ZERO
 var roam_heading := Vector3.FORWARD # the way it's been roaming (flat, unit length)
 var roaming := false # on a roaming leg right now (others read this to herd)
-var march_to := Vector3.INF # in a horde: where it's walking to (INF: not in one; main.gd saves it)
+var march_to := Vector3.INF # in a horde: where it's walking to (INF: not in one; world/zombies.gd saves it)
 var march_map := RID() # in a horde: the outdoor map it walks there on (horde.gd)
 var _march_time_left := INF # gives up on the walk when this runs out (set when it starts)
 var _stuck_time := 0.0

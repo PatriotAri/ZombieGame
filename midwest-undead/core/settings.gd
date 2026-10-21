@@ -119,7 +119,7 @@ static func set_value(key: String, value: Variant) -> void:
 
 
 ## Puts the graphics settings into effect on whatever's running (the game's sun
-## is in the "sun" group). main.gd calls it once the world is set up.
+## is in the "sun" group). world/game_map.gd calls it once the sky is set up.
 static func apply_graphics() -> void:
 	ViewDistance.scale = view_distance # things made from now on use it
 	var tree := Engine.get_main_loop() as SceneTree

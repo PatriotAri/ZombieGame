@@ -6,7 +6,7 @@ extends Node
 ##   - Build more with the woodworker's camp kit (world/structures.gd builds it,
 ##     world/camp_site.gd is how it looks), at least RANGE from every other camp.
 ##     A built camp can be taken down: its people move to camps you pick
-##     (main.gd asks).
+##     (ui/game_ui.gd asks).
 ##   - Each camp holds BASE_CAPACITY people, plus PER_STATION for every garden
 ##     plot or ammo bench someone works there. A station (or a guard post)
 ##     belongs to the nearest camp within RANGE; further out it's idle.

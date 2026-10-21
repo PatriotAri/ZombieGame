@@ -15,7 +15,7 @@ extends Node3D
 ## terrain is added to every bake by hand (Terrain3D's ground has no nodes for
 ## Godot's own scan to find), leaving out ground under deep water (ponds and
 ## creeks: world/water.gd), so paths go around it.
-## main.gd creates it (as nav_region) and calls setup() and bake_all().
+## world/game_map.gd creates it (as nav_region) and calls setup() and bake_all().
 
 signal bake_finished # after any bake in play (not the startup one)
 

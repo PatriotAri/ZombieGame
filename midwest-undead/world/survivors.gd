@@ -17,7 +17,8 @@ extends Node
 ## sight of them and of the camp), and live there, each with a bedroll. Talk to
 ## them there to put them on a garden plot or ammo bench, post them on a guard
 ## post, or (the machinist) to have something made.
-## main.gd creates it once the map is loaded and sends conversations here.
+## main.gd creates it once the map is loaded; world/people.gd sends
+## conversations here.
 ## Saved: where each one has got to and which camp they live at, by name.
 ## (Their planks and supplies are saved with the rest of the fortifications and
 ## ground items.)

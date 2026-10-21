@@ -20,9 +20,9 @@ extends RefCounted
 ## of it (still_there()).
 
 const META := &"save_id"
-## Where a thing's key is kept once the game has loaded the map (main.gd), and
-## whether it was made in the game (is_made_in_game(): main.gd moves doors out
-## of the map, which makes them look it).
+## Where a thing's key is kept once the game has loaded the map
+## (world/game_map.gd), and whether it was made in the game (is_made_in_game():
+## the map moves doors out of the map scene, which makes them look it).
 const KEY := &"save_key"
 const MADE_IN_GAME := &"save_made_in_game"
 const POSITION_SLACK := 0.5 # meters

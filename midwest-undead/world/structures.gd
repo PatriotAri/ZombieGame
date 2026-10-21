@@ -27,9 +27,10 @@ extends Node
 ## set Models on one to swap in a model (HOW_TO_MODEL.md, "Props"). A model's
 ## own collision shapes are used; without any, the boxes in _collision().
 ## Pressing interact on a piece takes it down (on a gate's leaf, opens or shuts
-## it); on a camp kit, main.gd packs up the camp (camp_take_down_requested).
+## it); on a camp kit, ui/game_ui.gd asks where its people go and packs it up
+## (camp_take_down_requested).
 
-## You pressed interact on a camp kit: main.gd packs up the camp.
+## You pressed interact on a camp kit: ui/game_ui.gd packs up the camp.
 signal camp_take_down_requested(piece: StructurePiece)
 
 const GameData := preload("res://core/game_data.gd")

@@ -2,7 +2,7 @@
 class_name KitSpawnPoint
 extends Marker3D
 ## Where someone is when a new game starts, and which way they face (the
-## marker's forward, -Z). main.gd reads every SpawnPoint in the map scene.
+## marker's forward, -Z). world/game_map.gd reads every SpawnPoint in the map scene.
 ## A few roles also use the node the marker sits under:
 ##   guard     - under its guard tower: the guard's aim ignores the tower's own parts.
 ##   bandit    - under their camp: they stay near the camp node's position.

@@ -24,7 +24,7 @@ extends HumanNPC
 ## Seconds spent reloading with the rifle lowered.
 @export var reload_time := 4.0
 
-var exclude: Array[RID] = [] # set by main.gd: the guard's own tower, so its railing doesn't block its aim
+var exclude: Array[RID] = [] # set by world/people.gd: the guard's own tower, so its railing doesn't block its aim
 ## What it guards: a line on the ground from guard_from to guard_to (the gate's
 ## opening). Left at INF, it shoots anything in range.
 var guard_from := Vector3.INF

@@ -10,8 +10,8 @@ extends CharacterBody3D
 signal died
 signal damaged
 signal notify(text: String)
-# What you used asks for a screen: main.gd opens it. (A UI service will, in
-# re-architecture step 4.) Things you use call the methods further down that
+# What you used asks for a screen: ui/game_ui.gd opens it (talking to someone:
+# world/people.gd). Things you use call the methods further down that
 # emit these: open_container(), talk_to(), open_save_menu(), read().
 signal container_opened(spot: Node)
 signal npc_interacted(npc: HumanNPC)

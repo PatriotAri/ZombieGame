@@ -73,7 +73,7 @@ const RUN_FROM := 3.2 # m/s: faster than this runs
 var health := 100.0
 var is_dead := false
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-## True while you're talking to them (main.gd sets it; it goes once your menus close).
+## True while you're talking to them (world/people.gd sets it; it goes once your menus close).
 var talking := false
 ## The rifle in their hand (holds_rifle), and the flash at its muzzle; or null.
 var rifle: Node3D
@@ -150,8 +150,8 @@ func is_targetable() -> bool:
 
 ## The action shown in the "E: ..." prompt when you look at this NPC, e.g.
 ## "trade with Quartermaster". Empty means there's nothing to do with them.
-## Subclasses override this; main.gd decides what pressing E actually opens
-## (Player.talk_to()).
+## Subclasses override this; world/people.gd decides what pressing E actually
+## opens (Player.talk_to()).
 func interact_prompt() -> String:
 	return ""
 

@@ -6,7 +6,7 @@ extends CanvasLayer
 ## biggest is what's holding the frame rate back, and the last line says which.
 ## Also how much is being drawn (draw calls, objects, triangles) and how many
 ## zombies there are.
-## main.gd creates it. Hidden at start; works while paused too.
+## ui/game_ui.gd creates it. Hidden at start; works while paused too.
 
 const UPDATE := 0.5 # seconds between refreshes (steadier to read than every frame)
 

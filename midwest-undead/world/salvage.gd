@@ -4,8 +4,8 @@ extends Node
 ## furniture (dressers, cabinets, shelves, beds, pews...) for plywood or
 ## planks. Each thing can only be stripped once. It's loud work. player.gd
 ## does the holding; this knows what gives what.
-## Saved: which things have been stripped (by the "save_key" main.gd gives
-## them: core/save_ids.gd).
+## Saved: which things have been stripped (by the "save_key" world/game_map.gd
+## gives them: core/save_ids.gd).
 
 const SaveIds := preload("res://core/save_ids.gd")
 

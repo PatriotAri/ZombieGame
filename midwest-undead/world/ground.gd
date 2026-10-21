@@ -1,7 +1,7 @@
 extends RefCounted
 ## How high the ground is anywhere on the map: the Terrain3D node's heights
 ## (world/map/map.tscn), which are there whether or not that spot has collision.
-## main.gd hands it the terrain when the map loads. Never instanced.
+## world/game_map.gd hands it the terrain when the map loads. Never instanced.
 ##
 ## "Ground level" means standing on the terrain itself, not on a roof, a floor
 ## upstairs or the top of a wall: spawning (world/zombie_population.gd and
@@ -12,7 +12,7 @@ extends RefCounted
 const GROUND_LEVEL_TOLERANCE := 1.0
 
 static var terrain: Node = null # Terrain3D, or null (then the ground is y = 0)
-static var deepest := INF # the lowest mine floor (main.gd sets it): height_range() reaches down to it
+static var deepest := INF # the lowest mine floor (world/game_map.gd sets it): height_range() reaches down to it
 
 
 ## The terrain's height under a point (y = 0 without a terrain, or off its edge).

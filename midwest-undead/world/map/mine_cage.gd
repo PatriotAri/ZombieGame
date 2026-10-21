@@ -9,7 +9,7 @@ extends AnimatableBody3D
 ## stop; the call button by each stop's gate brings it there. A stop's gates
 ## are shut unless the cage is at it, so nobody walks into the empty shaft.
 ## Moving, it clanks: zombies near it hear.
-## KitMine builds it; main.gd keeps it (and its gates) out of the navigation
+## KitMine builds it; world/game_map.gd keeps it (and its gates) out of the navigation
 ## bake, as it does doors.
 
 const KitMesh := preload("res://world/kit/kit_mesh.gd")

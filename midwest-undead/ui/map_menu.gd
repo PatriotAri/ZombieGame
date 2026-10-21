@@ -67,7 +67,7 @@ func _ready() -> void:
 	_canvas.draw.connect(_draw_map)
 
 
-## main.gd hands over what to draw. Roads and fences are rectangles in world
+## ui/game_ui.gd hands over what to draw. Roads and fences are rectangles in world
 ## (x, z); buildings are their four ground corners; streets are [name, (x, z)].
 func setup(player: Node3D, zones: Zones, camps: Node, discoveries: Discoveries, roads: Array[Rect2],
 		buildings: Array[PackedVector2Array], fences: Array[Rect2], streets: Array) -> void:

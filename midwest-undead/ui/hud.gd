@@ -9,7 +9,7 @@ extends CanvasLayer
 ## While a screen is up (the map, a container, the shop, a conversation, the
 ## logbook, the pause menu) only the toasts, story moments, hurt flash and death
 ## message stay; the rest is play information and gets out of the way.
-## main.gd creates it, calls setup(), and calls the show_* functions.
+## ui/game_ui.gd creates it, calls setup(), and calls the show_* functions.
 
 const Player := preload("res://characters/player/player.gd")
 const Controls := preload("res://core/controls.gd")

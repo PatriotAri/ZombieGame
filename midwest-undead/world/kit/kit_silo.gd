@@ -50,7 +50,7 @@ func _ready() -> void:
 	ensure_built()
 
 
-## Builds it now if anything changed (main.gd calls this before the map's doors
+## Builds it now if anything changed (world/game_map.gd calls this before the map's doors
 ## are looked for; in the game it's built once: its door moves away after).
 func ensure_built() -> void:
 	if _dirty:

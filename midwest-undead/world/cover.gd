@@ -12,7 +12,7 @@ extends RefCounted
 const PLANT_REACH := 0.9 # meters: this close to a painted plant counts as in it
 const INSTANCER_CELL := 32 # Terrain3D stores painted plants in 32 m cells
 
-static var terrain: Node = null # Terrain3D (main.gd sets it), for painted plants
+static var terrain: Node = null # Terrain3D (world/game_map.gd sets it), for painted plants
 static var mesh_ids: Array[int] = [] # instancer meshes that hide you
 
 

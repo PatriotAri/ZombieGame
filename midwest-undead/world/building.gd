@@ -350,7 +350,7 @@ func _notification(what: int) -> void:
 		_changed()
 
 
-## Builds it now if anything changed (main.gd calls this before the town is in
+## Builds it now if anything changed (world/game_map.gd calls this before the town is in
 ## the tree, so the doors and windows exist when it looks for them).
 func ensure_built() -> void:
 	if _dirty:
@@ -704,7 +704,7 @@ func _number_walls() -> void:
 		_generated.append(label)
 
 
-## The foundation, on its own (see `foundation`): main.gd builds buildings before
+## The foundation, on its own (see `foundation`): world/game_map.gd builds buildings before
 ## the map is in the game, so this comes once it is (_ready).
 func _build_foundation() -> void:
 	if _foundation_body:

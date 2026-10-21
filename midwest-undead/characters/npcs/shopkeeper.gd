@@ -35,7 +35,7 @@ const Inventory := preload("res://items/inventory.gd")
 }
 
 var stock := Inventory.new()
-## Set by main.gd. Without it (e.g. a trader dropped into a test scene) they never restock.
+## Set by world/people.gd. Without it (e.g. a trader dropped into a test scene) they never restock.
 var day_night: Node
 ## The last day they restocked; their starting stock counts as day 1's.
 var restocked_day := 1
@@ -87,8 +87,8 @@ func sell_price(id: String) -> int:
 
 
 ## Can't trade with someone who's dead.
-## What they have and when they last restocked, for the save file (main.gd
-## saves the Quartermaster's).
+## What they have and when they last restocked, for the save file
+## (world/people.gd saves the Quartermaster's).
 func save_state() -> Dictionary:
 	return {"stock": stock.to_dict(), "restocked_day": restocked_day}
 

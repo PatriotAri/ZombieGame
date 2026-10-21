@@ -1,6 +1,6 @@
 extends HumanNPC
 ## A hostile survivor guarding a camp. Bandits stay within leash_radius of their
-## camp (main.gd sets `home`), so they never wander off to the police station or
+## camp (world/people.gd sets `home`), so they never wander off to the police station or
 ## the safe house. Each one shoots the closest enemy it can see: you, or any
 ## zombie that gets too close. Gunshots are loud, which can pull zombies into
 ## the fight; and zombies happily go after bandits too.
@@ -42,7 +42,7 @@ const ALERT_TIME := 6.0 # how long it stays on edge after hearing something
 ## wasteful): at once if it moved more than a meter, else at most this often.
 const REPATH_INTERVAL := 0.3
 
-var home := Vector3.ZERO # camp center, set by main.gd before the bandit is added
+var home := Vector3.ZERO # camp center, set by world/people.gd before the bandit is added
 var drop_loot_on_death := true # off when restoring an already-dead bandit from a save
 var state := State.IDLE
 var target: Node3D = null

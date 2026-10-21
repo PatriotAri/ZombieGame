@@ -8,9 +8,9 @@ extends Node
 ## navigation mesh, on the ground (not on roofs: world/ground.gd).
 ##
 ## At the start: extra zombies scattered around the map like that, on top of
-## the ones main.gd places at the map scene's ZombieSpawn markers. A marker's
-## zombie you'd see appear (or within MIN_DISTANCE of you) moves to a hidden
-## spot nearby first.
+## the ones world/zombies.gd places at the map scene's ZombieSpawn markers. A
+## marker's zombie you'd see appear (or within MIN_DISTANCE of you) moves to a
+## hidden spot nearby first.
 ##
 ## While you play: whenever fewer than `population` are still up, another one
 ## turns up now and then on a hidden spot, more often at night. Nothing sends them anywhere: they roam like
@@ -20,10 +20,11 @@ extends Node
 ##
 ## Bodies stay where they fell until you're well away (BODY_CLEANUP_DISTANCE)
 ## and not looking at them, then they're cleared away. Only the living are
-## saved (main.gd).
+## saved (world/zombies.gd).
 ## main.gd creates it and owns the tuning (the Inspector's "Zombies" group).
 
 const Zombie := preload("res://characters/zombie/zombie.gd")
+const Zombies := preload("res://world/zombies.gd")
 const Ground := preload("res://world/ground.gd")
 const NavTiles := preload("res://world/nav_tiles.gd")
 const GameData := preload("res://core/game_data.gd")
@@ -40,7 +41,7 @@ var population := 100 # zombies up at once that it tops back up to
 var respawn_seconds_day := 30.0
 var respawn_seconds_night := 10.0
 
-var _main: Node # main.gd: owns the zombies list and _add_zombie
+var _zombies: Zombies # world/zombies.gd: every zombie up, and adding them
 var _player: Node3D
 var _day_night: Node
 var _camps: Node # world/camps.gd
@@ -52,8 +53,8 @@ var _spawn_timer := 0.0
 var _rng := RandomNumberGenerator.new() # during play: its own dice
 
 
-func setup(main: Node, nav_region: NavTiles, player: Node3D, day_night: Node, camps: Node) -> void:
-	_main = main
+func setup(zombies: Zombies, nav_region: NavTiles, player: Node3D, day_night: Node, camps: Node) -> void:
+	_zombies = zombies
 	_player = player
 	_day_night = day_night
 	_camps = camps
@@ -63,10 +64,10 @@ func setup(main: Node, nav_region: NavTiles, player: Node3D, day_night: Node, ca
 		_index_triangles(mesh, nav_region.global_transform)
 
 
-## The extra zombies at the start. Call once, after main.gd has placed its own:
+## The extra zombies at the start. Call once, after the markers' are placed:
 ## those you'd see appear move out of sight first.
 func populate(count: int, rng: RandomNumberGenerator, start: Vector3) -> void:
-	for zombie: Node3D in _main.get("zombies"):
+	for zombie: Node3D in _zombies.all:
 		var at := zombie.global_position
 		# (One down a mine stays there, close by or not, unless you'd see it.)
 		if (at.distance_to(start) < MIN_DISTANCE and not KitMine.contains(at + Vector3.UP)) or seen(at):
@@ -78,7 +79,7 @@ func populate(count: int, rng: RandomNumberGenerator, start: Vector3) -> void:
 	for i in count:
 		var pos := hidden_spot(rng)
 		if pos != Vector3.INF:
-			_main.call("_add_zombie", pos + Vector3(0, 0.1, 0), rng)
+			_zombies.add(pos + Vector3(0, 0.1, 0), rng)
 	_spawn_timer = respawn_seconds_day # nobody new in the first moments
 
 
@@ -126,7 +127,7 @@ func _process(delta: float) -> void:
 	_spawn_timer = lerpf(respawn_seconds_day, respawn_seconds_night, night)
 	var pos := hidden_spot(_rng)
 	if pos != Vector3.INF:
-		_main.call("_add_zombie", pos + Vector3(0, 0.1, 0), _rng)
+		_zombies.add(pos + Vector3(0, 0.1, 0), _rng)
 
 
 func _alive() -> int:
@@ -153,7 +154,7 @@ func _near_camp(pos: Vector3) -> bool:
 ## Bodies: gone once they've stopped falling, you're well away, and they're off
 ## screen (so you never see one vanish).
 func _clear_bodies() -> void:
-	var zombies: Array = _main.get("zombies")
+	var zombies: Array = _zombies.all
 	for i in range(zombies.size() - 1, -1, -1):
 		var zombie: Zombie = zombies[i]
 		if not zombie.is_dead or not zombie.body.is_settled or zombie.body.on_screen():

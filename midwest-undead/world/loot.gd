@@ -1,5 +1,5 @@
 extends RefCounted
-## What's in the containers when a new game starts. Never instanced: main.gd
+## What's in the containers when a new game starts. Never instanced: world/game_map.gd
 ## calls fill() once the map scene is loaded.
 ##
 ## Each container (items/loot_spot.gd) has fixed items, always in it, and a loot

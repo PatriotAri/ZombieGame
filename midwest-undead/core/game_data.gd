@@ -17,7 +17,7 @@ const LAYER_OPENINGS := 64
 const LAYER_NAV_ONLY := 128
 ## A render layer (what lights and cameras draw), not a collision one: mines
 ## (world/map/kit_mine.gd) are drawn on it alone, so the sun and moon, which
-## leave it out (main.gd), don't light them; lamps and fires still do.
+## leave it out (world/game_map.gd), don't light them; lamps and fires still do.
 const RENDER_UNDERGROUND := 2
 
 # --- Items -----------------------------------------------------------------------
