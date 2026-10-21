@@ -1,0 +1,59 @@
+# Checks every push and pull request: imports the project with Godot,
+# runs the unit tests (GUT) and boots the game headless (the smoke test).
+# What each check does and how to run it yourself: midwest-undead/HOW_TO_TEST.md
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep in step with the version in midwest-undead/project.godot.
+  GODOT_VERSION: 4.6-stable
+  PROJECT: midwest-undead
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux
+
+      - name: Download Godot
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot
+          curl -sSL -o ~/godot/godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -q ~/godot/godot.zip -d ~/godot
+          mv ~/godot/Godot_v${GODOT_VERSION}_linux.x86_64 ~/godot/godot
+          rm ~/godot/godot.zip
+
+      - name: Import the project
+        run: ~/godot/godot --headless --path "$PROJECT" --import
+
+      - name: Unit tests
+        run: |
+          ~/godot/godot --headless --path "$PROJECT" -s res://addons/gut/gut_cmdln.gd -gexit \
+            -gjunit_xml_file="$RUNNER_TEMP/gut.xml"
+          # GUT exits 0 without running anything if the import didn't finish:
+          # make sure it actually wrote its results.
+          test -s "$RUNNER_TEMP/gut.xml" || { echo "GUT wrote no results: did the import fail?"; exit 1; }
+
+      - name: Smoke test
+        run: ~/godot/godot --headless --path "$PROJECT" --script res://tests/smoke/smoke.gd

@@ -26,4 +26,4 @@ occlusion_culling/use_occlusion_culling=true
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/map_tools/plugin.cfg", "res://addons/terrain_3d/plugin.cfg")
+enabled=PackedStringArray("res://addons/gut/plugin.cfg", "res://addons/map_tools/plugin.cfg", "res://addons/terrain_3d/plugin.cfg")
