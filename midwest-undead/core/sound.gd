@@ -7,6 +7,11 @@ extends RefCounted
 ## are skipped with a single warning, so gameplay never depends on audio files.
 ## To replace a placeholder, drop a new .wav or .ogg with the same name in
 ## assets/audio/ (and delete the old one if the extension changed).
+##
+## The players are kept and used again (a node under the tree's root holds
+## them), not made and freed for every sound. At most MAX_WORLD_SOUNDS play out
+## in the world at once: with a crowd groaning, a new sound takes the place of
+## the farthest one playing, or isn't played if it's the farthest itself.
 
 const Settings := preload("res://core/settings.gd")
 
@@ -18,6 +23,8 @@ const MAX_VARIANTS := 9
 ## dictionary on the tree's root node rather than in a static var: a static var
 ## would keep them alive past engine shutdown ("resources still in use at exit").
 const CACHE_META := &"sound_cache"
+const POOL_NAME := "SoundPool"
+const MAX_WORLD_SOUNDS := 32
 
 
 ## A sound out in the world, at a fixed spot. Fades out by max_distance meters.
@@ -34,15 +41,15 @@ static func play_at(context: Node, id: String, pos: Vector3, volume_db := 0.0,
 	var stream := _pick(context, id)
 	if stream == null:
 		return
-	var player := AudioStreamPlayer3D.new()
+	var player := _world_player(_pool(context), pos, camera.global_position if camera else pos)
+	if player == null:
+		return # farther off than every sound playing, with no room left
 	player.bus = Settings.SFX_BUS # the Effects volume slider
 	player.stream = stream
 	player.volume_db = volume_db
 	player.max_distance = max_distance
 	player.unit_size = max_distance / 6.0 # stays clearly audible for the first sixth
 	player.pitch_scale = pitch * randf_range(1.0 - pitch_jitter, 1.0 + pitch_jitter)
-	player.finished.connect(player.queue_free)
-	context.get_tree().root.add_child(player)
 	player.global_position = pos
 	player.play()
 
@@ -55,14 +62,64 @@ static func play_ui(context: Node, id: String, volume_db := 0.0, pitch_jitter :=
 	var stream := _pick(context, id)
 	if stream == null:
 		return
-	var player := AudioStreamPlayer.new()
+	var pool := _pool(context)
+	var player: AudioStreamPlayer = null
+	for idle: AudioStreamPlayer in pool.find_children("*", "AudioStreamPlayer", false, false):
+		if not idle.playing:
+			player = idle
+			break
+	if player == null:
+		player = AudioStreamPlayer.new()
+		pool.add_child(player)
 	player.bus = Settings.SFX_BUS
 	player.stream = stream
 	player.volume_db = volume_db
 	player.pitch_scale = pitch * randf_range(1.0 - pitch_jitter, 1.0 + pitch_jitter)
-	player.finished.connect(player.queue_free)
-	context.get_tree().root.add_child(player)
 	player.play()
+
+
+## How many world sounds are playing now (for tests).
+static func world_sounds_playing(context: Node) -> int:
+	var count := 0
+	for player: AudioStreamPlayer3D in _pool(context).find_children("*", "AudioStreamPlayer3D", false, false):
+		if player.playing:
+			count += 1
+	return count
+
+
+## The node holding the players, under the tree's root (made the first time).
+static func _pool(context: Node) -> Node:
+	var root := context.get_tree().root
+	var pool := root.get_node_or_null(POOL_NAME)
+	if pool == null:
+		pool = Node.new()
+		pool.name = POOL_NAME
+		root.add_child(pool)
+	return pool
+
+
+## A player for a world sound at pos, heard from listener: an idle one, a new
+## one while there are fewer than MAX_WORLD_SOUNDS, or the farthest one playing
+## if pos is nearer than it. null: pos is the farthest; no room.
+static func _world_player(pool: Node, pos: Vector3, listener: Vector3) -> AudioStreamPlayer3D:
+	var farthest: AudioStreamPlayer3D = null
+	var farthest_sq := -1.0
+	var players := pool.find_children("*", "AudioStreamPlayer3D", false, false)
+	for player: AudioStreamPlayer3D in players:
+		if not player.playing:
+			return player
+		var dist_sq := player.global_position.distance_squared_to(listener)
+		if dist_sq > farthest_sq:
+			farthest = player
+			farthest_sq = dist_sq
+	if players.size() < MAX_WORLD_SOUNDS:
+		var made := AudioStreamPlayer3D.new()
+		pool.add_child(made)
+		return made
+	if pos.distance_squared_to(listener) >= farthest_sq:
+		return null
+	farthest.stop()
+	return farthest
 
 
 static func _pick(context: Node, id: String) -> AudioStream:
