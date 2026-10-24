@@ -21,7 +21,11 @@ static func limit(geom: GeometryInstance3D, meters: float) -> void:
 
 ## A box-shaped thing: the bigger it is, the further it shows (a dresser ~40 m, a car ~120 m).
 static func limit_by_size(geom: GeometryInstance3D, size: Vector3) -> void:
-	limit(geom, clampf(maxf(size.x, maxf(size.y, size.z)) * 30.0, 35.0, 150.0))
+	limit(geom, meters_for_size(size))
+
+
+static func meters_for_size(size: Vector3) -> float:
+	return clampf(maxf(size.x, maxf(size.y, size.z)) * 30.0, 35.0, 150.0)
 
 
 static func set_scale(tree: SceneTree, value: float) -> void:

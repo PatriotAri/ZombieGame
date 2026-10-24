@@ -1,0 +1,48 @@
+# Runs the game's tests (midwest-undead/tests/README.md) with no window.
+# Pull requests run the quick set; pushes to main, and a run started by hand
+# from the Actions tab, run every test.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: "4.6-stable"
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Godot
+        run: |
+          curl -sSfL -o godot.zip \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -q godot.zip -d "$RUNNER_TEMP/godot"
+          echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}_linux.x86_64" >> "$GITHUB_ENV"
+
+      - name: Run the tests
+        env:
+          TEST_OUT: ${{ runner.temp }}/test-logs
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            midwest-undead/tests/run_tests.sh --quick
+          else
+            midwest-undead/tests/run_tests.sh
+          fi
+
+      - name: Keep the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: ${{ runner.temp }}/test-logs

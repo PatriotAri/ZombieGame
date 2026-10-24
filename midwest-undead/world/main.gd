@@ -100,6 +100,7 @@ const Cover := preload("res://world/cover.gd")
 const Plants := preload("res://world/map/plants.gd")
 const GameEvents := preload("res://core/game_events.gd")
 const QuestWorld := preload("res://world/quest_world.gd")
+const SaveIds := preload("res://core/save_ids.gd")
 
 @export_group("World")
 ## The map to play on. Edit world/map/map.tscn to change it (HOW_TO_MAP.md).
@@ -123,8 +124,6 @@ const QuestWorld := preload("res://world/quest_world.gd")
 ## How bright the darkest night is. Raise it if nights are too dark on your screen.
 @export var night_ambient := Color(0.05, 0.06, 0.1)
 
-## Autosave once you're this close to the safe house while it's your objective.
-const AUTOSAVE_DISTANCE := 20.0
 ## Street zombies (a ZombieSpawn with a spread) don't start this close to a car or other container.
 const ZOMBIE_CONTAINER_CLEARANCE := 2.5
 
@@ -145,6 +144,8 @@ var windows: Array[WindowPane] = []
 var spawn_points: Array[SpawnPoint] = []
 var zombie_spawns: Array[ZombieSpawn] = []
 var places: Array[Place] = []
+var person_markers: Array[KitPersonMarker] = [] # who stands where at the start (person files)
+var _town_keys := {} # every save key given out so far (core/save_ids.gd)
 var salvage_others: Array[Node3D] = [] # things with a "salvage_label" that aren't containers (beds)
 var hud: Hud
 var zones: Zones
@@ -314,7 +315,7 @@ func _setup_story() -> void:
 	add_child(quests)
 	quests.objective_changed.connect(hud.set_objective)
 	quests.story_beat.connect(hud.show_story)
-	quests.setup(self, player, dialogue, choice_menu, camps, day_night)
+	quests.setup(self, player, dialogue, choice_menu, quest_world, day_night)
 	journal_menu = JournalMenu.new()
 	add_child(journal_menu)
 	journal_menu.setup(player, quests)
@@ -323,7 +324,7 @@ func _setup_story() -> void:
 	for trigger in get_tree().get_nodes_in_group("safe_house_trigger"):
 		# Walking into the safe house's yard (or the house) is what "reaching" it means.
 		(trigger as Area3D).body_entered.connect(func(body: Node3D) -> void:
-			if body.is_in_group("player") and not quests.happened("safe_house_reached"):
+			if body.is_in_group("player") and not quests.happened("story", {"name": "safe_house_reached"}):
 				# You stumbled in on them: everything inside comes to see what made that noise.
 				get_tree().call_group("noise_listeners", "hear_noise", safe_house_point, 30.0)
 				quests.event("safe_house_reached"))
@@ -413,6 +414,8 @@ func _load_town() -> void:
 			zombie_spawns.append(node)
 		elif node is Place:
 			places.append(node)
+		elif node is KitPersonMarker:
+			person_markers.append(node)
 		elif node is Door:
 			doors.append(node)
 		if node.has_meta("salvage_label") and not node is LootSpot:
@@ -450,13 +453,21 @@ func _load_town() -> void:
 			else Transform3D(Basis.IDENTITY, Ground.snap(Vector3.ZERO, 0.1))
 
 
-## A node's path in the map scene, from its root ("Buildings/Shop3/FrontDoor").
+## What a save calls a node in the map scene (core/save_ids.gd): its save id
+## ("#3fa9c2d1/FrontDoor" for a building's door), or its path from the map's
+## root ("Buildings/Shop3/FrontDoor") if it has none. Two the same (a copy
+## pasted outside the editor's save): the later one goes by its path, with a warning.
 func _town_path(node: Node) -> String:
-	var parts := PackedStringArray()
-	while node != town:
-		parts.insert(0, str(node.name))
-		node = node.get_parent()
-	return "/".join(parts)
+	var key := SaveIds.key(node, town)
+	if _town_keys.has(key):
+		push_warning("Two things on the map share the save id in \"%s\": save the map in the editor to fix it." % key)
+		var parts := PackedStringArray()
+		while node != town:
+			parts.insert(0, str(node.name))
+			node = node.get_parent()
+		key = "/".join(parts)
+	_town_keys[key] = true
+	return key
 
 
 ## The first SpawnPoint with this role, or null (with a warning).
@@ -505,7 +516,9 @@ func _on_npc_interacted(npc: HumanNPC) -> void:
 	var own := _own_business(npc)
 	if options.is_empty():
 		if own.is_empty():
-			quests.afterword(npc) # what they say once their quests are done
+			# What they say once their quests are done, or else their own lines.
+			if not quests.afterword(npc) and npc.person and npc.person.talk:
+				quests.play(npc.person.talk, npc.npc_id)
 		else:
 			own[1].call()
 		return
@@ -660,21 +673,14 @@ func _rehome(people: Array, leaving: Camps.Camp, piece: StructurePiece) -> void:
 
 # --- Saving and loading --------------------------------------------------------
 
-## Autosave the first time you get within AUTOSAVE_DISTANCE of the tracked
-## quest's waypoint, on steps that ask for it (the safe house, in the story).
-## Not while something is hunting you: a save made mid-fight could lock you
-## into a fight you can't win. It keeps checking, and saves as soon as you're
-## clear (if you're still close).
+## Autosave when a quest asks for it (an Autosave action), but not while
+## something is hunting you: a save made mid-fight could lock you into a fight
+## you can't win. It keeps checking, and saves as soon as you're clear.
 func _check_autosave() -> void:
-	if player.is_dead:
+	if player.is_dead or not quests.wants_autosave() or _player_threatened():
 		return
-	var target := quests.autosave_target()
-	if target == Vector3.INF or player.global_position.distance_to(target) > AUTOSAVE_DISTANCE:
-		return
-	if _player_threatened():
-		return
-	quests.mark_autosaved()
-	if _save_game(SaveGame.AUTOSAVE):
+	quests.autosaved()
+	if _save_game(SaveGame.autosave_path()):
 		hud.show_toast("Autosaved")
 
 
@@ -723,11 +729,20 @@ func _spawn_player() -> void:
 	player.notify.connect(hud.show_toast)
 
 
-## The map's NPCs, at their SpawnPoints: the Quartermaster and the Chief in the
-## station, the guards on their towers, the bandits at their camp, and the
-## people who didn't make it at the safe house. After the navigation bake, so
-## they can find their way around.
+## The map's NPCs: everyone at a person marker (from their person file), and
+## those at SpawnPoints: the Quartermaster and the Chief in the station, the
+## guards on their towers, the bandits at their camp, and the people who didn't
+## make it at the safe house. After the navigation bake, so they can find
+## their way around.
 func _spawn_npcs() -> void:
+	for spot in person_markers:
+		if spot.person == null or not spot.start_here:
+			continue
+		var someone := spot.person.make()
+		someone.transform = Transform3D(Basis(Vector3.UP, spot.global_rotation.y), spot.global_position)
+		if "day_night" in someone:
+			someone.set("day_night", day_night) # a trader restocks each morning
+		add_child(someone)
 	for spot in spawn_points:
 		var xform := Transform3D(Basis(Vector3.UP, spot.global_rotation.y), spot.global_position)
 		match spot.role:

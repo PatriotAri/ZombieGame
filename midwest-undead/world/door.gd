@@ -138,8 +138,7 @@ func _build() -> void:
 	_look.name = "Look"
 	add_child(_look)
 	_look.paint(_material)
-	for mesh in _look.meshes():
-		ViewDistance.limit(mesh, VIEW_METERS)
+	_look.limit_view(VIEW_METERS)
 	_visual = _look
 	if _look.take_shapes(self):
 		return

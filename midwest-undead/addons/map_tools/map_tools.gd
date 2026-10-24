@@ -46,6 +46,8 @@ const PlantPainter := preload("res://world/map/plant_painter.gd")
 const Zone := preload("res://world/markers/zone.gd")
 const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
 const QuestMarker := preload("res://world/markers/quest_marker.gd")
+const PersonMarker := preload("res://world/markers/person_marker.gd")
+const SaveIds := preload("res://core/save_ids.gd")
 const Building := preload("res://world/building.gd")
 const BuildingTool := preload("res://addons/map_tools/building_tool.gd")
 const MineTool := preload("res://addons/map_tools/mine_tool.gd")
@@ -178,6 +180,7 @@ func _build_panel() -> Control:
 	_button(places, "Police station camp", "Adds the police station's base camp marker in front of the camera (one per map). Drag its Logbook, Board and Crate markers where they go.", _new_base_camp)
 
 	var quest_tools := _section(root, "Quests")
+	_button(quest_tools, "New person", "Adds a person marker in front of the camera: who stands there when a new game starts. Pick their person file (characters/npcs/people/) in the Inspector.", _new_person)
 	_button(quest_tools, "New quest marker", "Adds a quest marker in front of the camera: a spot, an area or something to use that quests point at. Give it a Marker Id in the Inspector (QUESTS.md).", _new_quest_marker)
 
 	var selected := _section(root, "Selected")
@@ -459,6 +462,21 @@ func _new_base_camp() -> void:
 	camp.position = _in_view()
 	_add(camp, markers, "Police station camp")
 	camp._ready() # its Logbook, Board and Crate markers, now that it's in the scene
+
+
+## Just before the editor saves: everything on a map a save needs to find gets
+## its save id (core/save_ids.gd).
+func _apply_changes() -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	if root and root.scene_file_path.begins_with("res://world/map/"):
+		SaveIds.assign(root)
+
+
+func _new_person() -> void:
+	var marker := PersonMarker.new()
+	marker.name = "Person"
+	marker.position = _in_view()
+	_add(marker, _group("People"), "New person")
 
 
 func _new_quest_marker() -> void:

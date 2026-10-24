@@ -29,7 +29,6 @@ const Fortification := preload("res://world/fortification.gd")
 const Sound := preload("res://core/sound.gd")
 const Ground := preload("res://world/ground.gd")
 const NavTiles := preload("res://world/nav_tiles.gd")
-const ViewDistance := preload("res://core/view_distance.gd")
 const VIEW_METERS := 80.0 # boards past this aren't drawn (core/view_distance.gd)
 
 const BARRICADE_SIZE := Vector3(2.4, 1.6, 0.2) # width, height, thickness
@@ -302,8 +301,7 @@ func _add_look(body: Fortification, scene: PackedScene, size := Vector3.ZERO) ->
 	var look := KitProp.make(scene, [], size)
 	look.name = "Look"
 	body.add_child(look)
-	for mesh in look.meshes():
-		ViewDistance.limit(mesh, VIEW_METERS)
+	look.limit_view(VIEW_METERS)
 	return look.take_shapes(body)
 
 

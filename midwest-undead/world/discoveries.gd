@@ -27,8 +27,7 @@ func is_discovered(place: String) -> bool:
 	return _found.has(place)
 
 
-## Marks a place found without announcing it (loading, or inferring it for an
-## older save).
+## Marks a place found without announcing it (loading a save).
 func mark(place: String) -> void:
 	_found[place] = true
 

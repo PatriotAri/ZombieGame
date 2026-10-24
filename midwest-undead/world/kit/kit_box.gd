@@ -95,12 +95,16 @@ static func add_model(body: CollisionObject3D, choices: Array, box_size: Vector3
 	var prop := KitProp.make(null, choices, box_size, center)
 	prop.name = "Model"
 	body.add_child(prop, false, Node.INTERNAL_MODE_BACK)
+	# (Out of the tree, the look only comes once it's in: the prop holds on to
+	# these till then.)
 	prop.paint(paint_with)
-	for mesh in prop.meshes():
-		ViewDistance.limit_by_size(mesh, box_size)
+	prop.limit_view(ViewDistance.meters_for_size(box_size))
 	var added: Array[Node] = [prop]
-	if collide and not prop.take_shapes(body):
-		var km := KitMesh.new()
-		km.box(box_size, Transform3D(Basis.IDENTITY, center), [null, null, null, null, null, null])
-		added.append_array(km.add_to(body))
+	if collide:
+		# No shapes of the model's own: the box. (Added to `added` whenever that
+		# is: it's the same array the caller keeps, to clear on a rebuild.)
+		prop.take_shapes_when_ready(body, func() -> void:
+			var km := KitMesh.new()
+			km.box(box_size, Transform3D(Basis.IDENTITY, center), [null, null, null, null, null, null])
+			added.append_array(km.add_to(body)))
 	return added

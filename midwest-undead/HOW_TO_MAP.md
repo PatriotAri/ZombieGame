@@ -553,6 +553,18 @@ People have an id too: **Npc Id** on their scene (`chief`, `quartermaster`,
 `wagon_trader`, `woodworker`) or **Id** in a survivor's file
 (`marisol_vega`). Quests go by these, not by the names people show.
 
+**People** are files in `characters/npcs/people/` (a **PersonData**: their
+id, name, scene, look and what they say). To put someone on the map, press
+**Map Tools > Quests > New person** and pick their file in the marker's
+**Person**. With **Start Here** off they aren't there when a game starts: a
+quest brings them in (the Spawn Person action).
+
+**Save ids.** Saving the map in the editor gives every container, door,
+window, building, mine and spawn point a save id (in its metadata). Saves go
+by it, so you can rename things or move them to another node and old saves
+still find them. Duplicating something gives the copy a new id the next time
+you save the map.
+
 ---
 
 ## 13. How the land plays

@@ -31,8 +31,6 @@ const Recipes := preload("res://core/recipes.gd")
 const Conversation := preload("res://quests/conversation.gd")
 
 const DIR := "res://characters/npcs/survivors/"
-## Saves from before survivors were files list them in this order.
-const OLD_SAVE_ORDER := ["Marisol Vega", "Dale Hutchins", "Priya Raman", "Gus Lindqvist", "Walt Brenner"]
 
 const OUT_OF_SIGHT := 40.0
 const CHECK_INTERVAL := 0.5
@@ -272,23 +270,14 @@ func save_state() -> Dictionary:
 	return data
 
 
-## data: name -> state (or, from older saves, a list in OLD_SAVE_ORDER).
-func load_state(data: Variant) -> void:
-	var by_name := {}
-	if data is Array:
-		for i in mini((data as Array).size(), OLD_SAVE_ORDER.size()):
-			by_name[OLD_SAVE_ORDER[i]] = data[i]
-	elif data is Dictionary:
-		by_name = data
+## data: name -> {"state", "camp"}.
+func load_state(data: Dictionary) -> void:
 	for i in survivors.size():
-		if not by_name.has(survivors[i].display_name):
+		if not data.has(survivors[i].display_name):
 			continue
-		var entry: Variant = by_name[survivors[i].display_name]
-		var saved := int(entry["state"]) if entry is Dictionary else int(entry)
-		if entry is Dictionary:
-			survivors[i].camp_name = str(entry.get("camp", ""))
-		if survivors[i].camp_name == "" and saved != Survivor.State.WAITING:
-			survivors[i].camp_name = _camps.station.name # (older saves: everyone lived at the station)
+		var entry: Dictionary = data[survivors[i].display_name]
+		var saved := int(entry.get("state", Survivor.State.WAITING))
+		survivors[i].camp_name = str(entry.get("camp", ""))
 		if saved == Survivor.State.HOME:
 			_send_home(i)
 		elif saved == Survivor.State.TRAVELLING:

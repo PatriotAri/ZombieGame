@@ -29,7 +29,16 @@ var fit_center := Vector3.ZERO
 ## Showing now: the picked model, or the StandIn node.
 var look: Node3D
 
+# What it was asked for before its look existed (a prop is often set up before
+# it's in the tree, and its look only comes in _ready): applied whenever the
+# look is put up, so a refresh (new models) keeps them too.
+var _paint: Material
+var _view_meters := 0.0
+var _shapes_body: CollisionObject3D
+var _no_shapes: Callable # called if the model brought no collision shapes
+
 const Instancer := preload("res://world/instancer.gd")
+const ViewDistance := preload("res://core/view_distance.gd")
 static var _overlays := {} # darkness (0-100) -> shared overlay material
 static var _flat := {} # a look's source -> its flattened mesh (shared by every copy)
 static var _plain: StandardMaterial3D # the flattened meshes' material: their colors in their vertices
@@ -81,6 +90,10 @@ func refresh() -> void:
 	_fit()
 	if not Engine.is_editor_hint():
 		_flatten()
+	if _paint:
+		_apply_paint()
+	if _view_meters > 0.0:
+		_apply_view()
 
 
 ## In the game: the look's many small meshes (a stand-in's boxes, a model's
@@ -253,14 +266,52 @@ func meshes() -> Array[MeshInstance3D]:
 	return found
 
 
-## Meshes named Paint (or starting with it) take this material.
+## Meshes named Paint (or starting with it) take this material, now and
+## whenever the look is put up again.
 func paint(material: Material) -> void:
 	if material == null:
 		return
+	_paint = material
+	_apply_paint()
+
+
+func _apply_paint() -> void:
 	unbatch()
 	for mesh in meshes():
 		if mesh.name.begins_with("Paint"):
-			mesh.material_override = material
+			mesh.material_override = _paint
+
+
+## Its meshes stop being drawn past meters (core/view_distance.gd), now and
+## whenever the look is put up again.
+func limit_view(meters: float) -> void:
+	_view_meters = meters
+	_apply_view()
+
+
+func _apply_view() -> void:
+	for mesh in meshes():
+		ViewDistance.limit(mesh, _view_meters)
+
+
+## The model's collision shapes go to body once the look is up: now, if it
+## is, else once body is ready (not in the look's own _ready: body can't take
+## children while its children are getting ready). If the model brought none,
+## no_shapes is called instead (a box, say).
+func take_shapes_when_ready(body: CollisionObject3D, no_shapes: Callable) -> void:
+	_shapes_body = body
+	_no_shapes = no_shapes
+	if look:
+		_take_shapes_now()
+	else:
+		body.ready.connect(_take_shapes_now, CONNECT_ONE_SHOT)
+
+
+func _take_shapes_now() -> void:
+	var body := _shapes_body
+	_shapes_body = null
+	if not take_shapes(body) and _no_shapes.is_valid():
+		_no_shapes.call()
 
 
 ## Darker by amount (0: as it is, 1: black), for any model.

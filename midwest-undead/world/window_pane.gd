@@ -74,8 +74,7 @@ func setup(size: Vector3, models: Array = []) -> void:
 	_look = KitProp.make(WINDOW_PROP, models, Vector3(0.08, size.y, size.z))
 	_look.name = "Look"
 	add_child(_look)
-	for mesh in _look.meshes():
-		ViewDistance.limit(mesh, VIEW_METERS)
+	_look.limit_view(VIEW_METERS)
 	var shape := BoxShape3D.new()
 	shape.size = size
 	var col := CollisionShape3D.new()

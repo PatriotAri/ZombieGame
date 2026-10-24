@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="PersonData" format=3]
+
+[ext_resource type="Script" path="res://characters/npcs/person_data.gd" id="1_person"]
+[ext_resource type="PackedScene" path="res://characters/npcs/shopkeeper.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_person")
+id = "quartermaster"
+display_name = "Quartermaster"
+scene = ExtResource("2_scene")

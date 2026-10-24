@@ -6,7 +6,7 @@ extends RefCounted
 
 const SaveGame := preload("res://core/save_game.gd")
 const GameData := preload("res://core/game_data.gd")
-const Woodworker := preload("res://characters/npcs/woodworker.gd")
+const Shopkeeper := preload("res://characters/npcs/shopkeeper.gd")
 
 
 ## Everything to save, from `main` (main.gd).
@@ -53,8 +53,7 @@ static func collect(main: Node) -> Dictionary:
 		"fortifications": main.fortifications.save_state(),
 		"structures": main.structures.save_state(),
 		"discovered": main.discoveries.save_state(),
-		"shop_stock": main.trader.stock.to_dict() if main.trader else {},
-		"shop_restocked_day": main.trader.restocked_day if main.trader else 0,
+		"traders": _traders(main),
 		"wagon_trader": main.trader_arrival.save_state(),
 		"woodworker": main.woodworker_rescue.save_state(),
 		"survivors": main.survivors.save_state(),
@@ -128,20 +127,28 @@ static func apply(main: Node, data: Dictionary) -> void:
 		else:
 			bandit.health = float(entry.get("health", bandit.max_health))
 
-	if main.trader: # (a map without a "trader" SpawnPoint has none)
-		main.trader.stock.from_dict(data.get("shop_stock", main.trader.stock.to_dict()))
-		main.trader.restocked_day = int(data.get("shop_restocked_day", main.day_night.day))
 	main.trader_arrival.load_state(data.get("wagon_trader", {}))
 	main.woodworker_rescue.load_state(data.get("woodworker", {}))
-	main.survivors.load_state(data.get("survivors", []))
+	main.survivors.load_state(data.get("survivors", {}))
 	main.camps.load_state(data.get("camps", {}))
 	main.salvage.load_state(data.get("salvaged", []))
-	# What the world says has happened (for saves from before quests kept their own record).
-	if main.trader_arrival.was_seen:
-		main.quests.event("trader_found")
-	if main.woodworker_rescue.state() != Woodworker.State.CAPTIVE:
-		main.quests.event("woodworker_untied")
-	if main.woodworker_rescue.was_seen:
-		main.quests.event("woodworker_found")
+	_load_traders(main, data.get("traders", {})) # (after the people quests bring in are back)
 	main.quests.end_load()
 	main.player.load_state(data.get("player", {}))
+
+
+## Every trader's stock, by their npc_id: {id: {"stock", "restocked_day"}}.
+static func _traders(main: Node) -> Dictionary:
+	var traders := {}
+	for person in main.get_tree().get_nodes_in_group("named_npcs"):
+		if person is Shopkeeper and not person.is_dead:
+			traders[person.npc_id] = {"stock": person.stock.to_dict(), "restocked_day": person.restocked_day}
+	return traders
+
+
+static func _load_traders(main: Node, traders: Dictionary) -> void:
+	for person in main.get_tree().get_nodes_in_group("named_npcs"):
+		if person is Shopkeeper and traders.has(person.npc_id):
+			var saved: Dictionary = traders[person.npc_id]
+			person.stock.from_dict(saved.get("stock", {}))
+			person.restocked_day = int(saved.get("restocked_day", main.day_night.day))

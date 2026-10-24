@@ -84,6 +84,8 @@ var rifle: Node3D
 var muzzle_flash: OmniLight3D
 var _last_blow: Array = [] # [impulse, where]: what knocks the body over if this hit kills
 var _last_attacker: Node # who hit them last (npc_died says whether it was you)
+## Their person file, if they came from one (characters/npcs/person_data.gd).
+var person: PersonData
 var _player: Node
 
 @onready var visual: Node3D = $Visual
@@ -156,8 +158,10 @@ func is_targetable() -> bool:
 ## The action shown in the "E: ..." prompt when you look at this NPC, e.g.
 ## "trade with Quartermaster". Empty means there's nothing to do with them.
 ## Subclasses override this; main.gd decides what pressing E actually opens.
+## People quests know (an npc_id) can be talked to; kinds with business of
+## their own (trading, building...) say so instead.
 func interact_prompt() -> String:
-	return ""
+	return "talk to " + display_name if npc_id != "" else ""
 
 
 ## Hits from weapons (player or NPC). Same signature zombies use, so attackers

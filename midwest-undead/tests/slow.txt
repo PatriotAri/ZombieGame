@@ -1,0 +1,7 @@
+perf_test
+outside_test
+map_regression_test
+mine_game_test
+mine_levels_test
+mine_hazards_test
+mine_items_test

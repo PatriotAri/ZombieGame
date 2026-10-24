@@ -274,12 +274,8 @@ func save_state() -> Dictionary:
 			"sending": _sending, "pending": pending}
 
 
-## After main.gd has put the zombies back. A save from before hordes has none:
-## the first comes 10 to 18 days after the day it was saved on.
+## After main.gd has put the zombies back.
 func load_state(data: Dictionary) -> void:
-	if data.is_empty():
-		_schedule()
-		return
 	next_day = int(data.get("next_day", next_day))
 	next_hour = float(data.get("next_hour", next_hour))
 	last_size = int(data.get("last_size", 0))

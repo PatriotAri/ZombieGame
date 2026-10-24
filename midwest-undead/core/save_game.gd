@@ -12,16 +12,21 @@ extends RefCounted
 ## autosave.json, which the game overwrites when it autosaves. To find them, use Project > Open User Data
 ## Folder in the editor.
 
-const DIR := "user://saves/"
-const AUTOSAVE := DIR + "autosave.json"
-const OLD_PATH := "user://savegame.json" # before there was a list: becomes save_1
+## Where saves go. Tests point it at a folder of their own (tests/support/
+## test_saves.gd), so they never touch yours.
+static var dir := "user://saves/"
 const GAME_SCENE := "res://world/main.tscn"
 const SceneFade := preload("res://ui/scene_fade.gd")
 const NAME_LENGTH := 40 # characters a save's name can have
-const VERSION := 5 # bump whenever the save layout changes; older saves are ignored (4: the new map; 5: base camps)
+const VERSION := 6 # bump whenever the save layout changes; older saves are ignored (4: the new map; 5: base camps; 6: the quests rebuilt)
 
 ## Set by request_load(); main.gd picks it up after the scene reloads.
 static var pending_load: Dictionary = {}
+
+
+## The autosave's file, which the game overwrites each time it autosaves.
+static func autosave_path() -> String:
+	return dir + "autosave.json"
 
 
 ## True if there's at least one save that can be loaded.
@@ -33,16 +38,16 @@ static func exists() -> bool:
 ## "name": what you called it ("" if nothing), "title": its name, or
 ## "Day 3, 7:40 PM", "detail": the objective and when it was saved}.
 static func list() -> Array[Dictionary]:
-	_move_old_save()
+	DirAccess.make_dir_recursive_absolute(dir)
 	var saves: Array[Dictionary] = []
-	for file in DirAccess.get_files_at(DIR):
+	for file in DirAccess.get_files_at(dir):
 		if not file.ends_with(".json"):
 			continue
-		var path := DIR + file
+		var path := dir + file
 		var data := read(path)
 		if data.is_empty():
 			continue
-		var autosave := path == AUTOSAVE
+		var autosave := path == autosave_path()
 		var save_name := str(data.get("name", ""))
 		var clock := str(data.get("clock", "?"))
 		saves.append({
@@ -66,15 +71,15 @@ static func latest() -> String:
 
 ## A path for a new save (the next unused number).
 static func new_path() -> String:
-	DirAccess.make_dir_recursive_absolute(DIR)
+	DirAccess.make_dir_recursive_absolute(dir)
 	var n := 1
-	while FileAccess.file_exists(DIR + "save_%d.json" % n):
+	while FileAccess.file_exists(dir + "save_%d.json" % n):
 		n += 1
-	return DIR + "save_%d.json" % n
+	return dir + "save_%d.json" % n
 
 
 static func write(data: Dictionary, path: String) -> bool:
-	DirAccess.make_dir_recursive_absolute(DIR)
+	DirAccess.make_dir_recursive_absolute(dir)
 	data["version"] = VERSION
 	data["saved_at"] = Time.get_datetime_string_from_system(false, true)
 	data["saved_unix"] = Time.get_unix_time_from_system() # sorts the list (finer than saved_at)
@@ -90,7 +95,7 @@ static func write(data: Dictionary, path: String) -> bool:
 ## when it was saved included, stays as it was. False if it couldn't.
 static func rename(path: String, save_name: String) -> bool:
 	var data := read(path)
-	if data.is_empty() or path == AUTOSAVE:
+	if data.is_empty() or path == autosave_path():
 		return false
 	save_name = clean_name(save_name)
 	if save_name == "":
@@ -119,7 +124,7 @@ static func read(path: String) -> Dictionary:
 
 
 static func delete(path: String) -> void:
-	if path.begins_with(DIR):
+	if path.begins_with(dir):
 		DirAccess.remove_absolute(path)
 
 
@@ -158,10 +163,3 @@ static func _when(stamp: String) -> String:
 		return stamp
 	const MONTHS := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 	return "%s %d, %s" % [MONTHS[clampi(int(date[1]) - 1, 0, 11)], int(date[2]), parts[1].substr(0, 5)]
-
-
-## The single save file from before saves were a list joins the list.
-static func _move_old_save() -> void:
-	DirAccess.make_dir_recursive_absolute(DIR)
-	if FileAccess.file_exists(OLD_PATH):
-		DirAccess.rename_absolute(OLD_PATH, new_path())

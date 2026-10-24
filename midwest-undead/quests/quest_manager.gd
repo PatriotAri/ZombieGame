@@ -1,17 +1,21 @@
 extends Node
-## Runs every quest: the main story (quests/main_story.tres) and the side quests
-## (every QuestData file in quests/side/). The quests themselves are data (see
-## quest_data.gd, quest_step.gd and QUESTS.md); this is the machinery:
-##   - which quests are locked, available, going, done, failed or abandoned,
-##     and which step each one is on;
-##   - story events the game reports (event()), remembered for good, which
-##     complete steps and show the quests' event stories;
-##   - conversations: what each NPC has to say about quests (talk_options()),
+## Runs the quests (QUESTS.md): the main story (every Quest file in
+## quests/main/) and the side quests (quests/side/). The quests are data
+## (quest.gd, quest_stage.gd, and the kinds in objectives/, conditions/ and
+## actions/); this is the machinery:
+##   - which quests are locked, on offer, going, done, failed or abandoned,
+##     which stage each is on, and each objective's progress;
+##   - what happens in the game (core/game_events.gd), passed to the
+##     objectives, and remembered (but for kills, items and hours) for
+##     Happened conditions;
+##   - flags, timers, failing, and the people quests bring in, move or send off;
+##   - conversations: what each person has to say about quests (talk_options()),
 ##     played through the dialogue box, with replies in the choice menu;
-##   - timers, people dying, and the "!" / "?" over quest givers' heads
-##     (quest_markers.gd);
-##   - the tracked quest: its objective on the HUD and its waypoint.
-## main.gd creates it, routes NPC conversations here, and saves it.
+##   - the "!" and "?" over people's heads (quest_markers.gd), the tracked
+##     quest's objectives on the HUD, and where they are for the map.
+## The objectives, conditions and actions call back into it (they get it as q):
+## the functions under "For the quests' parts" are theirs.
+## main.gd makes it, routes conversations here, and saves it.
 
 signal objective_changed(text: String)
 ## A big story moment shown in the middle of the screen.
@@ -19,41 +23,60 @@ signal story_beat(text: String)
 ## The journal should redraw (a quest changed).
 signal changed
 
+const GameEvents := preload("res://core/game_events.gd")
+const GameData := preload("res://core/game_data.gd")
 const Conversation := preload("res://quests/conversation.gd")
 const QuestMarkers := preload("res://quests/quest_markers.gd")
 
-const MAIN_STORY := "res://quests/main_story.tres"
+const MAIN_DIR := "res://quests/main/"
 const SIDE_DIR := "res://quests/side/"
+## Saves from another version of this layout start the quests afresh.
+const SAVE_VERSION := 2
 const CHECK_INTERVAL := 0.25
+const UNLOCK_INTERVAL := 1.0
+## Too common to remember for Happened (objectives count them as they come).
+const NOT_REMEMBERED: Array[StringName] = [&"zombie_killed", &"item_gained", &"item_lost", &"hour_passed", &"area_left"]
+const HISTORY_MAX := 400
+## People move or leave only while you're at least this far from where they
+## are and where they're going (meters), so you don't see them vanish.
+const PERSON_CLEAR := 40.0
 
 ## Where a quest stands.
-const LOCKED := "locked" # not offered yet (see QuestData.available)
-const AVAILABLE := "available"
+const LOCKED := "locked" # not on offer yet (its Available When doesn't hold)
+const AVAILABLE := "available" # its giver is offering it
 const ACTIVE := "active"
 const DONE := "done"
 const FAILED := "failed"
 const ABANDONED := "abandoned"
 
-var quests: Array[QuestData] = []
-## The quest whose objective and waypoint show (its id), or "".
+var quests: Array[Quest] = []
+## The quest whose objectives show on the HUD and the map (its id), or "".
 var tracked := ""
-var _state := {} # quest id -> {"status", "step", "step_seq", "hours_left", "step_hours_left", "done_steps", "fails"}
-var _events := {} # event name -> its order (1, 2, 3...)
-var _seq := 0
-var _autosaved: Array[String] = [] # "quest:step" keys already autosaved near
-var _main: Node # main.gd: places, spawn points
-var _player: Node3D
-var _dialogue: Node # ui/dialogue_box.gd
-var _choices: Node # ui/choice_menu.gd
+var player: Node3D
+var world: Node # world/quest_world.gd: quest markers and people by id
+var day_night: Node
+var _main: Node
+## Quest id -> {"status", "stage" (its id), "objectives": {objective id -> its
+## state}, "done": [objective ids], "reached": [stage ids], "hours_left",
+## "stage_hours_left"}.
+var _state := {}
+var _flags := {} # flag -> number
+var _history: Array = [] # [event, data]: what's happened, for Happened conditions
+## People quests brought in, moved or sent off: npc id -> {"person": their
+## person file's path (brought in), "at": [x, y, z], "yaw", "gone": bool}.
+var _people := {}
+var _pending_people: Array = [] # ["move" or "remove", npc id, marker id]: waiting till you're away
+var _autosave_wanted := false
 var _conversation: Conversation
-var _camps: Node # world/camps.gd (kills near a camp)
-var _day_night: Node
-var _markers: QuestMarkers # the waypoint, and "!" / "?" over people's heads
-var _watched := {} # NPC name -> that NPC, for quests that fail if they die (the dead leave the "npcs" group)
+var _markers: QuestMarkers
 var _timer := 0.0
-var _last_hours := -1.0 # the in-game clock, in hours, at the last check
-var _beats := PackedStringArray() # story moments this frame, shown together
-var _quiet := false # loading a save: no story moments
+var _unlock_timer := 0.0
+var _last_hours := -1.0
+var _beats := PackedStringArray()
+var _quiet := false # loading a save: no story moments or announcements
+var _checking := false # in _check: a check asked for meanwhile (an action's event) waits for it
+var _announced := "" # what _announce last told the HUD and journal (it says again only when it changes)
+var _recheck := false
 
 
 func _ready() -> void:
@@ -61,169 +84,401 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS # moves the markers; hides them while paused
 
 
-func setup(main: Node, player: Node3D, dialogue: Node, choices: Node, camps: Node, day_night: Node) -> void:
+func setup(main: Node, the_player: Node3D, dialogue: Node, choices: Node, quest_world: Node, clock: Node) -> void:
 	_main = main
-	_player = player
+	player = the_player
+	world = quest_world
+	day_night = clock
 	_markers = QuestMarkers.new(self)
-	_dialogue = dialogue
-	_choices = choices
-	_conversation = Conversation.new(player, dialogue, choices)
-	_camps = camps
-	_day_night = day_night
-	camps.connect("kills_changed", func() -> void:
-		_check()
-		_announce())
+	_conversation = Conversation.new(the_player, dialogue, choices)
 	_load_quests()
 	for q in quests:
 		_state[q.id] = _fresh_state()
+	var bus := GameEvents.bus()
+	if bus:
+		bus.happened.connect(_on_event)
+	_last_hours = game_hours()
 	_unlock()
-	var story := main_story()
-	if story:
-		_start_quest(story, false)
-		tracked = story.id
-	_last_hours = _game_hours()
 	_announce()
 
 
 func _load_quests() -> void:
-	if ResourceLoader.exists(MAIN_STORY):
-		quests.append(load(MAIN_STORY))
-	var files := DirAccess.get_files_at(SIDE_DIR)
-	files.sort()
-	for file in files:
-		file = file.trim_suffix(".remap") # exported games rename resources
-		if file.ends_with(".tres") or file.ends_with(".res"):
-			var q := load(SIDE_DIR + file) as QuestData
-			if q:
-				quests.append(q)
+	for dir_main: Array in [[MAIN_DIR, true], [SIDE_DIR, false]]:
+		for path in _quest_files(dir_main[0]):
+			var q := load(path) as Quest
+			if q == null:
+				continue
+			q.main = dir_main[1]
+			quests.append(q)
 	var seen := {}
 	for q in quests:
 		if q.id == "" or seen.has(q.id):
-			push_warning("Quest \"%s\" needs a unique id (quests/)." % q.title)
+			push_warning("Quest \"%s\" (%s) needs a unique id." % [q.title, q.resource_path])
 		seen[q.id] = true
 
 
+## Every .tres under dir, its subfolders too, in name order.
+static func _quest_files(dir: String) -> PackedStringArray:
+	var found := PackedStringArray()
+	if not DirAccess.dir_exists_absolute(dir):
+		return found
+	var files := Array(DirAccess.get_files_at(dir))
+	files.sort()
+	for file: String in files:
+		file = file.trim_suffix(".remap") # exported games rename resources
+		if file.ends_with(".tres") or file.ends_with(".res"):
+			found.append(dir + file)
+	var subdirs := Array(DirAccess.get_directories_at(dir))
+	subdirs.sort()
+	for sub: String in subdirs:
+		found.append_array(_quest_files(dir + sub + "/"))
+	return found
+
+
+## Adds a quest that isn't in a file (tests, the debug panel). It's on offer
+## or starts as its Available When says, like the others.
+func add_quest(q: Quest, is_main := false) -> void:
+	q.main = is_main
+	quests.append(q)
+	_state[q.id] = _fresh_state()
+	_unlock()
+	_check()
+
+
 func _fresh_state() -> Dictionary:
-	return {"status": LOCKED, "step": 0, "step_seq": 0, "hours_left": 0.0, "step_hours_left": 0.0,
-			"done_steps": [], "fails": 0}
+	return {"status": LOCKED, "stage": "", "objectives": {}, "done": [], "reached": [],
+			"hours_left": 0.0, "stage_hours_left": 0.0}
 
 
 # --- Queries -------------------------------------------------------------------
 
-func main_story() -> QuestData:
-	for q in quests:
-		if q.main:
-			return q
-	return null
-
-
-func find(quest_id: String) -> QuestData:
+func find(quest_id: String) -> Quest:
 	for q in quests:
 		if q.id == quest_id:
 			return q
 	return null
 
 
-func status(q: QuestData) -> String:
+func status(q: Quest) -> String:
 	return _state[q.id]["status"]
 
 
-func current_step(q: QuestData) -> QuestStep:
-	var i: int = _state[q.id]["step"]
-	return q.steps[i] if i >= 0 and i < q.steps.size() else null
+func current_stage(q: Quest) -> QuestStage:
+	return q.stage(_state[q.id]["stage"]) if status(q) == ACTIVE else null
 
 
-func happened(event_name: String) -> bool:
-	return _events.has(event_name)
-
-
-## The quest whose objective shows: the tracked one, or the main story.
-func shown_quest() -> QuestData:
+## The quest whose objectives show: the tracked one, or the first main story
+## quest that's going.
+func shown_quest() -> Quest:
 	var q := find(tracked)
 	if q and status(q) == ACTIVE:
 		return q
-	var story := main_story()
-	return story if story and status(story) == ACTIVE else null
+	for each in quests:
+		if each.main and status(each) == ACTIVE:
+			return each
+	return null
 
 
+## The shown quest's objectives still to do, one a line (for the HUD).
 func objective_text() -> String:
 	var q := shown_quest()
-	var step := current_step(q) if q else null
-	if step and step.kind == "kill_near":
-		return step.objective.replace("{count}", str(mini(_camps.call("kills_near", step.target), step.count)))
-	return step.objective if step else ""
+	if q == null:
+		return ""
+	var lines := PackedStringArray()
+	for entry in _objectives_of(q):
+		if not entry["done"]:
+			lines.append(entry["text"] + ("  (optional)" if entry["optional"] else ""))
+	return "\n".join(lines)
 
 
-## Where the shown quest's waypoint is, or Vector3.INF.
-func objective_position() -> Vector3:
-	return _markers.objective_position()
-
-
-## The waypoint to autosave near (the current step asks for it and hasn't had
-## one yet), or Vector3.INF. Call mark_autosaved() once saved.
-func autosave_target() -> Vector3:
-	return _markers.objective_position() if _markers.autosave_due() else Vector3.INF
-
-
-func mark_autosaved() -> void:
+## The shown quest's objectives' places, for the map: [{"position", "radius",
+## "label"}].
+func objective_places() -> Array:
 	var q := shown_quest()
-	var step := current_step(q) if q else null
-	if step:
-		_autosaved.append(_autosave_key(q, step))
-		_markers.stale = true
+	var found := []
+	if q == null:
+		return found
+	var stage := current_stage(q)
+	for i in stage.objectives.size():
+		var obj := stage.objectives[i]
+		var oid := _objective_id(stage, i)
+		if obj == null or not obj.show_on_map or _is_done(q, stage, oid):
+			continue
+		var st: Dictionary = _state[q.id]["objectives"].get(oid, {})
+		for place: Dictionary in obj.places(self, st):
+			place["label"] = obj.map_label if obj.map_label != "" else obj.shown_text(self, st)
+			found.append(place)
+	return found
 
 
-func _autosave_key(q: QuestData, step: QuestStep) -> String:
-	return "%s:%s" % [q.id, step.id]
+## Who to mark: npc id -> "!" (has a quest on offer) or "?" (a quest needs you
+## to talk to them).
+func marked_people() -> Dictionary:
+	var marks := {}
+	for q in quests:
+		if _offerable(q) and q.offer:
+			marks[q.giver] = "!"
+	for q in quests:
+		var stage := current_stage(q)
+		if stage == null:
+			continue
+		for i in stage.objectives.size():
+			var obj := stage.objectives[i]
+			var oid := _objective_id(stage, i)
+			if obj == null or _is_done(q, stage, oid):
+				continue
+			var st: Dictionary = _state[q.id]["objectives"].get(oid, {})
+			for person in get_tree().get_nodes_in_group("named_npcs"):
+				var id: String = person.get("npc_id")
+				if not marks.has(id) and obj.talks_to(self, st, id):
+					marks[id] = "?"
+	return marks
 
 
 ## For the journal: every quest you know about, main story first.
 func journal() -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
-	for q in quests:
-		var st: Dictionary = _state[q.id]
-		if st["status"] in [LOCKED, AVAILABLE] or (st["status"] == ABANDONED):
-			continue
-		var steps := []
-		for i in q.steps.size():
-			var step := q.steps[i]
-			if step == null:
+	for main_first in [true, false]:
+		for q in quests:
+			if q.main != main_first:
 				continue
-			if step.id in st["done_steps"]:
-				steps.append({"objective": step.objective, "done": true})
-			elif st["status"] == ACTIVE and i == st["step"]:
-				steps.append({"objective": step.objective, "done": false})
-		entries.append({"id": q.id, "title": q.title, "description": q.description, "main": q.main,
-				"status": st["status"], "tracked": q.id == tracked, "steps": steps,
-				"hours_left": _hours_left(q)})
+			var st: Dictionary = _state[q.id]
+			if st["status"] in [LOCKED, AVAILABLE, ABANDONED]:
+				continue
+			var steps := []
+			for entry in _objectives_of(q):
+				steps.append({"objective": entry["text"] + ("  (optional)" if entry["optional"] and not entry["done"] else ""),
+						"done": entry["done"]})
+			entries.append({"id": q.id, "title": q.title, "description": q.description, "main": q.main,
+					"status": st["status"], "tracked": q.id == tracked, "steps": steps, "hours_left": _hours_left(q)})
 	return entries
 
 
-## In-game hours left on the quest or its step, whichever is sooner (INF: no limit).
-func _hours_left(q: QuestData) -> float:
+## Every objective of the stages it's been through (done ones only, for the
+## stages it's left) and the one it's on: [{"text", "done", "optional"}].
+func _objectives_of(q: Quest) -> Array:
 	var st: Dictionary = _state[q.id]
+	var list := []
+	for stage_id: String in st["reached"]:
+		var stage := q.stage(stage_id)
+		if stage == null:
+			continue
+		var current: bool = stage_id == st["stage"] and st["status"] == ACTIVE
+		for i in stage.objectives.size():
+			var obj := stage.objectives[i]
+			if obj == null:
+				continue
+			var oid := _objective_id(stage, i)
+			var done := _is_done(q, stage, oid)
+			if not current and not done:
+				continue
+			var ost: Dictionary = st["objectives"].get(oid, {}) if current else {}
+			list.append({"text": obj.shown_text(self, ost), "done": done, "optional": obj.optional})
+	return list
+
+
+## In-game hours left on the quest or its stage, whichever is sooner (INF: no limit).
+func _hours_left(q: Quest) -> float:
+	var st: Dictionary = _state[q.id]
+	if st["status"] != ACTIVE or q.main:
+		return INF
 	var left := INF
 	if q.time_limit_hours > 0.0:
-		left = st["hours_left"]
-	var step := current_step(q)
-	if step and step.time_limit_hours > 0.0:
-		left = minf(left, st["step_hours_left"])
+		left = float(st["hours_left"])
+	var stage := current_stage(q)
+	if stage and stage.time_limit_hours > 0.0:
+		left = minf(left, float(st["stage_hours_left"]))
 	return left
 
 
-# --- Changes ---------------------------------------------------------------------
+# --- For the quests' parts (objectives, conditions, actions) --------------------
 
-## The game reports something that happened (see quest_step.gd for the names).
-## Only the first time counts.
-func event(event_name: String) -> void:
-	if _events.has(event_name):
-		return
-	_seq += 1
-	_events[event_name] = _seq
+func status_of(quest_id: String) -> String:
+	return _state[quest_id]["status"] if _state.has(quest_id) else ""
+
+
+## Whether a quest has got to a stage at some point.
+func reached(quest_id: String, stage_id: String) -> bool:
+	return _state.has(quest_id) and stage_id in _state[quest_id]["reached"]
+
+
+func item_count(id: String) -> int:
+	return int(player.get("inventory").call("count", id)) if player else 0
+
+
+func item_name(id: String) -> String:
+	return GameData.item_name(id)
+
+
+func flag(flag_name: String) -> int:
+	return int(_flags.get(flag_name, 0))
+
+
+func set_flag(flag_name: String, value: int) -> void:
+	_flags[flag_name] = value
+	_on_event(&"flag_set", {"flag": flag_name, "value": value})
+
+
+## Whether this has happened since the game began (every key in match equal to the event's).
+func happened(event_name: String, match := {}) -> bool:
+	for entry: Array in _history:
+		if String(entry[0]) == event_name and matches(entry[1], match):
+			return true
+	return false
+
+
+static func matches(data: Dictionary, match: Dictionary) -> bool:
+	for key in match:
+		if not data.has(key) or str(data[key]) != str(match[key]):
+			return false
+	return true
+
+
+func all_hold(conditions: Array[QuestCondition]) -> bool:
+	for c in conditions:
+		if c and not c.holds(self):
+			return false
+	return true
+
+
+func any_holds(conditions: Array[QuestCondition]) -> bool:
+	for c in conditions:
+		if c and c.holds(self):
+			return true
+	return false
+
+
+func npc(id: String) -> HumanNPC:
+	return world.npc(id) if world else null
+
+
+## In-game hours since the game began (day 1, 0:00 is 24).
+func game_hours() -> float:
+	return float(day_night.get("day")) * 24.0 + float(day_night.get("hour")) if day_night else 0.0
+
+
+func day() -> int:
+	return int(day_night.get("day")) if day_night else 1
+
+
+func give(items: Dictionary, money: int) -> void:
+	for id: String in items:
+		if int(items[id]) > 0:
+			player.call("give_item", id, int(items[id]))
+			player.emit_signal("notify", "Got %s x%d" % [item_name(id), int(items[id])])
+	if money > 0:
+		player.set("money", int(player.get("money")) + money)
+		player.emit_signal("notify", "Got $%d" % money)
+
+
+func take(items: Dictionary, money: int) -> void:
+	for id: String in items:
+		player.call("take_item", id, int(items[id]))
+	if money > 0:
+		player.set("money", maxi(int(player.get("money")) - money, 0))
+
+
+func story(text: String) -> void:
+	_beat(text)
+
+
+## Plays a conversation, said by this person (their id). finished: called at
+## its end; replies' actions act on quest (accept, fail).
+func play(dialogue: QuestDialogue, npc_id: String, finished := Callable(), quest: Quest = null) -> void:
+	var person := npc(npc_id)
+	var who: String = person.display_name if person else npc_id
+	_conversation.play(dialogue, who, finished, func(action: String) -> void: _on_reply(action, quest))
+
+
+func start_quest(quest_id: String) -> void:
+	var q := find(quest_id)
+	if q and status(q) != ACTIVE and status(q) != DONE:
+		_start(q)
+
+
+func fail_quest(quest_id: String, why := "") -> void:
+	var q := find(quest_id)
+	if q and status(q) == ACTIVE:
+		_fail(q, why)
+
+
+## Fails the quest an objective of the current stage belongs to.
+func fail_current(objective: QuestObjective, why := "") -> void:
 	for q in quests:
-		if status(q) == ACTIVE and q.event_stories.has(event_name):
-			_beat(q.event_stories[event_name])
+		var stage := current_stage(q)
+		if stage and objective in stage.objectives:
+			_fail(q, why)
+			return
+
+
+## Someone (a person file) turns up at a quest marker, unless they're already there.
+func spawn_person(someone: PersonData, marker_id: String) -> void:
+	var m: KitQuestMarker = world.marker(marker_id)
+	if someone == null or someone.id == "" or m == null:
+		push_warning("Spawn person: no person file (with an id), or no quest marker \"%s\"." % marker_id)
+		return
+	var existing := npc(someone.id)
+	if existing and not existing.is_dead:
+		return
+	_people[someone.id] = {"person": someone.resource_path, "at": _vec(m.global_position),
+			"yaw": m.global_rotation.y, "gone": false}
+	_bring_in(someone.id)
+
+
+## Someone goes to a quest marker, once you're away from both places.
+func move_person(npc_id: String, marker_id: String) -> void:
+	_pending_people.append(["move", npc_id, marker_id])
+
+
+## Someone leaves for good, once you're away from them.
+func remove_person(npc_id: String) -> void:
+	_pending_people.append(["remove", npc_id, ""])
+
+
+func request_autosave() -> void:
+	_autosave_wanted = true
+
+
+## Whether a quest wants an autosave (main.gd saves once nothing's after you,
+## then calls autosaved()).
+func wants_autosave() -> bool:
+	return _autosave_wanted
+
+
+func autosaved() -> void:
+	_autosave_wanted = false
+
+
+# --- Changes -------------------------------------------------------------------------
+
+## Something happened in the game (core/game_events.gd, or set_flag and the
+## quests' own events).
+func _on_event(event: StringName, data: Dictionary) -> void:
+	if _markers:
+		_markers.stale = true # (who's marked can hang on what you carry: a delivery)
+	if not event in NOT_REMEMBERED:
+		var kept := data.duplicate()
+		kept.erase("position")
+		_history.append([event, kept])
+		if _history.size() > HISTORY_MAX:
+			_history.pop_front()
+	for q in quests:
+		var stage := current_stage(q)
+		if stage == null:
+			continue
+		for i in stage.objectives.size():
+			var obj := stage.objectives[i]
+			var oid := _objective_id(stage, i)
+			if obj and not _is_done(q, stage, oid):
+				obj.on_event(self, _objective_state(q, oid), event, data)
 	_check()
+
+
+## A story event from the old scripts (world/trader_arrival.gd and the like):
+## "story" with its name.
+func event(event_name: String) -> void:
+	if not happened("story", {"name": event_name}):
+		_on_event(&"story", {"name": event_name})
 
 
 func track(quest_id: String) -> void:
@@ -233,197 +488,264 @@ func track(quest_id: String) -> void:
 		_announce()
 
 
-## Gives up a side quest; it can be taken again from its giver.
+## Gives up a side quest; its giver offers it again.
 func abandon(quest_id: String) -> void:
 	var q := find(quest_id)
 	if q == null or q.main or status(q) != ACTIVE:
 		return
+	_end_objectives(q)
 	_state[q.id]["status"] = ABANDONED
-	_player.emit_signal("notify", "Abandoned: " + q.title)
+	_notify("Abandoned: " + q.title)
 	_untrack(q)
 	_announce()
 
 
-func _start_quest(q: QuestData, announce := true) -> void:
+func _start(q: Quest, announce := true) -> void:
 	var st: Dictionary = _state[q.id]
 	st["status"] = ACTIVE
-	st["done_steps"] = []
+	st["done"] = []
+	st["reached"] = []
 	st["hours_left"] = q.time_limit_hours
-	_watch(q)
-	if announce and not q.main:
-		_player.emit_signal("notify", "New quest: " + q.title)
+	_run(q.on_start, q)
+	if announce and not _quiet:
+		_notify(("New: " if q.main else "New quest: ") + q.title)
+	if not q.main or tracked == "" or status_of(tracked) != ACTIVE:
 		tracked = q.id # what you just took on is what you're doing
-	_start_step(q, 0, announce)
+	GameEvents.send(&"quest_started", {"quest": q.id})
+	if q.stages.is_empty():
+		_complete(q)
+		return
+	_enter_stage(q, 0)
 
 
-func _start_step(q: QuestData, index: int, announce := true) -> void:
+func _enter_stage(q: Quest, index: int) -> void:
 	var st: Dictionary = _state[q.id]
-	if index >= q.steps.size():
-		_complete_quest(q)
-		return
-	st["step"] = index
-	st["step_seq"] = _seq
-	var step := q.steps[index]
-	st["step_hours_left"] = step.time_limit_hours if step else 0.0
-	if step == null or _step_done(q, step):
-		_complete_step(q) # already done: no fanfare
-		return
-	if announce and step.start_story != "":
-		_beat(step.start_story)
-	_announce()
-
-
-## next_override: a step id to go to instead of the usual next one.
-func _complete_step(q: QuestData, next_override := "", money := 0, items := {}) -> void:
-	var st: Dictionary = _state[q.id]
-	var step := current_step(q)
-	var next: int = st["step"] + 1
-	if step:
-		st["done_steps"].append(step.id)
-		_reward(step.reward_money + money, _merged(step.reward_items, items))
-		if step.complete_story != "":
-			_beat(step.complete_story)
-		if step.next_step != "":
-			next = q.step_index(step.next_step)
-	if next_override != "":
-		next = q.step_index(next_override)
-	if next < 0:
-		push_warning("Quest %s: no step called \"%s\"." % [q.id, next_override if next_override != "" else step.next_step])
-		next = q.steps.size()
-	_start_step(q, next)
-
-
-func _complete_quest(q: QuestData) -> void:
-	_state[q.id]["status"] = DONE
-	_reward(q.reward_money, q.reward_items)
-	if q.complete_story != "":
-		_beat(q.complete_story)
-	elif not q.main:
-		_player.emit_signal("notify", "Quest complete: " + q.title)
-	_untrack(q)
-	_unlock()
-	_announce()
-
-
-func _fail(q: QuestData, why := "") -> void:
-	if q.main or status(q) != ACTIVE:
-		return # the main story never fails
-	var st: Dictionary = _state[q.id]
-	st["status"] = FAILED
-	st["fails"] += 1
-	_beat("Quest failed: %s%s" % [q.title, "\n" + why if why != "" else ""])
-	_untrack(q)
-	_announce()
-
-
-func _untrack(q: QuestData) -> void:
-	if tracked == q.id:
-		var story := main_story()
-		tracked = story.id if story and status(story) == ACTIVE else ""
-
-
-func _reward(money: int, items: Dictionary) -> void:
-	if money == 0 and items.is_empty():
-		return
-	var parts := PackedStringArray()
-	if money != 0:
-		_player.set("money", int(_player.get("money")) + money)
-		parts.append("+$%d" % money)
-	for id: String in items:
-		_player.call("give_item", id, int(items[id]))
-		parts.append("+%d %s" % [int(items[id]), id.replace("_", " ")])
-	_player.emit_signal("notify", "  ·  ".join(parts))
-
-
-static func _merged(a: Dictionary, b: Dictionary) -> Dictionary:
-	var out := a.duplicate()
-	for k in b:
-		out[k] = int(out.get(k, 0)) + int(b[k])
-	return out
-
-
-## Side quests whose time has come become available.
-func _unlock() -> void:
-	var story := main_story()
-	for q in quests:
-		if q.main or status(q) != LOCKED:
-			continue
-		var ready := false
-		match q.available:
-			"from_start":
-				ready = true
-			"after_main_step":
-				ready = story != null and q.available_after in _state[story.id]["done_steps"]
-			"after_quest":
-				var other := find(q.available_after)
-				ready = other != null and status(other) == DONE
-		if ready:
-			_state[q.id]["status"] = AVAILABLE
-			_markers.stale = true
-
-
-## Can it be offered by its giver now?
-func _offerable(q: QuestData) -> bool:
-	var s := status(q)
-	return not q.main and (s == AVAILABLE or s == ABANDONED or (s == FAILED and q.can_retry))
-
-
-# --- Step conditions -------------------------------------------------------------
-
-func _step_done(q: QuestData, step: QuestStep) -> bool:
-	match step.kind:
-		"event":
-			return _happened_for(q, step, step.target)
-		"go_to_place":
-			return _happened_for(q, step, "reached:" + step.target)
-		"kill_near":
-			return int(_camps.call("kills_near", step.target)) >= step.count
-	return false # talk_to: done by talking
-
-
-func _happened_for(q: QuestData, step: QuestStep, event_name: String) -> bool:
-	if not _events.has(event_name):
-		return false
-	return step.counts_if_done_earlier or int(_events[event_name]) > int(_state[q.id]["step_seq"])
-
-
-## Completes whatever's been done; keeps going while steps keep completing.
-func _check() -> void:
-	for q in quests:
-		var guard := 0
-		while status(q) == ACTIVE and guard < 64:
-			var step := current_step(q)
-			if step == null or not _step_done(q, step):
-				break
-			_complete_step(q)
-			guard += 1
-	_unlock()
-
-
-func _process(delta: float) -> void:
-	if _player and _markers:
-		_markers.update(_player)
-	_timer -= delta
-	if _timer > 0.0 or _player == null:
-		return
-	_timer = CHECK_INTERVAL
-	_note_places()
-	_tick_clock()
-	_check_deaths()
+	var stage := q.stages[index]
+	st["stage"] = stage.id
+	st["objectives"] = {}
+	# (Back on a stage it's been on: its objectives start over.)
+	st["done"] = Array(st["done"]).filter(func(key: String) -> bool: return not key.begins_with(stage.id + "/"))
+	if not stage.id in st["reached"]:
+		st["reached"].append(stage.id)
+	st["stage_hours_left"] = stage.time_limit_hours
+	_begin_objectives(q, stage)
+	_run(stage.on_start, q)
+	GameEvents.send(&"stage_reached", {"quest": q.id, "stage": stage.id})
+	_mark_done(q, stage)
+	if _stage_finished(q, stage) == null:
+		_beat(stage.start_story)
 	_check()
 
 
-## "reached:<place>" for every Place you're within the radius of.
-func _note_places() -> void:
-	for place: Node3D in _main.get("places"):
-		var at: Vector3 = place.global_position
-		var flat := Vector2(_player.global_position.x - at.x, _player.global_position.z - at.z)
-		if flat.length() <= float(place.get("radius")):
-			event("reached:" + str(place.get("place_name")))
+func _begin_objectives(q: Quest, stage: QuestStage) -> void:
+	for i in stage.objectives.size():
+		if stage.objectives[i]:
+			stage.objectives[i].begin(self, _objective_state(q, _objective_id(stage, i)))
+
+
+func _end_objectives(q: Quest) -> void:
+	var stage := current_stage(q)
+	if stage == null:
+		return
+	for i in stage.objectives.size():
+		if stage.objectives[i]:
+			stage.objectives[i].end(self, _objective_state(q, _objective_id(stage, i)))
+
+
+## Done objectives marked, finished stages moved on, failed quests failed.
+## (Repeats while a stage's ending starts another that's done already.)
+func _check() -> void:
+	if _checking:
+		_recheck = true
+		return
+	_checking = true
+	var moved := true
+	var guard := 0
+	while (moved or _recheck) and guard < 50:
+		moved = false
+		_recheck = false
+		guard += 1
+		for q in quests:
+			var stage := current_stage(q)
+			if stage == null:
+				continue
+			_mark_done(q, stage)
+			var finished: Variant = _stage_finished(q, stage)
+			if finished != null:
+				_complete_stage(q, stage, finished)
+				moved = true
+	_checking = false
+	_announce()
+
+
+func _mark_done(q: Quest, stage: QuestStage) -> void:
+	var st: Dictionary = _state[q.id]
+	for i in stage.objectives.size():
+		var obj := stage.objectives[i]
+		var oid := _objective_id(stage, i)
+		if obj and not _is_done(q, stage, oid) and obj.is_done(self, _objective_state(q, oid)):
+			_set_done(q, stage, oid)
+
+
+## null while the stage is going; once it's done, the objective that did it
+## (finish_when "any"), or true.
+func _stage_finished(q: Quest, stage: QuestStage) -> Variant:
+	if stage.finish_when == "any":
+		for i in stage.objectives.size():
+			if stage.objectives[i] and _is_done(q, stage, _objective_id(stage, i)):
+				return stage.objectives[i]
+		return null if not stage.objectives.is_empty() else true
+	for i in stage.objectives.size():
+		var obj := stage.objectives[i]
+		if obj and not obj.optional and not _is_done(q, stage, _objective_id(stage, i)):
+			return null
+	return true
+
+
+func _complete_stage(q: Quest, stage: QuestStage, finished: Variant) -> void:
+	_end_objectives(q)
+	_reward(stage.reward_money, stage.reward_items)
+	_run(stage.on_complete, q)
+	_beat(stage.complete_story)
+	if status(q) != ACTIVE:
+		return # an action ended the quest
+	var next := stage.next
+	if finished is QuestObjective and (finished as QuestObjective).leads_to != "":
+		next = (finished as QuestObjective).leads_to
+	for branch in stage.branches:
+		if branch and all_hold(branch.when):
+			next = branch.next
+			break
+	var index := q.stage_index(stage.id) + 1 if next == "" else q.stage_index(next)
+	if next == "end" or index >= q.stages.size():
+		_complete(q)
+	elif index < 0:
+		push_warning("Quest \"%s\": stage \"%s\" goes to \"%s\", which isn't one of its stages." % [q.id, stage.id, next])
+		_complete(q)
+	else:
+		_enter_stage(q, index)
+
+
+func _complete(q: Quest) -> void:
+	_state[q.id]["status"] = DONE
+	_reward(q.reward_money, q.reward_items)
+	_run(q.on_complete, q)
+	if q.complete_story != "":
+		_beat(q.complete_story)
+	elif not _quiet:
+		_notify("Done: " + q.title)
+	GameEvents.send(&"quest_completed", {"quest": q.id})
+	_untrack(q)
+	_unlock()
+
+
+func _fail(q: Quest, why := "") -> void:
+	if q.main or status(q) != ACTIVE:
+		return # the main story never fails
+	_end_objectives(q)
+	_state[q.id]["status"] = FAILED
+	_run(q.on_fail, q)
+	var reason := why if why != "" else q.fail_text
+	_notify("Failed: %s%s" % [q.title, (" (%s)" % reason) if reason != "" else ""])
+	GameEvents.send(&"quest_failed", {"quest": q.id})
+	_untrack(q)
+	_unlock()
+
+
+func _untrack(q: Quest) -> void:
+	if tracked == q.id:
+		tracked = ""
+		var next := shown_quest()
+		tracked = next.id if next else ""
+
+
+func _reward(money: int, items: Dictionary) -> void:
+	if money > 0 or not items.is_empty():
+		give(items, money)
+
+
+func _run(actions: Array[QuestAction], q: Quest) -> void:
+	for action in actions:
+		if action:
+			action.run(self, q)
+
+
+## Quests whose time has come: on offer (a giver) or started (none).
+func _unlock() -> void:
+	for q in quests:
+		var s := status(q)
+		if s == LOCKED and all_hold(q.available_when):
+			if q.giver == "":
+				_start(q)
+			else:
+				_state[q.id]["status"] = AVAILABLE
+
+
+func _offerable(q: Quest) -> bool:
+	if q.giver == "":
+		return false
+	var s := status(q)
+	if s == AVAILABLE or s == ABANDONED or (s == FAILED and q.can_retry):
+		return all_hold(q.available_when)
+	return false
+
+
+## Done objectives are kept as "stage/objective" (so the same ids in two stages
+## don't mix).
+func _is_done(q: Quest, stage: QuestStage, oid: String) -> bool:
+	return "%s/%s" % [stage.id, oid] in _state[q.id]["done"]
+
+
+func _set_done(q: Quest, stage: QuestStage, oid: String) -> void:
+	if not _is_done(q, stage, oid):
+		_state[q.id]["done"].append("%s/%s" % [stage.id, oid])
+
+
+func _objective_id(stage: QuestStage, index: int) -> String:
+	var obj := stage.objectives[index]
+	return obj.id if obj and obj.id != "" else str(index + 1)
+
+
+func _objective_state(q: Quest, oid: String) -> Dictionary:
+	var all: Dictionary = _state[q.id]["objectives"]
+	if not all.has(oid):
+		all[oid] = {}
+	return all[oid]
+
+
+# --- Every so often ----------------------------------------------------------------------
+
+func _process(delta: float) -> void:
+	if player and _markers:
+		_markers.update(player)
+	_timer -= delta
+	if _timer > 0.0 or player == null:
+		return
+	_timer = CHECK_INTERVAL
+	_tick_objectives()
+	_tick_clock()
+	_check_failing()
+	_move_people()
+	_check()
+	_unlock_timer -= CHECK_INTERVAL
+	if _unlock_timer <= 0.0:
+		_unlock_timer = UNLOCK_INTERVAL
+		_unlock()
+
+
+func _tick_objectives() -> void:
+	for q in quests:
+		var stage := current_stage(q)
+		if stage == null:
+			continue
+		for i in stage.objectives.size():
+			var obj := stage.objectives[i]
+			if obj and obj.has_method("tick") and not _is_done(q, stage, _objective_id(stage, i)):
+				obj.call("tick", self, _objective_state(q, _objective_id(stage, i)))
 
 
 func _tick_clock() -> void:
-	var now := _game_hours()
+	var now := game_hours()
 	var passed := maxf(now - _last_hours, 0.0)
 	_last_hours = now
 	if passed <= 0.0:
@@ -432,131 +754,147 @@ func _tick_clock() -> void:
 		if status(q) != ACTIVE or q.main:
 			continue
 		var st: Dictionary = _state[q.id]
-		var step := current_step(q)
 		if q.time_limit_hours > 0.0:
-			st["hours_left"] -= passed
+			st["hours_left"] = float(st["hours_left"]) - passed
 			if st["hours_left"] <= 0.0:
-				_fail(q, "You ran out of time.")
+				_fail(q, "out of time")
 				continue
-		if step and step.time_limit_hours > 0.0:
-			st["step_hours_left"] -= passed
-			if st["step_hours_left"] <= 0.0:
-				_fail(q, "You ran out of time.")
+		var stage := current_stage(q)
+		if stage and stage.time_limit_hours > 0.0:
+			st["stage_hours_left"] = float(st["stage_hours_left"]) - passed
+			if st["stage_hours_left"] <= 0.0:
+				_fail(q, "out of time")
 
 
-func _check_deaths() -> void:
+func _check_failing() -> void:
 	for q in quests:
-		if status(q) != ACTIVE or q.main or q.fail_if_dies.is_empty():
+		if status(q) == ACTIVE and not q.main and not q.fail_when.is_empty() and any_holds(q.fail_when):
+			_fail(q)
+
+
+# --- People ------------------------------------------------------------------------------
+
+## Brings in someone _people says a quest brought (spawn_person, or loading).
+func _bring_in(id: String) -> void:
+	var entry: Dictionary = _people[id]
+	if entry.get("gone", false) or not ResourceLoader.exists(str(entry.get("person", ""))):
+		return
+	var existing := npc(id)
+	if existing and not existing.is_dead:
+		return
+	var person := (load(entry["person"]) as PersonData).make()
+	person.position = _from_vec(entry["at"])
+	person.rotation.y = float(entry.get("yaw", 0.0))
+	if "day_night" in person:
+		person.set("day_night", day_night) # a trader restocks each morning
+	_main.add_child(person)
+
+
+## Moves and removals waiting till you're away.
+func _move_people() -> void:
+	var still: Array = []
+	for job: Array in _pending_people:
+		var person := npc(job[1])
+		if person == null or person.is_dead:
+			if job[0] == "move" and person == null:
+				still.append(job) # not there yet (a quest brings them in later): it waits
 			continue
-		_watch(q)
-		for who in q.fail_if_dies:
-			var npc: Node = _watched.get(who)
-			if npc != null and (not is_instance_valid(npc) or npc.get("is_dead")):
-				_fail(q, "%s is dead." % who)
-				break
-
-
-## Remembers the living NPCs a quest needs alive, so it notices when one dies.
-func _watch(q: QuestData) -> void:
-	for who in q.fail_if_dies:
-		var known: Node = _watched.get(who)
-		if known == null or not is_instance_valid(known) or known.get("is_dead"):
-			var npc := _find_npc(who)
-			if npc:
-				_watched[who] = npc
-
-
-func _game_hours() -> float:
-	return float(_day_night.get("day")) * 24.0 + float(_day_night.get("hour"))
-
-
-# --- Talking -----------------------------------------------------------------------
-
-## What this NPC has to say about quests: [label, callable] for each (the main
-## story first). main.gd shows them in a choice menu next to the NPC's own
-## business (trading, building...), or plays a lone one straight away.
-func talk_options(npc: Node) -> Array:
-	var who: String = npc.get("display_name")
-	var options := []
-	for q in quests:
-		var s := status(q)
-		if s == ACTIVE:
-			var step := current_step(q)
-			if step == null:
+		var to: Vector3 = person.global_position
+		var yaw := person.rotation.y
+		if job[0] == "move":
+			var m: KitQuestMarker = world.marker(job[2])
+			if m == null:
 				continue
-			if step.kind == "talk_to" and step.target == who:
-				options.append([q.title, _talk_step.bind(q, who)])
-			elif q.giver == who and step.reminder:
-				options.append([q.title, _play.bind(step.reminder, who, Callable(), Callable())])
-		elif _offerable(q) and q.giver == who and q.offer:
-			options.append([q.title + "  (new)", _offer.bind(q, who)])
+			to = m.global_position
+			yaw = m.global_rotation.y
+		if _near_player(person.global_position) or _near_player(to):
+			still.append(job)
+			continue
+		var entry: Dictionary = _people.get(job[1], {})
+		if job[0] == "remove":
+			entry["gone"] = true
+			person.queue_free()
+		else:
+			person.global_position = to
+			person.rotation.y = yaw
+			entry["at"] = _vec(to)
+			entry["yaw"] = yaw
+		_people[job[1]] = entry
+	_pending_people = still
+
+
+func _near_player(at: Vector3) -> bool:
+	return player.global_position.distance_squared_to(at) < PERSON_CLEAR * PERSON_CLEAR
+
+
+# --- Talking -------------------------------------------------------------------------
+
+## What this person has to say about quests: [label, callable] for each.
+## main.gd shows them in a choice menu next to their own business (trading,
+## building...), or plays a lone one straight away.
+func talk_options(person: Node) -> Array:
+	var id: String = person.get("npc_id")
+	var options := []
+	if id == "":
+		return options
+	for q in quests:
+		var stage := current_stage(q)
+		if stage != null:
+			for i in stage.objectives.size():
+				var obj := stage.objectives[i]
+				var oid := _objective_id(stage, i)
+				var st := _objective_state(q, oid)
+				if obj and not _is_done(q, stage, oid) and obj.talks_to(self, st, id):
+					var label := obj.choice_text(self)
+					options.append([label if label != "" else q.title, _talk.bind(q, stage, oid, id)])
+		elif _offerable(q) and q.giver == id and q.offer:
+			options.append([q.title + "  (new)", _offer.bind(q)])
 	return options
 
 
-## What this NPC says when there's nothing about quests: the afterword of the
+## What someone says when there's nothing about quests: the afterword of the
 ## last quest they gave that's done. Returns false if there's none.
-func afterword(npc: Node) -> bool:
-	var who: String = npc.get("display_name")
+func afterword(person: Node) -> bool:
+	var id: String = person.get("npc_id")
 	for i in range(quests.size() - 1, -1, -1):
 		var q := quests[i]
-		if q.giver == who and status(q) == DONE and q.afterword:
-			_play(q.afterword, who, Callable(), Callable())
+		if q.giver == id and id != "" and status(q) == DONE and q.afterword:
+			play(q.afterword, id, Callable(), q)
 			return true
 	return false
 
 
-func _talk_step(q: QuestData, who: String) -> void:
-	var step := current_step(q)
-	for variant in step.variants:
-		if variant and variant.dialogue and happened(variant.if_event):
-			_play(variant.dialogue, who, func() -> void:
-				if current_step(q) == step:
-					_complete_step(q, variant.next_step, variant.reward_money, variant.reward_items),
-					_on_reply.bind(q))
-			return
-	if step.dialogue == null:
-		_complete_step(q)
-		return
-	_play(step.dialogue, who, func() -> void:
-		if current_step(q) == step: # (nothing else moved it on meanwhile)
-			_complete_step(q),
-			_on_reply.bind(q))
+func _talk(q: Quest, stage: QuestStage, oid: String, npc_id: String) -> void:
+	_objective_of(stage, oid).talk(self, _objective_state(q, oid), npc_id, func() -> void:
+		if current_stage(q) == stage and not _is_done(q, stage, oid): # (nothing else moved it on meanwhile)
+			_set_done(q, stage, oid)
+			_check())
 
 
-func _offer(q: QuestData, who: String) -> void:
+func _objective_of(stage: QuestStage, oid: String) -> QuestObjective:
+	for i in stage.objectives.size():
+		if _objective_id(stage, i) == oid:
+			return stage.objectives[i]
+	return null
+
+
+func _offer(q: Quest) -> void:
 	var has_accept := Conversation.has_action(q.offer, "accept")
-	_play(q.offer, who, func() -> void:
+	play(q.offer, q.giver, func() -> void:
 		if not has_accept and _offerable(q):
-			_start_quest(q),
-			_on_reply.bind(q))
+			_start(q), q)
 
 
-## A reply's action, during a conversation about q.
-func _on_reply(action: String, q: QuestData) -> void:
+## A reply's action, in a conversation about q.
+func _on_reply(action: String, q: Quest) -> void:
+	if q == null:
+		return
 	match action:
 		"accept":
 			if _offerable(q):
-				_start_quest(q)
+				_start(q)
 		"fail":
 			_fail(q)
-
-
-## Plays a conversation from its first node (quests/conversation.gd).
-func _play(dialogue: QuestDialogue, who: String, on_finished: Callable, on_action: Callable) -> void:
-	_conversation.play(dialogue, who, on_finished, on_action)
-
-
-## The NPC with this name (the living one, if there's one alive; with any_state,
-## a dead one too).
-func _find_npc(who: String, any_state := false) -> Node3D:
-	var dead: Node3D = null
-	for npc in get_tree().get_nodes_in_group("npcs"):
-		if npc.get("display_name") != who:
-			continue
-		if not npc.get("is_dead"):
-			return npc
-		dead = npc
-	return dead if any_state else null
 
 
 # --- Story moments, HUD --------------------------------------------------------------
@@ -576,17 +914,35 @@ func _flush_beats() -> void:
 	_beats.clear()
 
 
+func _notify(text: String) -> void:
+	if not _quiet and player:
+		player.emit_signal("notify", text)
+
+
+## Tells the HUD, the journal and the marks, if anything they show has
+## changed since last time (it's asked after every check).
 func _announce() -> void:
-	_markers.stale = true
-	objective_changed.emit(objective_text())
+	var text := objective_text()
+	var now := PackedStringArray([tracked, text])
+	for q in quests:
+		var st: Dictionary = _state[q.id]
+		now.append("%s:%s:%s:%d" % [q.id, st["status"], st["stage"], st["done"].size()])
+	var summary := "|".join(now)
+	if summary == _announced:
+		return
+	_announced = summary
+	if _markers:
+		_markers.stale = true
+	objective_changed.emit(text)
 	changed.emit()
 
 
 # --- Saving ----------------------------------------------------------------------------
 
 func save_state() -> Dictionary:
-	return {"quests": _state.duplicate(true), "events": _events.duplicate(), "seq": _seq, "tracked": tracked,
-			"autosaved": _autosaved.duplicate()}
+	return {"version": SAVE_VERSION, "quests": _state.duplicate(true), "flags": _flags.duplicate(),
+			"history": _history.duplicate(true), "people": _people.duplicate(true),
+			"pending_people": _pending_people.duplicate(true), "tracked": tracked, "autosave": _autosave_wanted}
 
 
 ## While a save is being put back: no story moments.
@@ -597,14 +953,13 @@ func begin_load() -> void:
 func end_load() -> void:
 	_check()
 	_quiet = false
-	_last_hours = _game_hours()
+	_last_hours = game_hours()
 	_announce()
 
 
 func load_state(data: Dictionary) -> void:
-	if data.has("stage"):
-		_load_old_story(data)
-		return
+	if int(data.get("version", 0)) != SAVE_VERSION:
+		return # an older layout: the quests start afresh
 	var saved: Dictionary = data.get("quests", {})
 	for q in quests:
 		var st := _fresh_state()
@@ -612,38 +967,40 @@ func load_state(data: Dictionary) -> void:
 		for key in st:
 			if entry.has(key):
 				st[key] = entry[key]
-		st["step"] = int(st["step"])
-		st["step_seq"] = int(st["step_seq"])
-		st["fails"] = int(st["fails"])
-		st["done_steps"] = Array(st["done_steps"]).map(func(s: Variant) -> String: return str(s))
+		st["done"] = Array(st["done"]).map(func(s: Variant) -> String: return str(s))
+		st["reached"] = Array(st["reached"]).map(func(s: Variant) -> String: return str(s))
+		if st["status"] == ACTIVE and q.stage(st["stage"]) == null:
+			# The quest file's changed since: back to its first stage.
+			push_warning("Quest \"%s\": the saved stage \"%s\" isn't there any more; it starts again." % [q.id, st["stage"]])
+			_state[q.id] = st
+			_enter_stage(q, 0)
+			continue
 		_state[q.id] = st
-	_events = {}
-	var events: Dictionary = data.get("events", {})
-	for e in events:
-		_events[str(e)] = int(events[e])
-	_seq = int(data.get("seq", _events.size()))
+		var stage := current_stage(q)
+		if stage:
+			_begin_objectives(q, stage) # with what each had (a Use marker offers itself again)
+	_flags = data.get("flags", {}).duplicate()
+	_history = Array(data.get("history", [])).map(func(e: Variant) -> Array: return [StringName(str(e[0])), e[1]])
+	_people = data.get("people", {}).duplicate(true)
+	for id: String in _people:
+		var entry: Dictionary = _people[id]
+		var person := npc(id)
+		if entry.get("gone", false):
+			if person:
+				person.queue_free()
+		elif person == null:
+			_bring_in(id)
+		elif entry.has("at"):
+			person.global_position = _from_vec(entry["at"])
+			person.rotation.y = float(entry.get("yaw", 0.0))
+	_pending_people = Array(data.get("pending_people", []))
 	tracked = str(data.get("tracked", ""))
-	_autosaved.assign(Array(data.get("autosaved", [])).map(func(s: Variant) -> String: return str(s)))
-	_unlock()
+	_autosave_wanted = bool(data.get("autosave", false))
 
 
-## A save from before quests were data: its stage number is the main story's step.
-func _load_old_story(data: Dictionary) -> void:
-	var story := main_story()
-	if story == null:
-		return
-	var stage := int(data.get("stage", 0))
-	var st: Dictionary = _state[story.id]
-	st["done_steps"] = []
-	for i in mini(stage, story.steps.size()):
-		st["done_steps"].append(story.steps[i].id)
-	if stage >= story.steps.size():
-		st["status"] = DONE
-	else:
-		st["status"] = ACTIVE
-		st["step"] = stage
-	if data.get("safe_house_investigated", false):
-		_seq += 1
-		_events["safe_house_reached"] = _seq
-	tracked = story.id
-	_unlock()
+static func _vec(v: Vector3) -> Array:
+	return [v.x, v.y, v.z]
+
+
+static func _from_vec(a: Variant) -> Vector3:
+	return Vector3(float(a[0]), float(a[1]), float(a[2])) if a is Array and a.size() == 3 else Vector3.ZERO

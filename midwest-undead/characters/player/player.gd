@@ -669,7 +669,6 @@ func load_state(data: Dictionary) -> void:
 	for slot in SLOTS:
 		var id := str(saved_slots.get(slot, ""))
 		slots[slot] = id if slot_of(id) == slot and inventory.has(id) else ""
-	_fill_slots() # (saves from before slots: filled from what you carry)
 	var saved_held: String = data.get("held", "hands")
 	held = saved_held if saved_held == "hands" or inventory.has(saved_held) else "hands"
 	_refresh_weapon_visuals(false)
