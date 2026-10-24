@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/props/wagon.gd" id="1_wagon"]
+
+[node name="Wagon" type="StaticBody3D"]
+script = ExtResource("1_wagon")

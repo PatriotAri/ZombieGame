@@ -48,6 +48,8 @@ const Water := preload("res://world/water.gd")
 const Ground := preload("res://world/ground.gd")
 const HumanoidBody := preload("res://characters/humanoid_body.gd")
 const Blood := preload("res://effects/blood.gd")
+const Fall := preload("res://characters/fall.gd")
+const GameEvents := preload("res://core/game_events.gd")
 
 enum State { IDLE, INVESTIGATE, HUNT }
 
@@ -131,6 +133,11 @@ const PATHS_PER_FRAME := 4
 var state := State.IDLE
 var max_health := 100.0 # its kind's
 var health := 100.0 # set to max_health in _ready
+var _fall := Fall.new() # falls hurt (characters/fall.gd)
+var _hat: Node3D # a miner's hard hat (its kind's hard_hat), until a headshot knocks it off
+var _meshes: Array[GeometryInstance3D] = [] # its body's, for the underground layer (KitMine)
+var _underground := false
+var _layer_wait := 0.0
 var kind_data: ZombieKind # the file for `kind`
 var eye_height := EYE_HEIGHT
 var is_dead := false
@@ -139,6 +146,7 @@ var target: Node3D = null # who it's hunting
 var day_night: Node
 var _attacking := false # biting someone this tick (for its animation)
 var _bashing := false # beating on a door, window or fence
+var _underfoot: Object # a door under its feet it's beating on (a cellar door), or null
 var _bashed_last := false # ...last tick
 var _vault_tween: Tween
 var _last_blow: Array = [] # [impulse, where]: the hit that killed it, for its fall
@@ -154,6 +162,8 @@ var _march_time_left := INF # gives up on the walk when this runs out (set when 
 var _stuck_time := 0.0
 static var _paths_frame := -1 # the physics frame _paths_left counts for
 static var _paths_left := 0 # path requests still allowed this physics frame (PATHS_PER_FRAME)
+static var _camera_seen: Camera3D # _camera(), and the physics frame it was looked up on
+static var _camera_frame := -1
 var _gap_time := 0.0 # > 0: just broke a fence, so it heads straight through (_through_gap)
 var _water_depth := 0.0 # water at its feet (world/water.gd), checked every WATER_CHECK
 var _water_timer := 0.0
@@ -169,6 +179,7 @@ var _window_link: NavigationLink3D = null
 var _window_entry := Vector3.ZERO
 var _window_exit := Vector3.ZERO
 var _vaulting := false
+var _crawler := false # its kind crawls (from kind_data.posture)
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _far_phase := 0 # which of the frames is its turn when it skips some (spread across zombies)
 var _far_frame := 0
@@ -188,6 +199,7 @@ func _ready() -> void:
 	floor_constant_speed = true # hills slow it by SLOPE_SLOWDOWN only
 	kind_data = ZombieKind.find(kind)
 	kind = kind_data.id
+	_crawler = kind_data.posture == "crawling"
 	speed = randf_range(kind_data.min_speed, maxf(kind_data.max_speed, kind_data.min_speed)) # some shuffle, some lurch
 	max_health = kind_data.health
 	health = max_health
@@ -215,6 +227,8 @@ func _apply_kind() -> void:
 	skin = skin.lightened(randf_range(-0.1, 0.1)) if randf() < 0.5 else skin.darkened(randf_range(0.0, 0.15))
 	body.set_colors(skin, Color.from_hsv(randf(), randf_range(0.15, 0.4), randf_range(0.2, 0.45)),
 			Color.from_hsv(randf_range(0.55, 0.7), randf_range(0.1, 0.35), randf_range(0.12, 0.3)))
+	if kind_data.hard_hat:
+		_put_on_hat()
 	if _crawls():
 		eye_height = CRAWLER_EYE_HEIGHT
 		# Lying face down, head forward (its animations do the pose).
@@ -223,6 +237,73 @@ func _apply_kind() -> void:
 		shape.height = 1.6
 		collision.shape = shape
 		collision.transform = Transform3D(Basis(Vector3.RIGHT, PI / 2.0), Vector3(0, 0.3, 0.05))
+
+
+## A miner's hard hat on its head (it moves with the head's hitbox), and the
+## lamp on it if its kind has one.
+func _put_on_hat() -> void:
+	_hat = Node3D.new()
+	_hat.name = "HardHat"
+	_hat.position = Vector3(0, 0.1, 0)
+	var yellow := StandardMaterial3D.new()
+	yellow.albedo_color = Color(0.8, 0.62, 0.1)
+	var dome := MeshInstance3D.new()
+	var dome_mesh := SphereMesh.new()
+	dome_mesh.radius = 0.15
+	dome_mesh.height = 0.2
+	dome_mesh.is_hemisphere = true
+	dome_mesh.material = yellow
+	dome.mesh = dome_mesh
+	_hat.add_child(dome)
+	var brim := MeshInstance3D.new()
+	var brim_mesh := CylinderMesh.new()
+	brim_mesh.top_radius = 0.19
+	brim_mesh.bottom_radius = 0.19
+	brim_mesh.height = 0.02
+	brim_mesh.material = yellow
+	brim.mesh = brim_mesh
+	_hat.add_child(brim)
+	if kind_data.head_lamp:
+		var lamp := SpotLight3D.new()
+		lamp.name = "Lamp"
+		lamp.light_color = Color(1.0, 0.9, 0.7)
+		lamp.light_energy = 1.5
+		lamp.spot_range = 14.0
+		lamp.spot_angle = 28.0
+		lamp.position = Vector3(0, 0.05, -0.16)
+		lamp.rotation.x = -0.15 # (a SpotLight shines down its -Z: ahead)
+		_hat.add_child(lamp)
+	head_shape.add_child(_hat)
+
+
+## Knocked off by a headshot: it clatters away, lamp and all.
+func _knock_hat_off() -> void:
+	Sound.play_at(self, "melee_hit", head_shape.global_position, 0.0, 25.0, 0.1, 1.4)
+	_meshes.clear() # (its meshes change)
+	_hat.queue_free()
+	_hat = null
+
+
+## While it's down a mine its body's drawn on the underground layer, out of
+## the sun's light (KitMine); up top on the ordinary one.
+func _update_layers(delta: float) -> void:
+	_layer_wait -= delta
+	if _layer_wait > 0.0:
+		return
+	_layer_wait = 0.5
+	var under := KitMine.contains(global_position + Vector3.UP)
+	if under == _underground and not (under and _meshes.is_empty()):
+		return
+	_underground = under
+	if _meshes.is_empty():
+		for node in visual.find_children("*", "GeometryInstance3D", true, false):
+			_meshes.append(node)
+		if _hat:
+			for node in _hat.find_children("*", "GeometryInstance3D", true, false):
+				_meshes.append(node)
+	for mesh in _meshes:
+		if is_instance_valid(mesh):
+			mesh.layers = GameData.RENDER_UNDERGROUND if under else 1
 
 
 ## Where shots should aim: the middle of its body (guards use this).
@@ -246,7 +327,7 @@ func _voice_pitch() -> float:
 
 
 func _crawls() -> bool:
-	return kind_data.posture == "crawling"
+	return _crawler
 
 
 ## How fast it goes after someone.
@@ -271,6 +352,13 @@ func _physics_process(delta: float) -> void:
 		_far_delta = 0.0
 	if not is_on_floor():
 		velocity.y -= gravity * delta
+	_update_layers(delta)
+	var fell := _fall.update(self, max_health, gravity, _water_depth >= Water.SWIM_DEPTH)
+	if fell > 0.0:
+		health -= fell
+		if health <= 0.0:
+			die()
+			return
 	if _update_water(delta):
 		return # drowned
 	if global_position.y < Ground.height_range().x - 30.0:
@@ -300,17 +388,20 @@ func _physics_process(delta: float) -> void:
 			if not _is_valid_target(target):
 				_set_idle()
 			else:
-				var to_target := _flat(target.global_position - global_position)
-				if to_target.length() > ATTACK_RANGE * 0.8:
-					moving = _walk_to(target.global_position, _hunt_speed(), delta)
-					if not moving and to_target.length() > ATTACK_RANGE * 1.5:
+				var at := target.global_position
+				var to_target := _flat(at - global_position)
+				var gap := to_target.length()
+				if gap > ATTACK_RANGE * 0.8:
+					var hunt_speed := _hunt_speed()
+					moving = _walk_to(at, hunt_speed, delta)
+					if not moving and gap > ATTACK_RANGE * 1.5:
 						# As close as it gets: a fence in the way? (Or one it just broke.)
-						if not _bash_blocker(target.global_position, delta):
-							moving = _through_gap(target.global_position, _hunt_speed())
+						if not _bash_blocker(at, delta):
+							moving = _through_gap(at, hunt_speed)
 				else:
 					_face(to_target)
-				var height_gap := absf(target.global_position.y - global_position.y)
-				if to_target.length() < ATTACK_RANGE and height_gap < ATTACK_HEIGHT \
+				var height_gap := absf(at.y - global_position.y)
+				if gap < ATTACK_RANGE and height_gap < ATTACK_HEIGHT \
 						and target.has_method("take_damage") and _can_reach(target):
 					target.call("take_damage", damage_per_second * delta)
 					_attacking = true
@@ -320,7 +411,9 @@ func _physics_process(delta: float) -> void:
 			# as close as it's going to get. Unless a fence or gate is what's in
 			# the way: then it beats on that, and doesn't lose interest meanwhile.
 			if not moving or _stuck_time >= UNSTICK_AFTER:
-				if _bash_blocker(investigate_pos, delta):
+				if _on_door():
+					pass # still beating on the door under it (below)
+				elif _bash_blocker(investigate_pos, delta):
 					pass
 				elif _through_gap(investigate_pos, speed):
 					moving = true
@@ -352,14 +445,20 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, speed)
 		velocity.z = move_toward(velocity.z, 0.0, speed)
 		# Standing still on solid ground: nothing to move, so skip the physics
-		# step. Most zombies are standing around most of the time.
-		if is_on_floor() and velocity.length_squared() < 0.0001:
+		# step. Most zombies are standing around most of the time. (Not one
+		# beating on a door under its feet: that's below. Nor while a mine's
+		# cage is moving: one in it has to ride along.)
+		if is_on_floor() and velocity.length_squared() < 0.0001 and not _on_door() and not MineCage.any_moving():
 			return
 	var before := global_position
+	var on_door := _on_door()
+	if on_door:
+		velocity.x = 0.0 # beating on the door under its feet: it stays on it
+		velocity.z = 0.0
 	_move(_step_scale)
 	var bashing := false
-	if moving and state != State.IDLE:
-		bashing = _bash_doors(delta)
+	if (moving or on_door) and state != State.IDLE:
+		bashing = _bash_doors(delta) or _bash_door_underfoot(delta)
 		bashing = _handle_window(delta) or bashing
 	_bashing = _bashing or bashing
 	if bashing: # held up by a door or window it's breaking: that's not stuck
@@ -432,6 +531,30 @@ func _bash_doors(delta: float) -> bool:
 	return false
 
 
+## Standing on a shut door its path goes down through (a cellar door, slanted
+## over the steps): it's underfoot, not in the way, so beat on that. True if
+## it's bashing one.
+func _bash_door_underfoot(delta: float) -> bool:
+	if not is_on_floor() or (_underfoot == null and agent.get_next_path_position().y > global_position.y - 0.4):
+		return false
+	var from := global_position + Vector3(0, 0.2, 0)
+	var query := PhysicsRayQueryParameters3D.create(from, from - Vector3(0, 0.5, 0), GameData.LAYER_WORLD, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var thing: Object = hit.get("collider")
+	_underfoot = null
+	if thing and thing.has_method("can_be_bashed") and thing.call("can_be_bashed"):
+		thing.call("bash", door_damage_per_second * delta)
+		_underfoot = thing
+		return true
+	return false
+
+
+## Started on a door under its feet (_bash_door_underfoot) that's still shut:
+## it keeps at it, its path or not.
+func _on_door() -> bool:
+	return state != State.IDLE and _underfoot != null and is_instance_valid(_underfoot) and _underfoot.call("can_be_bashed")
+
+
 # --- Windows -------------------------------------------------------------------
 
 ## The path reached the outside (or inside) end of a window's link.
@@ -488,22 +611,27 @@ func _vault() -> void:
 func hear_noise(pos: Vector3, radius: float) -> void:
 	if is_dead or state == State.HUNT:
 		return
-	if global_position.distance_to(pos) <= radius:
+	if global_position.distance_squared_to(pos) <= radius * radius:
 		_investigate(pos)
 
 
 ## Re-pick the closest target it can see right now.
 func _update_sight() -> void:
 	var best: Node3D = null
-	var best_dist := INF
+	var best_sq := maxf(sight_range * 1.3, PROXIMITY_RANGE) ** 2 # (nobody further off can be seen)
+	var light := -1.0 # (looked up once, when first needed)
 	for node in get_tree().get_nodes_in_group("zombie_targets"):
 		var candidate := node as Node3D
-		if not _is_valid_target(candidate):
+		if candidate == null or not is_instance_valid(candidate):
 			continue
-		var dist := global_position.distance_to(candidate.global_position)
-		if dist < best_dist and _can_see(candidate, dist):
+		var dist_sq := global_position.distance_squared_to(candidate.global_position)
+		if dist_sq >= best_sq or not _is_valid_target(candidate):
+			continue
+		if light < 0.0 and dist_sq >= PROXIMITY_RANGE * PROXIMITY_RANGE:
+			light = _light()
+		if _can_see(candidate, sqrt(dist_sq), light):
 			best = candidate
-			best_dist = dist
+			best_sq = dist_sq
 	if best:
 		if state != State.HUNT:
 			_alert_sound()
@@ -520,7 +648,8 @@ func _is_valid_target(node: Node3D) -> bool:
 			and node.call("is_targetable")
 
 
-func _can_see(candidate: Node3D, dist: float) -> bool:
+## light: _light() (passed in so it's looked up once for everyone; unused up close).
+func _can_see(candidate: Node3D, dist: float, light: float) -> bool:
 	var eye := global_position + Vector3(0, eye_height, 0)
 	var aim := candidate.global_position + Vector3(0, 1.0, 0)
 	# Up close it notices you whichever way it's facing, but still not through walls.
@@ -532,7 +661,6 @@ func _can_see(candidate: Node3D, dist: float) -> bool:
 
 	# Darkness shrinks how far it can see. The player can also crouch to be harder
 	# to spot, and a lit flashlight is visible from far away day or night.
-	var light := _light()
 	var sight := sight_range * lerpf(night_sight_factor, 1.0, light)
 	var player := candidate as Player
 	if player:
@@ -689,6 +817,9 @@ func _set_idle() -> void:
 func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node3D = null, hit_pos := Vector3.INF) -> void:
 	if is_dead:
 		return
+	if _hat and hit_pos != Vector3.INF and is_headshot(hit_pos):
+		_knock_hat_off()
+		damage = 0.0 # the hat took it
 	health -= damage
 	var away := _flat(global_position - from_pos).normalized()
 	if hit_pos == Vector3.INF:
@@ -703,7 +834,7 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 	body.wound(hit_pos, -shot_dir)
 	if health <= 0.0:
 		_last_blow = [shot_dir * (40.0 + knockback * 25.0) + Vector3.UP * 10.0, hit_pos]
-		die()
+		die(true, attacker)
 		return
 	if not _vaulting: # (mid-climb it keeps climbing)
 		body.one_shot("crawl_hit" if _crawls() else "hit_" + body.zone_of(hit_pos))
@@ -720,10 +851,13 @@ func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node
 
 ## It goes limp and falls (a ragdoll), pushed by the blow that killed it.
 ## loud = false: no death groan (drowned quietly, fell off the map).
-func die(loud := true) -> void:
+## killer: who killed it, if anyone.
+func die(loud := true, killer: Node = null) -> void:
 	if is_dead:
 		return
 	is_dead = true
+	GameEvents.send(&"zombie_killed", {"kind": kind, "position": global_position,
+			"by_player": is_instance_valid(killer) and killer.is_in_group("player")})
 	target = null
 	remove_from_group("zombies") # stops hearing, being hit, and being targeted
 	collision.set_deferred("disabled", true) # deferred: physics may be mid-step
@@ -782,7 +916,7 @@ func _animate(moving: bool) -> void:
 			action = "walk"
 			speed_scale = pace / WALK_PACE
 	if _crawls() and action != "crawl":
-		action = "crawl_attack" if action in ["attack", "bash"] else "crawl_idle"
+		action = "crawl_attack" if action == "attack" or action == "bash" else "crawl_idle"
 	body.set_action(action, clampf(speed_scale, 0.3, 2.5))
 
 
@@ -800,7 +934,7 @@ func _walk_to(point: Vector3, move_speed: float, delta: float) -> bool:
 	if agent.get_navigation_map() != map: # in a horde: the outdoor map while marching
 		agent.set_navigation_map(map)
 		repath_timer = 0.0
-	if not _navigation_ready():
+	if NavigationServer3D.map_get_iteration_id(map) == 0: # (_navigation_ready, for this map)
 		return false
 	repath_timer -= delta
 	var new_point := point.distance_squared_to(agent.target_position) > 1.0
@@ -837,9 +971,7 @@ func _ground_factor(dir: Vector3) -> float:
 	elif _water_depth > Water.WADE_DEPTH:
 		factor = WADE_FACTOR
 	if is_on_floor():
-		var normal := get_floor_normal()
-		var uphill_rise := maxf(-dir.dot(Vector3(normal.x, 0.0, normal.z)), 0.0) / maxf(normal.y, 0.1)
-		factor *= clampf(1.0 - SLOPE_SLOWDOWN * uphill_rise, 0.15, 1.0)
+		factor *= clampf(1.0 - SLOPE_SLOWDOWN * Ground.uphill_rise(get_floor_normal(), dir), 0.15, 1.0)
 	return factor
 
 
@@ -890,7 +1022,7 @@ func _move(frames: float) -> void:
 func _update_every() -> int:
 	if state == State.HUNT or stagger_timer > 0.0:
 		return 1
-	var camera := get_viewport().get_camera_3d()
+	var camera := _camera()
 	if camera == null:
 		return 1
 	var dist_sq := global_position.distance_squared_to(camera.global_position)
@@ -899,6 +1031,15 @@ func _update_every() -> int:
 	if dist_sq > FAR_DISTANCE * FAR_DISTANCE:
 		return FAR_TICK
 	return MID_TICK if dist_sq > MID_DISTANCE * MID_DISTANCE else 1
+
+
+## The camera, looked up once a physics frame for every zombie.
+func _camera() -> Camera3D:
+	var frame := Engine.get_physics_frames()
+	if frame != _camera_frame or not is_instance_valid(_camera_seen):
+		_camera_frame = frame
+		_camera_seen = get_viewport().get_camera_3d()
+	return _camera_seen
 
 
 func _face(dir: Vector3) -> void:

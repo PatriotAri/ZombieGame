@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_a10ox"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/hay_bale.tscn" id="2_7fhyn"]
+
+[node name="HayBale" type="StaticBody3D" unique_id=582187156]
+script = ExtResource("1_a10ox")
+size = Vector3(1.2, 0.45, 0.5)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_7fhyn")])

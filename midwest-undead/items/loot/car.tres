@@ -90,6 +90,15 @@ script = ExtResource("1_pe0gm")
 chance = 0.08
 items = Array[ExtResource("2_85gq2")]([SubResource("Resource_ec486")])
 
+[sub_resource type="Resource" id="Resource_gaspick"]
+script = ExtResource("2_85gq2")
+item = "gas_can"
+
+[sub_resource type="Resource" id="Resource_gasroll"]
+script = ExtResource("1_pe0gm")
+chance = 0.1
+items = Array[ExtResource("2_85gq2")]([SubResource("Resource_gaspick")])
+
 [resource]
 script = ExtResource("3_upgu6")
-rolls = Array[ExtResource("1_pe0gm")]([SubResource("Resource_uhqbv"), SubResource("Resource_wa71m"), SubResource("Resource_8mb6o"), SubResource("Resource_0exab"), SubResource("Resource_3bnib"), SubResource("Resource_ml43p"), SubResource("Resource_pdgpn"), SubResource("Resource_lgrr3")])
+rolls = Array[ExtResource("1_pe0gm")]([SubResource("Resource_uhqbv"), SubResource("Resource_wa71m"), SubResource("Resource_8mb6o"), SubResource("Resource_0exab"), SubResource("Resource_3bnib"), SubResource("Resource_ml43p"), SubResource("Resource_pdgpn"), SubResource("Resource_lgrr3"), SubResource("Resource_gasroll")])

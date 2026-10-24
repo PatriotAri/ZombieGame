@@ -4,7 +4,20 @@ extends CharacterBody3D
 ##
 ## It owns what all humans share: a name, a faction, health, getting hurt and dying,
 ## being a target zombies can go after, an optional floating name tag, and a body
-## whose clothes and skin colors can be set per scene.
+## (characters/humanoid_body.gd): their model, its animations, the ragdoll when
+## they die, and blood where they're hit.
+##
+## Their model: Model in the Inspector. Set on human_npc.tscn it's everyone's
+## (empty: the mannequin, in their outfit and skin colors); a kind's scene
+## (guard.tscn, bandit.tscn...) or a person (a survivor's file) can set their
+## own. Anything else under Visual (a hat, a bandana) rides on the nearest bone.
+## See HOW_TO_MODEL.md.
+##
+## Animations, by name (the model's own, or the mannequin's people_animations):
+##   idle, walk (1.4 m a cycle), run (2.8 m a cycle), talk (while you talk to
+##   them), hit_head / hit_body / hit_legs (flinches), rifle_idle, rifle_walk,
+##   rifle_aim, rifle_shoot, rifle_reload (guards and bandits), work_dig (a
+##   garden plot), work_bench (a bench). Subclasses pick theirs in _animation().
 ##
 ## To make a new kind of NPC: create a new inherited scene from human_npc.tscn
 ## (Scene > New Inherited Scene), attach a script that starts with
@@ -18,16 +31,37 @@ enum Faction { SURVIVOR, BANDIT }
 
 const GameData := preload("res://core/game_data.gd")
 const Sound := preload("res://core/sound.gd")
+const Blood := preload("res://effects/blood.gd")
+const HumanoidBody := preload("res://characters/humanoid_body.gd")
+const GameEvents := preload("res://core/game_events.gd")
+
+const WALK_PACE := 1.4 # meters per cycle of the walk animation
+const RUN_PACE := 2.8
+const RUN_FROM := 3.2 # m/s: faster than this runs
 
 @export_group("Identity")
 @export var display_name := "Survivor"
+## What quests call them (chief, woodworker, marisol_vega): no spaces, and it
+## stays the same if their display name changes. Empty for people quests never
+## need (guards, bandits).
+@export var npc_id := ""
 @export var faction := Faction.SURVIVOR
 ## Show the name floating above their head.
 @export var show_name_tag := false
 
 @export_group("Look")
+## Their model: a character scene with a humanoid skeleton (HOW_TO_MODEL.md).
+## Empty: the mannequin.
+@export var model: PackedScene
 @export var outfit_color := Color(0.35, 0.33, 0.3)
 @export var skin_color := Color(0.72, 0.56, 0.44)
+
+@export_group("Rifle")
+## Carries the rifle (its held model, items/data/rifle.tres) in the right hand.
+@export var holds_rifle := false
+## Where the rifle sits in the right hand (the hand bone's space). The default
+## fits the mannequin; a model's hand can need its own.
+@export var rifle_hold := Transform3D(Basis(Vector3.UP, PI / 2.0), Vector3(-0.14, -0.01, 0.0))
 
 @export_group("Survival")
 @export var max_health := 100.0
@@ -43,18 +77,30 @@ const Sound := preload("res://core/sound.gd")
 var health := 100.0
 var is_dead := false
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-var _materials: Array[StandardMaterial3D] = []
-var _base_colors: Array[Color] = []
+## True while you're talking to them (main.gd sets it; it goes once your menus close).
+var talking := false
+## The rifle in their hand (holds_rifle), and the flash at its muzzle; or null.
+var rifle: Node3D
+var muzzle_flash: OmniLight3D
+var _last_blow: Array = [] # [impulse, where]: what knocks the body over if this hit kills
+var _last_attacker: Node # who hit them last (npc_died says whether it was you)
+## Their person file, if they came from one (characters/npcs/person_data.gd).
+var person: PersonData
+## Tied to a post (set_captive()): "untie" is all you can do with them.
+var captive := false
+var _post: Node3D
+var _player: Node
 
-@onready var visual: Node3D = $Visual # all body meshes hang off this, so they can topple on death
-@onready var body_mesh: MeshInstance3D = $Visual/Body
-@onready var head_mesh: MeshInstance3D = $Visual/Head
+@onready var visual: Node3D = $Visual
+@onready var body: HumanoidBody = $Visual/Body
 @onready var collision: CollisionShape3D = $CollisionShape3D
 @onready var name_tag: Label3D = $NameTag
 
 
 func _ready() -> void:
 	add_to_group("npcs")
+	if npc_id != "":
+		add_to_group("named_npcs") # (stays in it after dying: world/quest_world.gd)
 	if zombies_target:
 		add_to_group("zombie_targets")
 	collision_layer = GameData.LAYER_NPC
@@ -63,7 +109,7 @@ func _ready() -> void:
 	health = max_health
 	name_tag.text = display_name
 	name_tag.visible = show_name_tag
-	_apply_colors()
+	_setup_body()
 	_npc_ready()
 
 
@@ -75,6 +121,13 @@ func _physics_process(delta: float) -> void:
 			velocity.y -= gravity * delta
 		move_and_slide()
 	_npc_physics(delta)
+	if talking:
+		if _player == null:
+			_player = get_tree().get_first_node_in_group("player")
+		talking = _player != null and bool(_player.get("menu_open"))
+	if not body.is_busy():
+		var pick := _animation()
+		body.set_action(pick[0], pick[1])
 
 
 ## Override in subclasses for one-time setup (called at the end of _ready).
@@ -87,6 +140,19 @@ func _npc_physics(_delta: float) -> void:
 	pass
 
 
+## What to play now: [animation, speed]. Override for more (call super for the
+## rest): talking, then walking or running at their pace, else standing.
+func _animation() -> Array:
+	if talking:
+		return ["talk", 1.0]
+	var pace := Vector2(velocity.x, velocity.z).length()
+	if pace > RUN_FROM:
+		return ["run", clampf(pace / RUN_PACE, 0.5, 2.0)]
+	if pace > 0.15:
+		return ["walk", clampf(pace / WALK_PACE, 0.4, 2.0)]
+	return ["idle", 1.0]
+
+
 ## Zombies call this to decide whether this NPC is worth chasing.
 func is_targetable() -> bool:
 	return zombies_target and not is_dead
@@ -95,46 +161,124 @@ func is_targetable() -> bool:
 ## The action shown in the "E: ..." prompt when you look at this NPC, e.g.
 ## "trade with Quartermaster". Empty means there's nothing to do with them.
 ## Subclasses override this; main.gd decides what pressing E actually opens.
+## What they do for you besides quests, offered next to any quest talk:
+## [label, callable], or [] if nothing (traders trade, the woodworker builds...).
+## main: world/main.gd, for the menus.
+func own_business(_main: Node) -> Array:
+	return []
+
+
+## Tied up, untying them; otherwise what their kind says (_talk_prompt()).
 func interact_prompt() -> String:
-	return ""
+	if captive:
+		return "untie " + display_name
+	return _talk_prompt()
 
 
-func is_hostile_to_player() -> bool:
-	return faction == Faction.BANDIT
+## People quests know (an npc_id) can be talked to; kinds with business of
+## their own (trading, building...) say so instead.
+func _talk_prompt() -> String:
+	return "talk to " + display_name if npc_id != "" else ""
+
+
+## Tied to a post at their back (on), or let go (off). Freeing someone is
+## main.gd's untie (it reports person_freed); this just sets the look.
+func set_captive(on: bool) -> void:
+	captive = on
+	if on and _post == null:
+		_post = StaticBody3D.new()
+		_post.name = "Post"
+		_post.position = Vector3(0, 1.0, 0.45)
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(0.22, 2.2, 0.22)
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.33, 0.24, 0.16)
+		mesh.material = mat
+		var inst := MeshInstance3D.new()
+		inst.mesh = mesh
+		_post.add_child(inst)
+		var shape := BoxShape3D.new()
+		shape.size = mesh.size
+		var col := CollisionShape3D.new()
+		col.shape = shape
+		_post.add_child(col)
+		add_child(_post)
+	elif not on and _post:
+		_post.queue_free()
+		_post = null
 
 
 ## Hits from weapons (player or NPC). Same signature zombies use, so attackers
 ## don't need to care what they hit.
-func take_hit(damage: float, _from_pos: Vector3, _knockback: float, attacker: Node3D = null, _hit_pos := Vector3.INF) -> void:
-	if attacker != null and attacker.is_in_group("player") and not player_can_hurt:
+## Blood where it landed (on them and whatever's behind), a flinch, and the
+## blow that knocks them over if it kills.
+func take_hit(damage: float, from_pos: Vector3, knockback: float, attacker: Node3D = null, hit_pos := Vector3.INF) -> void:
+	if is_dead or (attacker != null and attacker.is_in_group("player") and not player_can_hurt):
 		return
-	take_damage(damage)
+	if hit_pos == Vector3.INF:
+		hit_pos = global_position + Vector3(0, 1.2, 0)
+	var dir := hit_pos - from_pos
+	dir = dir.normalized() if dir.length() > 0.01 else -global_basis.z
+	Blood.hit(get_parent(), hit_pos, dir, [get_rid()])
+	body.wound(hit_pos, -dir)
+	_last_blow = [dir * (40.0 + knockback * 25.0) + Vector3.UP * 10.0, hit_pos]
+	if health > damage:
+		body.one_shot("hit_" + body.zone_of(hit_pos))
+	take_damage(damage, attacker)
 
 
-## Raw damage, e.g. a zombie biting.
-func take_damage(amount: float) -> void:
+## Raw damage, e.g. a zombie biting. attacker: who did it, if anyone.
+func take_damage(amount: float, attacker: Node = null) -> void:
 	if is_dead:
 		return
+	_last_attacker = attacker
 	health -= amount
 	_flash()
+	if not body.is_busy() and health > 0.0:
+		body.one_shot("hit_body")
 	if health <= 0.0:
 		die()
 
 
+## They go limp and fall (a ragdoll), pushed by the blow that killed them.
 func die() -> void:
 	if is_dead:
 		return
 	is_dead = true
+	set_physics_process(false) # (it returned at once from now on anyway)
 	health = 0.0
+	talking = false
 	remove_from_group("zombie_targets")
 	remove_from_group("npcs")
 	name_tag.visible = false
 	collision.set_deferred("disabled", true) # deferred: physics may be mid-step
-	var tween := create_tween()
-	tween.tween_property(visual, "rotation:x", PI / 2.0, 0.6) \
-			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN) # topple backward
-	tween.parallel().tween_property(visual, "position:y", 0.3, 0.6)
+	if muzzle_flash:
+		muzzle_flash.visible = false
+	var blow: Array = _last_blow if not _last_blow.is_empty() else [Vector3.UP * 5.0, global_position + Vector3(0, 1.2, 0)]
+	body.ragdoll(blow[0], blow[1], Vector3(velocity.x, 0.0, velocity.z))
 	died.emit(self)
+	GameEvents.send(&"npc_died", {"npc_id": npc_id, "name": display_name, "position": global_position,
+			"by_player": is_instance_valid(_last_attacker) and _last_attacker.is_in_group("player")})
+
+
+## Where shots come out of the rifle (its MuzzleFlash), in the world.
+func muzzle() -> Vector3:
+	return muzzle_flash.global_position if muzzle_flash else global_position + Vector3(0, 1.4, 0)
+
+
+## A quick flash at the muzzle.
+func _flash_muzzle() -> void:
+	if muzzle_flash == null:
+		return
+	muzzle_flash.visible = true
+	get_tree().create_timer(0.05).timeout.connect(func() -> void: muzzle_flash.visible = false)
+
+
+## Turns the upper body up or down to aim at a point (the animation aims level).
+func _aim_at(point: Vector3) -> void:
+	var from := global_position + Vector3(0, 1.45, 0)
+	var flat := Vector2(point.x - from.x, point.z - from.z).length()
+	body.aim_pitch = clampf(atan2(point.y - from.y, maxf(flat, 0.1)), deg_to_rad(-60.0), deg_to_rad(60.0))
 
 
 ## A brief streak of light along a bullet's path, so you can see who's shooting
@@ -159,20 +303,40 @@ func _tracer(from: Vector3, to: Vector3) -> void:
 	get_tree().create_timer(0.06).timeout.connect(inst.queue_free)
 
 
-## Scene materials are shared by every instance, so give this NPC its own copies
-## (otherwise recoloring or flashing one would change them all).
-func _apply_colors() -> void:
-	for pair in [[body_mesh, outfit_color], [head_mesh, skin_color]]:
-		var mesh_inst: MeshInstance3D = pair[0]
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = pair[1]
-		mesh_inst.material_override = mat
-		_materials.append(mat)
-		_base_colors.append(mat.albedo_color)
+## Their model in their colors (the shirt and pants from outfit_color), what's
+## under Visual put on the nearest bone, and the rifle in their hand.
+func _setup_body() -> void:
+	body.setup(model, HumanoidBody.PEOPLE_ANIMATIONS)
+	body.set_colors(skin_color, outfit_color, outfit_color.darkened(0.35))
+	body.settled.connect(func() -> void: Blood.pool(get_parent(), body.head_center().lerp(global_position, 0.6)))
+	for extra in visual.get_children():
+		if extra != body and extra is Node3D:
+			var bone := body.nearest_bone((extra as Node3D).global_position)
+			if bone >= 0:
+				extra.reparent(body.attachment(bone))
+	if holds_rifle:
+		_take_rifle()
+
+
+func _take_rifle() -> void:
+	var hand := body.skeleton.find_bone("RightHand")
+	var weapon := GameData.weapon("rifle")
+	if hand < 0 or weapon == null or weapon.held_model == null:
+		return
+	rifle = weapon.held_model.instantiate()
+	rifle.name = "Rifle"
+	rifle.transform = rifle_hold
+	body.attachment(hand).add_child(rifle)
+	muzzle_flash = rifle.find_child("MuzzleFlash", true, false) as OmniLight3D
+	if muzzle_flash == null: # a model without one
+		muzzle_flash = OmniLight3D.new()
+		muzzle_flash.position = Vector3(0, 0, -0.65)
+		muzzle_flash.light_color = Color(1, 0.8, 0.5)
+		muzzle_flash.light_energy = 5.0
+		muzzle_flash.omni_range = 8.0
+		rifle.add_child(muzzle_flash)
+	muzzle_flash.visible = false
 
 
 func _flash() -> void:
-	var tween := create_tween().set_parallel(true)
-	for i in _materials.size():
-		_materials[i].albedo_color = Color(1.0, 0.75, 0.75)
-		tween.tween_property(_materials[i], "albedo_color", _base_colors[i], 0.25)
+	create_tween().tween_method(body.set_flash, 1.0, 0.0, 0.25)

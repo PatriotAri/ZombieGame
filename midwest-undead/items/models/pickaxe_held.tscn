@@ -1,0 +1,29 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_haft"]
+albedo_color = Color(0.45, 0.32, 0.18, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_haft"]
+material = SubResource("StandardMaterial3D_haft")
+size = Vector3(0.04, 0.04, 0.8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_head"]
+albedo_color = Color(0.3, 0.3, 0.32, 1)
+metallic = 0.6
+roughness = 0.5
+
+[sub_resource type="BoxMesh" id="BoxMesh_head"]
+material = SubResource("StandardMaterial3D_head")
+size = Vector3(0.04, 0.5, 0.05)
+
+[node name="Pickaxe" type="Node3D"]
+
+[node name="Haft" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.9396926, -0.34202012, 0, 0.34202012, 0.9396926, 0, 0.05, -0.25)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_haft")
+
+[node name="Head" type="MeshInstance3D" parent="Haft"]
+transform = Transform3D(1, 0, 0, 0, 0.9659258, 0.25881904, 0, -0.25881904, 0.9659258, 0, 0, -0.38)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_head")

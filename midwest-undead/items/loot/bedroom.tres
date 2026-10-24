@@ -1,0 +1,56 @@
+[gd_resource type="Resource" script_class="LootTable" format=3]
+
+[ext_resource type="Script" path="res://items/loot_roll.gd" id="1_7fvwm"]
+[ext_resource type="Script" path="res://items/loot_pick.gd" id="2_grp58"]
+[ext_resource type="Script" path="res://items/loot_table.gd" id="3_a4c6r"]
+
+[sub_resource type="Resource" id="Resource_wtro4"]
+script = ExtResource("2_grp58")
+item = "batteries"
+max_amount = 2
+
+[sub_resource type="Resource" id="Resource_7jl8r"]
+script = ExtResource("1_7fvwm")
+chance = 0.25
+items = Array[ExtResource("2_grp58")]([SubResource("Resource_wtro4")])
+
+[sub_resource type="Resource" id="Resource_t6pop"]
+script = ExtResource("2_grp58")
+item = "pistol_ammo"
+min_amount = 2
+max_amount = 6
+
+[sub_resource type="Resource" id="Resource_0s8tt"]
+script = ExtResource("1_7fvwm")
+chance = 0.2
+items = Array[ExtResource("2_grp58")]([SubResource("Resource_t6pop")])
+
+[sub_resource type="Resource" id="Resource_kaebp"]
+script = ExtResource("2_grp58")
+item = "shotgun_shells"
+max_amount = 4
+
+[sub_resource type="Resource" id="Resource_0cnfa"]
+script = ExtResource("1_7fvwm")
+items = Array[ExtResource("2_grp58")]([SubResource("Resource_kaebp")])
+
+[sub_resource type="Resource" id="Resource_1u2jc"]
+script = ExtResource("2_grp58")
+item = "health_pack"
+
+[sub_resource type="Resource" id="Resource_0w10o"]
+script = ExtResource("1_7fvwm")
+items = Array[ExtResource("2_grp58")]([SubResource("Resource_1u2jc")])
+
+[sub_resource type="Resource" id="Resource_sjap0"]
+script = ExtResource("2_grp58")
+item = "pistol"
+
+[sub_resource type="Resource" id="Resource_5xsw8"]
+script = ExtResource("1_7fvwm")
+chance = 0.04
+items = Array[ExtResource("2_grp58")]([SubResource("Resource_sjap0")])
+
+[resource]
+script = ExtResource("3_a4c6r")
+rolls = Array[ExtResource("1_7fvwm")]([SubResource("Resource_7jl8r"), SubResource("Resource_0s8tt"), SubResource("Resource_0cnfa"), SubResource("Resource_0w10o"), SubResource("Resource_5xsw8")])

@@ -4,6 +4,7 @@
 
 [node name="WagonTrader" instance=ExtResource("1_shop")]
 display_name = "Wagon Trader"
+npc_id = "wagon_trader"
 outfit_color = Color(0.32, 0.38, 0.5, 1)
 skin_color = Color(0.78, 0.62, 0.5, 1)
 starting_stock = Dictionary[String, int]({
@@ -23,6 +24,7 @@ rare_stock = Dictionary[String, int]({
 "shotgun": 1
 })
 rare_chance = 0.25
+restock_clear_radius = 40.0
 buy_prices = Dictionary[String, int]({
 "barricade": 28,
 "batteries": 10,

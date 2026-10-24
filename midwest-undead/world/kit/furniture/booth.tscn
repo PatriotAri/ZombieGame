@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_6rwgl"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/booth.tscn" id="2_7a7pe"]
+
+[node name="Booth" type="StaticBody3D" unique_id=27915327]
+script = ExtResource("1_6rwgl")
+size = Vector3(1.2, 1.1, 1.9)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_7a7pe")])

@@ -1,0 +1,41 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/props/kit_prop.gd" id="1_tryy8"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_d6727"]
+albedo_color = Color(0.15, 0.3, 0.2, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_yxk05"]
+material = SubResource("StandardMaterial3D_d6727")
+size = Vector3(0.28, 0.05, 0.38)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cv7po"]
+albedo_color = Color(0.9, 0.87, 0.78, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_irojr"]
+material = SubResource("StandardMaterial3D_cv7po")
+size = Vector3(0.26, 0.012, 0.36)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_q3rdv"]
+albedo_color = Color(0.6, 0.1, 0.1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_7ysj8"]
+material = SubResource("StandardMaterial3D_q3rdv")
+size = Vector3(0.02, 0.3, 0.005)
+
+[node name="Logbook" type="Node3D" unique_id=319342048]
+script = ExtResource("1_tryy8")
+
+[node name="StandIn" type="Node3D" parent="." unique_id=852655151]
+
+[node name="@MeshInstance3D@297" type="MeshInstance3D" parent="StandIn" unique_id=979132631]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.025, 0)
+mesh = SubResource("BoxMesh_yxk05")
+
+[node name="@MeshInstance3D@298" type="MeshInstance3D" parent="StandIn" unique_id=1350752987]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.008, 0.056, 0)
+mesh = SubResource("BoxMesh_irojr")
+
+[node name="@MeshInstance3D@299" type="MeshInstance3D" parent="StandIn" unique_id=1600838281]
+transform = Transform3D(0.16996716, -0.98544973, 0, 0.98544973, 0.16996716, 0, 0, 0, 1, 0.08, 0.05, 0.19)
+mesh = SubResource("BoxMesh_7ysj8")

@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://items/loot_spot.gd" id="1_3akir"]
 [ext_resource type="Material" path="res://world/kit/materials/shelf_metal.tres" id="2_te8gi"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/grocery_shelf.tscn" id="9_standin"]
 
 [node name="GroceryShelf" type="StaticBody3D" unique_id=1818452023]
 script = ExtResource("1_3akir")
@@ -10,3 +11,4 @@ loot_table = "grocery"
 size = Vector3(1.6, 1.4, 0.5)
 material = ExtResource("2_te8gi")
 sits_on_floor = true
+models = Array[PackedScene]([ExtResource("9_standin")])

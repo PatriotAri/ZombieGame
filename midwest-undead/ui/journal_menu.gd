@@ -1,10 +1,11 @@
 extends CanvasLayer
 ## The journal (J, or D-pad down on a controller): your quests (the main story,
 ## side quests you've taken, ones you've finished or failed) on the left; the
-## one you pick on the right, with its steps so far. Track a quest to show its
-## objective and waypoint; abandon a side quest to give it up (you can take it
-## again from whoever gave it). Like the map, it doesn't pause the game. J or
-## Esc closes it.
+## one you pick on the right: what it's about, a note on where it's got to,
+## and its objectives so far (done ones ticked, extras marked optional). Track
+## a quest to show its objectives on the HUD and the map screen; abandon a side
+## quest to give it up (you can take it again from whoever gave it). Like the
+## map, it doesn't pause the game. J or Esc closes it.
 
 const QuestManager := preload("res://quests/quest_manager.gd")
 const Controls := preload("res://core/controls.gd")
@@ -62,6 +63,8 @@ func close() -> void:
 func _input(event: InputEvent) -> void:
 	if _player == null:
 		return
+	if get_viewport().gui_get_focus_owner() is LineEdit:
+		return # typing (a save's name): the keys are letters, not this screen's
 	if event.is_action_pressed("journal"):
 		if visible:
 			close()
@@ -100,8 +103,8 @@ func _refresh() -> void:
 	if focus:
 		focus.grab_focus.call_deferred()
 	_show_selected(entries)
-	_footer.text = ("A: pick   ·   Y / B: close" if Controls.using_gamepad else "Click: pick   ·   J / Esc: close") \
-			+ "   ·   ◆ tracked"
+	_footer.text = ("A: pick   ·   %s / B: close" if Controls.using_gamepad else "Click: pick   ·   %s / Esc: close") \
+			% Controls.hint("journal") + "   ·   ◆ tracked"
 
 
 func _show_selected(entries: Array[Dictionary]) -> void:
@@ -116,6 +119,8 @@ func _show_selected(entries: Array[Dictionary]) -> void:
 	var entry: Dictionary = picked[0]
 	_title.text = entry["title"]
 	_description.text = entry["description"]
+	if str(entry.get("note", "")) != "":
+		_description.text += ("\n\n" if _description.text != "" else "") + entry["note"]
 	var lines := PackedStringArray()
 	for step: Dictionary in entry["steps"]:
 		lines.append(("✓  " if step["done"] else "▸  ") + str(step["objective"]))

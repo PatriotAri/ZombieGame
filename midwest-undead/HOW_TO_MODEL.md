@@ -1,12 +1,14 @@
 # How to add models and animations
 
-Weapons in your hands and zombies work with or without a model. Without one, a
-weapon is today's box gun and a zombie is the mannequin: a plain stand-in with
-a real skeleton and rough animations. You can swap a model in whenever you have
-one, and nothing else has to change.
+Weapons in your hands, zombies, people and props work with or without a
+model. Without one, a weapon is today's box gun, a zombie or a person is the
+mannequin (a plain stand-in with a real skeleton and rough animations), and a
+prop is a stand-in made of simple shapes. You can swap a model in whenever you
+have one, and nothing else has to change.
 
-So far this covers **weapons in your hands** (first person) and **zombies**.
-NPCs, props and buildings come later.
+This covers **weapons in your hands** (first person), **zombies**, **people**
+(everyone who isn't a zombie) and **props** (furniture, things you build, camp
+props, doors, windows, planks). Buildings come later.
 
 ## The rules every model follows
 
@@ -28,6 +30,8 @@ NPCs, props and buildings come later.
 | Gun or melee weapon in your hands | 5,000 - 15,000 | 1024 or 2048 px: color, normal, roughness/metal |
 | The same item lying on the ground | under 3,000 | 512 px |
 | A zombie or person | 8,000 - 15,000 | 2048 px: color, normal, roughness |
+| Furniture, a car, a door | 500 - 5,000 | 512 or 1024 px |
+| A small prop (a crate, a logbook) | under 1,000 | 256 or 512 px |
 
 Weapons in your hands are only drawn one at a time and always close up, so they
 get the most detail. Characters get simpler versions further away
@@ -219,6 +223,136 @@ godot --headless --path . -s res://characters/mannequin/make_mannequin.gd
   - how far it's drawn.
 - `world/zombie_population.gd`: **BODY_CLEANUP_DISTANCE**. Bodies are cleared
   away once you're this far and not looking.
+
+## People
+
+Survivors, guards, traders, the police chief, the woodworker and bandits.
+A person's model is built and imported exactly like a zombie's (see **What a
+character model needs** and **Getting it in** above; put people's models in
+`characters/npcs/models/`).
+
+### Whose model is whose
+Every person has a **Model** setting (Inspector, **Look** group). The most
+specific one wins:
+1. **One person:** a survivor's file (`characters/npcs/survivors/`) has its
+   own **Model**. People with their own scene (the police chief, the
+   woodworker, the shopkeeper, the wagon trader) set it in their scene.
+2. **A kind:** `guard.tscn`, `bandit.tscn`, `survivor.tscn`...
+3. **Everyone:** `characters/npcs/human_npc.tscn`. Set it here for one
+   default model for everybody. Left empty: the mannequin.
+
+A survivor posted on a guard post keeps their own model.
+
+### Animations
+Played by name. A model's own come first; for any it doesn't have, it borrows
+the mannequin's people animations (`characters/mannequin/people_animations.tres`,
+not the zombie ones).
+
+| Name | When | Notes |
+|---|---|---|
+| `idle` | standing around | loops |
+| `walk` | walking | loops; one cycle (two steps) covers 1.4 m, sped up or slowed to match |
+| `run` | running (over 3.2 m/s) | loops; one cycle covers 2.8 m |
+| `talk` | while you're talking to them | loops |
+| `hit_head`, `hit_body`, `hit_legs` | flinching from a hit there | plays once (about 0.4 s) |
+| `rifle_idle` | guards and bandits, nothing to shoot | loops; the rifle held low |
+| `rifle_walk` | bandits walking about | loops; 1.4 m per cycle |
+| `rifle_aim` | aiming | loops; aim level ahead (the game tips the spine up or down at the target) |
+| `rifle_shoot` | each shot | plays once (about 0.4 s) |
+| `rifle_reload` | reloading | plays once, fitted to the reload time |
+| `work_dig` | a survivor working a garden plot | loops |
+| `work_bench` | a survivor working an ammo, shell or rifle bench | loops |
+
+### The rifle
+Guards and bandits carry the rifle's held model (`items/data/rifle.tres`, the
+same one you hold) in the **RightHand** bone. Its **MuzzleFlash** is where
+their shots come from. If it sits wrong in your model's hand, select the
+guard or bandit scene's root and change **Rifle > Rifle Hold** (where the rifle
+sits in the hand bone's space).
+
+### Hats and other extras
+Anything else under a person's **Visual** node (the chief's hat, the bandits'
+bandanas) is moved onto the nearest bone when they appear, so it moves with
+the head. Put it where it belongs on the mannequin (or your model) standing in
+its T-pose.
+
+### What happens on its own
+- **Colors:** the mannequin's shirt and pants take the person's **Outfit
+  Color** (the pants a bit darker), its skin their **Skin Color**. A real model
+  keeps its own textures.
+- **Ragdoll and blood:** like zombies. Shot people bleed where they're hit,
+  flinch, and fall limp when they die. The rifle falls with the hand.
+- **Detail by distance:** the same as zombies.
+
+### Tuning
+- `characters/npcs/human_npc.gd`: **WALK_PACE**, **RUN_PACE**, **RUN_FROM**.
+- The mannequin's people animations are made by the same script as the
+  zombies' (`characters/mannequin/make_mannequin.gd`, the **People** part).
+
+## Props
+
+Furniture and containers, the things you build, a camp's props, doors,
+windows, planks and barricades. Each has a **Models** list in the Inspector:
+model scenes (a `.glb`, or an inherited scene made from one; put them in
+`world/models/`, make the folder). With several, each one on the map picks one
+at random, and always the same one in the same spot (so loading a game looks
+the same). Empty, it's the stand-in.
+
+### Where to set them
+| What | Select | Notes |
+|---|---|---|
+| Furniture and containers (bed, table, car, dumpster...) | the scene in `world/kit/furniture/` for all of them, or one placed on the map for just that one | stretched to the piece's **Size**; the first model is its stand-in (`world/kit/furniture/standins/`) |
+| A building's doors and windows | the **Building** (or **KitWall**), **Models** group: **Door Models**, **Window Models** | stretched to each opening |
+| Every building's doors and windows | the root of `world/props/door.tscn` or `window.tscn` | used by buildings whose own lists are empty |
+| Garage doors, cellar doors, porch screen doors | the root of `world/props/garage_door.tscn`, `cellar_door.tscn` or `screen_door.tscn` | stretched to each one; a cellar door's leaf runs up its slope along Y (its top face toward -X) |
+| Things you build | the root of its scene in `world/props/`: `scaffold`, `guard_post`, `fence`, `fence_plating`, `fence_wreck` (a broken fence or gate), `gate_posts`, `gate_leaf`, `gate_plating`, `garden_plot`, `ammo_bench`, `shell_bench`, `rifle_bench`, `ladder` (stretched to its height) | at their own size |
+| A camp | `campfire`, `tent`, `camp_table` (with the chair and radio), `logbook`, `bulletin_board` in `world/props/`; the crate is the furniture supply crate | at their own size |
+| Planks and barricades | `window_planks`, `door_planks` (stretched to the opening), `barricade` in `world/props/` | |
+
+### What a prop model needs
+- **Facing -Z** (like the kit): a car's front, a door's face and a window's
+  outside toward -Z. A door's width runs along Z.
+- **Standing on its origin**, the size the game makes the thing (see each
+  stand-in: open its scene, it's under **StandIn**). Ones that are stretched
+  to fit can be any size.
+- **Collision:** give the model its own collision shapes (in Godot, a
+  StaticBody3D with CollisionShape3Ds in the model's scene; in Blender, name a
+  simple mesh with a `-col` ending and Godot makes one on import) and those
+  are what stops you and the zombies. Without any, the thing's box does.
+  Windows always use their pane's box (glass stops you, not bullets).
+- **Paint:** meshes named starting with `Paint` take the piece's **Material**
+  (a car's color) or a door's color.
+- **Glass:** in a window model, the parts named starting with `Glass` go when
+  it's smashed (without any, the whole model goes).
+- **Lights** in a model (the campfire's glow) work as they are.
+
+### What happens on its own
+- **Damage and searching:** a bashed door or fence, a cracked window and a
+  searched container get darker, whatever the model.
+- **The placement preview** of things you build shows the model, see-through.
+- **Drawing fewer things,** when a game starts:
+  - Each look's meshes become one (`world/props/kit_prop.gd`): parts in a plain
+    colored material (no texture, matte) all share one material, their color
+    kept in the mesh; textured parts keep their own material. Parts named
+    `Paint` or `Glass`, see-through parts, and models with an AnimationPlayer
+    are left as they are. So a model of many small parts costs no more than
+    one of a few.
+  - Furniture that never changes is merged into big meshes, models included
+    (`world/static_merge.gd`).
+  - Containers, doors, windows and strippable furniture can't be merged
+    (they change), so the same look is drawn many times at once instead
+    (`world/instancer.gd`: GPU instancing), until one changes.
+
+### The stand-ins
+`world/props/make_props.gd` makes them all, one script for each kind:
+`props_furniture.gd`, `props_built.gd` (things you build), `props_camp.gd` and
+`props_openings.gd` (doors and windows), on the building blocks in
+`prop_builder.gd`. To change one, edit its script and run `make_props.gd` from
+the project folder (Models you've set on the `world/props/` scenes are kept):
+
+```
+godot --headless --path . -s res://world/props/make_props.gd
+```
 
 ## Free models
 

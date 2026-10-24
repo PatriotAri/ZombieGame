@@ -2,9 +2,11 @@
 
 [ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_jdhun"]
 [ext_resource type="Material" path="res://world/kit/materials/wood_planks.tres" id="2_msyo1"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/table.tscn" id="9_standin"]
 
 [node name="Table" type="StaticBody3D" unique_id=874960836]
 script = ExtResource("1_jdhun")
 size = Vector3(1.2, 0.8, 1.8)
 material = ExtResource("2_msyo1")
 sits_on_floor = true
+models = Array[PackedScene]([ExtResource("9_standin")])

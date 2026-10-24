@@ -12,6 +12,26 @@ extends EditorPlugin
 ## with any path.)
 ## Plant brushes: pick a brush in the Plants section; the map's "Plants" node
 ## is selected and the 3D view paints where you click and drag.
+## Buildings: select a Building and pick a tool in the Buildings section; the
+## 3D view then draws its outline (corner by corner, on a 0.5 m grid, walls at
+## right angles unless Shift is held), draws inner walls (click each end),
+## places stairs (click where a flight starts, then which way it climbs), puts
+## doors and windows in its walls, outside or inner (click on a wall), or marks
+## a room to give it its own materials (click inside it), or places chimneys
+## and dormers (click on the roof's level: a dormer goes on the slope nearest
+## the click), porches and cellar doors (click on a wall). Right-click takes
+## back the last corner, or removes the inner wall, stairs, opening, room,
+## chimney, dormer, porch or cellar door under the mouse. Its walls' numbers
+## show while it's selected. Apply opens the ground for its basement.
+## Quests: New quest marker adds a spot, area or usable thing for quests to
+## point at (world/markers/quest_marker.gd). Check quests checks every quest
+## file against the open map (quests/quest_check.gd): missing markers and
+## people, typos in ids, stages nothing leads to, conversations with no end.
+## Mines: select a KitMine and pick a tool in the Mines section; the 3D view
+## then draws on the Level set there (its plan shows through the hill):
+## tunnels (click each corner; Esc or Enter ends one), chambers (click two
+## opposite corners), and entrances (click a tunnel's end). Right-click takes
+## back the last corner, or removes the tunnel or chamber under the mouse.
 
 const TerrainEdit := preload("res://world/map/terrain_edit.gd")
 const Road := preload("res://world/map/road.gd")
@@ -25,17 +45,35 @@ const MineEntrance := preload("res://world/map/mine_entrance.gd")
 const PlantsLayer := preload("res://world/map/plants_layer.gd")
 const Plants := preload("res://world/map/plants.gd")
 const PlantPainter := preload("res://world/map/plant_painter.gd")
+const Zone := preload("res://world/markers/zone.gd")
+const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
+const QuestMarker := preload("res://world/markers/quest_marker.gd")
+const PersonMarker := preload("res://world/markers/person_marker.gd")
+const SaveIds := preload("res://core/save_ids.gd")
+const QuestCheck := preload("res://quests/quest_check.gd")
+const Building := preload("res://world/building.gd")
+const BuildingTool := preload("res://addons/map_tools/building_tool.gd")
+const MineTool := preload("res://addons/map_tools/mine_tool.gd")
+## The silos New from template adds: [radius, height, wall material, roof material].
+const SILOS := {
+	"Concrete": [3.0, 12.0, "concrete_block", "metal_gray"],
+	"Metal": [3.5, 9.0, "metal_siding", "metal_gray"],
+	"Tall": [3.0, 18.0, "concrete_slab", "metal_gray"],
+}
 const ROADS_DIR := "res://world/map/roads/"
 const APPLY_MARGIN := 40.0 # meters around a path that an Apply's undo step covers
 const BRUSHES := ["Off", "Forest", "Paint plant", "Place one", "Erase"]
 const CREEK_KEPT := ["bed", "ground_before", "applied_points", "applied_depth"]
+const QUEST_REPORT_LINES := 12 # shown in the panel; the Output panel gets them all
 
 var _panel: Control
 var _road_styles: OptionButton
 var _selected_label: Label
 var _help: Label
+var _quest_report: Label
 var _draw: CheckButton
 var _apply: Button
+var _template_list: OptionButton
 var _add_span: Button
 var _add_falls: Button
 var _brush: OptionButton
@@ -45,6 +83,8 @@ var _density: HSlider
 var _size_label: Label
 var _density_label: Label
 var _selected: Node # the road, creek, pond, field, rock or mine selected, or null
+var _buildings := BuildingTool.new(self) # the Buildings section's tools (building_tool.gd)
+var _mines := MineTool.new(self) # the Mines section's tools (mine_tool.gd)
 var _rng := RandomNumberGenerator.new()
 var _painting := false
 var _last_paint := Vector3.INF
@@ -116,14 +156,51 @@ func _build_panel() -> Control:
 	_button(features, "New rock", "Adds a rock in front of the camera. Move, turn and scale it; change Shape for another one.", _new_rock)
 	_button(features, "New mine entrance", "Adds a mine entrance in front of the camera. Turn it into the hillside, then Apply to open the hill.", _new_mine)
 
+	var buildings := _section(root, "Buildings")
+	_button(buildings, "New building", "Adds a 10 x 10 m building with a door and windows in front of the camera. Then reshape it with the tools below or the Inspector.", _new_building)
+	_template_list = OptionButton.new()
+	_template_list.add_item("New from template...")
+	_template_list.set_item_disabled(0, true)
+	for t: String in KitTemplates.NAMES:
+		_template_list.add_separator(t)
+		for v: String in KitTemplates.VARIANTS[t]:
+			_template_list.add_item("%s: %s" % [t, v])
+			_template_list.set_item_metadata(_template_list.item_count - 1, [t, KitTemplates.VARIANTS[t].find(v)])
+	_template_list.add_separator("Silo")
+	for v: String in SILOS:
+		_template_list.add_item("Silo: " + v)
+		_template_list.set_item_metadata(_template_list.item_count - 1, ["Silo", SILOS.keys().find(v)])
+	_template_list.tooltip_text = "Adds a ready-made building in front of the camera (its Template settings in the Inspector change it later). Furnish its rooms with Furnish rooms."
+	_template_list.item_selected.connect(_new_from_template)
+	buildings.add_child(_template_list)
+	_button(buildings, "Furnish rooms", "Puts furniture in the selected building's rooms that have a Kind (Paint room, or a template's). Again: replaces what it put in. Ctrl+Z undoes it.", _furnish_selected)
+	_buildings.build_section(buildings)
+
+	var mines := _section(root, "Mines")
+	_button(mines, "New mine", "Adds a mine in front of the camera: a tunnel into the hill from an entrance. Draw more with the tools below; Apply opens the hill.", _new_kit_mine)
+	_mines.build_section(mines)
+
+	var places := _section(root, "Zones and camps")
+	_button(places, "New zone", "Adds a zone (a named area) in front of the camera. Name it in the Inspector, then Draw points around its edge.", _new_zone)
+	_button(places, "Police station camp", "Adds the police station's base camp marker in front of the camera (one per map). Drag its Logbook, Board and Crate markers where they go.", _new_base_camp)
+
+	var quest_tools := _section(root, "Quests")
+	_button(quest_tools, "New person", "Adds a person marker in front of the camera: who stands there when a new game starts. Pick their person file (characters/npcs/people/) in the Inspector.", _new_person)
+	_button(quest_tools, "New quest marker", "Adds a quest marker in front of the camera: a spot, an area or something to use that quests point at. Give it a Marker Id in the Inspector (QUESTS.md).", _new_quest_marker)
+	_button(quest_tools, "Check quests", "Checks every quest (quests/main/, quests/side/) against this map: quest markers and people they name that aren't here, ids that don't match, stages nothing leads to, conversations that can't end. The list shows here and in the Output panel.", _check_quests)
+	_quest_report = Label.new()
+	_quest_report.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_quest_report.custom_minimum_size = Vector2(320, 0)
+	quest_tools.add_child(_quest_report)
+
 	var selected := _section(root, "Selected")
 	_selected_label = Label.new()
 	selected.add_child(_selected_label)
 	_draw = CheckButton.new()
 	_draw.text = "Draw points"
-	_draw.tooltip_text = "Click on the ground in the 3D view to add points to the selected road, creek or crop field. Right-click removes the last point."
+	_draw.tooltip_text = "Click on the ground in the 3D view to add points to the selected road, creek, crop field or zone. Right-click removes the last point."
 	selected.add_child(_draw)
-	_apply = _button(selected, "Apply", "Shapes, paints or opens the ground for the selected road, creek, crop field or mine entrance. Ctrl+Z undoes it.", _apply_selected)
+	_apply = _button(selected, "Apply", "Shapes, paints or opens the ground for the selected road, creek, crop field, mine, mine entrance or building with a basement. Ctrl+Z undoes it.", _apply_selected)
 
 	_help = Label.new()
 	_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -195,13 +272,17 @@ func _on_selection_changed() -> void:
 	var nodes := EditorInterface.get_selection().get_selected_nodes()
 	_selected = null
 	if nodes.size() == 1 and (nodes[0] is Road or nodes[0] is Creek or nodes[0] is Pond or nodes[0] is CropField
-			or nodes[0] is Rock or nodes[0] is MineEntrance or nodes[0] is PlantsLayer):
+			or nodes[0] is Rock or nodes[0] is MineEntrance or nodes[0] is PlantsLayer or nodes[0] is Zone or nodes[0] is Building
+			or nodes[0] is KitMine):
 		_selected = nodes[0]
-	var path := _selected is Road or _selected is Creek or _selected is CropField
+	_mines.selection_changed()
+	_buildings.selection_changed()
+	var path := _selected is Road or _selected is Creek or _selected is CropField or _selected is Zone
 	_draw.disabled = not path
 	if not path:
 		_draw.button_pressed = false
-	_apply.disabled = not (path or _selected is MineEntrance)
+	_apply.disabled = not ((path and not _selected is Zone) or _selected is MineEntrance or _selected is Building
+			or _selected is KitMine)
 	_add_span.disabled = not _selected is Road
 	_add_falls.disabled = not _selected is Creek
 	if not _selected is PlantsLayer and _brush.selected != 0:
@@ -213,9 +294,18 @@ func _on_selection_changed() -> void:
 	elif _selected is PlantsLayer:
 		_selected_label.text = "Plant brush: %s" % BRUSHES[_brush.selected]
 		_help.text = "Click and drag on the ground to paint (Place one: click). Ctrl+Z undoes a stroke. Choose another brush, or Off, in the Plants section."
+	elif _selected is Zone:
+		_selected_label.text = "Zone: %s (%d corners)" % [(_selected as Zone).zone_name, (_selected as Path3D).curve.point_count if (_selected as Path3D).curve else 0]
+		_help.text = "Name it in the Inspector (Zone Name). Turn on Draw points and click its corners on the ground, all the way round (it closes itself; right-click removes the last). Drag points to reshape it."
 	elif path:
 		_selected_label.text = "%s (%d points)" % [_selected.name, (_selected as Path3D).curve.point_count if (_selected as Path3D).curve else 0]
 		_help.text = "Turn on Draw points and click on the ground to add points (right-click removes the last). Drag points to move them. Then press Apply. Ctrl+Z undoes an Apply."
+	elif _selected is Building:
+		_selected_label.text = "%s (%s)" % [_selected.name, BuildingTool.BUILDING_TOOLS[_buildings.tool_list.selected]]
+		_help.text = _buildings.help()
+	elif _selected is KitMine:
+		_selected_label.text = "%s (%s, level %d)" % [_selected.name, MineTool.MINE_TOOLS[_mines.tool_list.selected], int(_mines.level_box.value)]
+		_help.text = _mines.help()
 	elif _selected is MineEntrance:
 		_selected_label.text = "%s" % _selected.name
 		_help.text = "Turn it so the tunnel runs into a steep hillside and set its floor at the ground, then press Apply to open the hill."
@@ -362,6 +452,108 @@ func _new_rock() -> void:
 	_add(rock, _group("Rocks"), "New rock")
 
 
+func _new_zone() -> void:
+	var zone := Zone.new()
+	zone.name = "Zone"
+	zone.curve = Curve3D.new()
+	_add(zone, _group("Zones"), "New zone")
+
+
+func _new_base_camp() -> void:
+	var markers := _group("Markers")
+	for node in EditorInterface.get_edited_scene_root().find_children("*", "Marker3D", true, false):
+		if node is BaseCampMarker:
+			push_warning("The map already has a police station camp marker (%s): move that one." % node.name)
+			EditorInterface.get_selection().clear()
+			EditorInterface.get_selection().add_node(node)
+			return
+	var camp := BaseCampMarker.new()
+	camp.name = "PoliceStationCamp"
+	camp.position = _in_view()
+	_add(camp, markers, "Police station camp")
+	camp._ready() # its Logbook, Board and Crate markers, now that it's in the scene
+
+
+## Just before the editor saves: everything on a map a save needs to find gets
+## its save id (core/save_ids.gd).
+func _apply_changes() -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	if root and root.scene_file_path.begins_with("res://world/map/"):
+		SaveIds.assign(root)
+
+
+func _new_person() -> void:
+	var marker := PersonMarker.new()
+	marker.name = "Person"
+	marker.position = _in_view()
+	_add(marker, _group("People"), "New person")
+
+
+func _check_quests() -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null:
+		_quest_report.text = "Open world/map/map.tscn first."
+		return
+	var found := QuestCheck.check(root)
+	if found.is_empty():
+		_quest_report.text = "Nothing wrong with the quests on this map."
+		print("Check quests: nothing wrong.")
+		return
+	print("Check quests: %d problem%s" % [found.size(), "" if found.size() == 1 else "s"])
+	for line in found:
+		print("  " + line)
+	var shown := found.slice(0, QUEST_REPORT_LINES)
+	if found.size() > shown.size():
+		shown.append("...and %d more (all of them are in the Output panel)." % (found.size() - shown.size()))
+	_quest_report.text = "\n".join(shown)
+
+
+func _new_quest_marker() -> void:
+	var marker := QuestMarker.new()
+	marker.name = "QuestMarker"
+	marker.position = _in_view()
+	_add(marker, _group("QuestMarkers"), "New quest marker")
+
+
+func _new_building() -> void:
+	var building := Building.new()
+	building.name = "Building"
+	building.position = _in_view()
+	building.floor_y = 0.02
+	building.default_openings()
+	_add(building, _group("Buildings"), "New building")
+
+
+func _new_from_template(index: int) -> void:
+	var picked: Array = _template_list.get_item_metadata(index)
+	_template_list.select(0)
+	if picked[0] == "Silo":
+		var spec: Array = SILOS.values()[picked[1]]
+		var silo := KitSilo.new()
+		silo.name = "Silo"
+		silo.position = _in_view()
+		silo.radius = spec[0]
+		silo.height = spec[1]
+		silo.wall_material = load("res://world/kit/materials/%s.tres" % spec[2])
+		silo.roof_material = load("res://world/kit/materials/%s.tres" % spec[3])
+		_add(silo, _group("Buildings"), "New silo")
+		return
+	var building := Building.new()
+	building.name = (picked[0] as String).to_pascal_case()
+	building.position = _in_view()
+	building.template = picked[0]
+	building.template_variant = picked[1]
+	building.apply_template() # (not in the scene yet: the add below is the undo step)
+	_add(building, _group("Buildings"), "New " + picked[0])
+
+
+func _furnish_selected() -> void:
+	if not _selected is Building:
+		push_warning("Select a building in the map scene to furnish.")
+		return
+	_selected.call("furnish_rooms")
+
+
 func _new_mine() -> void:
 	var mine := MineEntrance.new()
 	mine.name = "MineEntrance"
@@ -369,6 +561,19 @@ func _new_mine() -> void:
 	var ahead := _view_ahead()
 	mine.rotation.y = atan2(ahead.x, ahead.z) # the tunnel (-Z) runs away from you
 	_add(mine, _group("Mines"), "New mine entrance")
+
+
+func _new_kit_mine() -> void:
+	var mine := KitMine.new()
+	mine.name = "Mine"
+	mine.position = _in_view()
+	var ahead := _view_ahead()
+	mine.rotation.y = atan2(ahead.x, ahead.z) # its tunnel (-Z) runs away from you
+	var points: Array[Vector3i] = [Vector3i(0, 0, 0), Vector3i(0, 0, -6)]
+	var tunnel := MineTunnel.make(points, _mines.rails_box.button_pressed)
+	tunnel.entrance_at_start = true
+	mine.tunnels = [tunnel]
+	_add(mine, _group("Mines"), "New mine")
 
 
 func _view_ahead() -> Vector3:
@@ -383,7 +588,7 @@ func _view_ahead() -> Vector3:
 func _apply_selected() -> void:
 	var terrain := _terrain()
 	if terrain == null or not _selected or not _selected.has_method("apply"):
-		push_warning("Select a road, creek, crop field or mine entrance in the map scene (world/map/map.tscn) to apply.")
+		push_warning("Select a road, creek, crop field, mine, mine entrance or building in the map scene (world/map/map.tscn) to apply.")
 		return
 	var node := _selected as Node3D
 	var rect: Rect2
@@ -528,13 +733,18 @@ func _show_ring(on: bool, at := Vector3.ZERO) -> void:
 # --- Mouse in the 3D view ----------------------------------------------------------------
 
 func _handles(object: Object) -> bool:
-	return object is Road or object is Creek or object is CropField or object is PlantsLayer
+	return object is Road or object is Creek or object is CropField or object is PlantsLayer or object is Zone \
+			or object is Building or object is KitMine
 
 
 func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 	if _selected is PlantsLayer and _brush.selected != 0:
 		return _brush_input(camera, event)
-	if not _draw.button_pressed or not (_selected is Road or _selected is Creek or _selected is CropField):
+	if _selected is Building and _buildings.tool_list.selected != 0:
+		return _buildings.input(camera, event)
+	if _selected is KitMine and _mines.tool_list.selected != 0:
+		return _mines.input(camera, event)
+	if not _draw.button_pressed or not (_selected is Road or _selected is Creek or _selected is CropField or _selected is Zone):
 		return AFTER_GUI_INPUT_PASS
 	var mb := event as InputEventMouseButton
 	if mb == null or not mb.pressed:

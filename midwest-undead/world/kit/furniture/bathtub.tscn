@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_72ipi"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/bathtub.tscn" id="2_egs5c"]
+
+[node name="Bathtub" type="StaticBody3D" unique_id=948841080]
+script = ExtResource("1_72ipi")
+size = Vector3(1.7, 0.55, 0.75)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_egs5c")])

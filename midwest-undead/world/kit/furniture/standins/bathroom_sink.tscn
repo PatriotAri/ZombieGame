@@ -1,0 +1,41 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4s7iu"]
+albedo_color = Color(0.9, 0.9, 0.87, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_i7kso"]
+material = SubResource("StandardMaterial3D_4s7iu")
+size = Vector3(0.6, 0.15, 0.45)
+
+[sub_resource type="BoxMesh" id="BoxMesh_b86x7"]
+material = SubResource("StandardMaterial3D_4s7iu")
+size = Vector3(0.2, 0.75, 0.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_hg1i2"]
+material = SubResource("StandardMaterial3D_4s7iu")
+size = Vector3(0.55, 0.65, 0.14)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4snqd"]
+albedo_color = Color(0.6, 0.68, 0.72, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_5h6wa"]
+material = SubResource("StandardMaterial3D_4snqd")
+size = Vector3(0.5, 0.58, 0.02)
+
+[node name="BathroomSink" type="Node3D" unique_id=787769226]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=904950247]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+mesh = SubResource("BoxMesh_i7kso")
+
+[node name="@MeshInstance3D@182" type="MeshInstance3D" parent="." unique_id=295111601]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.37, -0.1)
+mesh = SubResource("BoxMesh_b86x7")
+
+[node name="Paint2" type="MeshInstance3D" parent="." unique_id=332165678]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.45, -0.15)
+mesh = SubResource("BoxMesh_hg1i2")
+
+[node name="@MeshInstance3D@183" type="MeshInstance3D" parent="." unique_id=197186165]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.45, -0.07)
+mesh = SubResource("BoxMesh_5h6wa")

@@ -29,10 +29,14 @@ const Fortification := preload("res://world/fortification.gd")
 const Sound := preload("res://core/sound.gd")
 const Ground := preload("res://world/ground.gd")
 const NavTiles := preload("res://world/nav_tiles.gd")
-const ViewDistance := preload("res://core/view_distance.gd")
 const VIEW_METERS := 80.0 # boards past this aren't drawn (core/view_distance.gd)
 
 const BARRICADE_SIZE := Vector3(2.4, 1.6, 0.2) # width, height, thickness
+## How they look (set Models on these to swap in models; HOW_TO_MODEL.md, "Props").
+const WINDOW_PLANKS := preload("res://world/props/window_planks.tscn")
+const DOOR_PLANKS := preload("res://world/props/door_planks.tscn")
+const BARRICADE := preload("res://world/props/barricade.tscn")
+## The stand-ins' colors (world/props/make_props.gd).
 const WOOD := Color(0.58, 0.45, 0.28)
 const WOOD_DARK := Color(0.42, 0.31, 0.19)
 const LINK_REACH := 0.9 # how far out from the wall, each side, a window's path link ends
@@ -47,6 +51,7 @@ var nav_region: NavTiles # where planks and barricades go (they're in the naviga
 ## "planks" (or null), "at_start": boarded when a new game starts}.
 var openings: Array[Dictionary] = []
 var barricades: Array[Fortification] = []
+var _room_query: PhysicsShapeQueryParameters3D # can_place_barricade()'s, made once
 
 
 func _ready() -> void:
@@ -107,16 +112,19 @@ func describe(index: int) -> String:
 
 
 ## Room for a barricade here? (Nothing solid in the way, people included.)
+## (Asked every frame while you hold one: the query is made once.)
 func can_place_barricade(xform: Transform3D) -> bool:
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(BARRICADE_SIZE.x, BARRICADE_SIZE.y - 0.25, BARRICADE_SIZE.z + 0.1)
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = shape
+	if _room_query == null:
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(BARRICADE_SIZE.x, BARRICADE_SIZE.y - 0.25, BARRICADE_SIZE.z + 0.1)
+		_room_query = PhysicsShapeQueryParameters3D.new()
+		_room_query.shape = shape
+		_room_query.collision_mask = GameData.LAYER_WORLD | GameData.LAYER_GLASS | GameData.LAYER_PLAYER \
+				| GameData.LAYER_ZOMBIES | GameData.LAYER_NPC
 	# Lifted a little off the ground, so the ground, a curb or a road doesn't count.
-	query.transform = xform * Transform3D(Basis.IDENTITY, Vector3(0, 0.15 + shape.size.y / 2.0, 0))
-	query.collision_mask = GameData.LAYER_WORLD | GameData.LAYER_GLASS | GameData.LAYER_PLAYER \
-			| GameData.LAYER_ZOMBIES | GameData.LAYER_NPC
-	return get_viewport().get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
+	var lift := 0.15 + (_room_query.shape as BoxShape3D).size.y / 2.0
+	_room_query.transform = xform * Transform3D(Basis.IDENTITY, Vector3(0, lift, 0))
+	return get_viewport().get_world_3d().direct_space_state.intersect_shape(_room_query, 1).is_empty()
 
 
 # --- Changes -------------------------------------------------------------------
@@ -147,14 +155,9 @@ func place_barricade(xform: Transform3D, quiet := false) -> void:
 	var body := Fortification.new()
 	body.kind = "barricade"
 	body.transform = xform
-	var half := BARRICADE_SIZE / 2.0
-	for x: float in [-half.x + 0.1, half.x - 0.1]: # posts
-		_board_mesh(body, Vector3(0.14, BARRICADE_SIZE.y, 0.14), Vector3(x, half.y, 0.0), 0.0, WOOD_DARK)
-	for i in 4: # rails, a little crooked
-		_board_mesh(body, Vector3(BARRICADE_SIZE.x, 0.22, 0.06),
-				Vector3(0.0, 0.3 + i * 0.36, 0.05), [0.03, -0.05, 0.02, -0.03][i], WOOD)
-	_box_collision(body, BARRICADE_SIZE, Vector3(0, half.y, 0))
 	nav_region.add_child(body)
+	if not _add_look(body, BARRICADE):
+		_box_collision(body, BARRICADE_SIZE, Vector3(0, BARRICADE_SIZE.y / 2.0, 0))
 	barricades.append(body)
 	if not quiet:
 		Sound.play_at(body, "hammer", body.global_position, 0.0, 30.0)
@@ -273,41 +276,33 @@ func _add_opening(record: Dictionary, floor_y: float) -> void:
 	openings.append(o)
 
 
-## Boards nailed across the outside of the opening, and one solid box that blocks it.
+## Boards nailed across the outside of the opening (stretched to it), and one
+## solid box that blocks it (or the model's own collision shapes).
 func _make_planks(o: Dictionary) -> Fortification:
 	var body := Fortification.new()
 	body.kind = "planks"
 	var width: float = o["width"]
 	var height: float = o["height"]
 	var count := 4 if o["kind"] == "door" else 3
-	for i in count:
-		var y := -height / 2.0 + height * (i + 0.5) / count
-		_board_mesh(body, Vector3(0.05, 0.22, width + 0.3), Vector3(0.0, y, 0.0), [0.04, -0.06, 0.03, -0.04][i], WOOD)
-	_box_collision(body, Vector3(0.1, height + 0.1, width + 0.2), Vector3.ZERO)
-	nav_region.add_child(body) # in the bake: zombies path around a boarded opening
 	var xform: Transform3D = o["transform"]
-	body.global_transform = Transform3D(xform.basis, xform.origin + xform.basis.x * 0.17) # just outside the wall
+	var at := Transform3D(xform.basis, xform.origin + xform.basis.x * 0.17) # just outside the wall
+	body.transform = nav_region.global_transform.affine_inverse() * at
+	nav_region.add_child(body) # in the bake: zombies path around a boarded opening
+	# The boards reach from the middle of the top one to the middle of the bottom one, plus a board.
+	var boards := Vector3(0.06, height - height / count + 0.22, width + 0.3)
+	if not _add_look(body, DOOR_PLANKS if o["kind"] == "door" else WINDOW_PLANKS, boards):
+		_box_collision(body, Vector3(0.1, height + 0.1, width + 0.2), Vector3.ZERO)
 	return body
 
 
-## One material per wood color, shared by every board.
-static var _wood := {}
-
-
-func _board_mesh(parent: Node3D, size: Vector3, pos: Vector3, tilt: float, color: Color) -> void:
-	if not _wood.has(color):
-		var made := StandardMaterial3D.new()
-		made.albedo_color = color
-		_wood[color] = made
-	var box := BoxMesh.new()
-	box.size = size
-	box.material = _wood[color]
-	var inst := MeshInstance3D.new()
-	inst.mesh = box
-	inst.position = pos
-	inst.rotation.x = tilt
-	parent.add_child(inst)
-	ViewDistance.limit(inst, VIEW_METERS)
+## The look from a prop scene on body (fitted to size, if given). Returns true
+## when the model brought its own collision shapes.
+func _add_look(body: Fortification, scene: PackedScene, size := Vector3.ZERO) -> bool:
+	var look := KitProp.make(scene, [], size)
+	look.name = "Look"
+	body.add_child(look)
+	look.limit_view(VIEW_METERS)
+	return look.take_shapes(body)
 
 
 func _box_collision(parent: Node3D, size: Vector3, pos: Vector3) -> void:

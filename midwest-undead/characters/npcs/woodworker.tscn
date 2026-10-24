@@ -6,6 +6,7 @@
 [node name="Woodworker" instance=ExtResource("1_base")]
 script = ExtResource("2_wood")
 display_name = "Woodworker"
+npc_id = "woodworker"
 show_name_tag = true
 outfit_color = Color(0.45, 0.33, 0.2, 1)
 skin_color = Color(0.7, 0.55, 0.43, 1)

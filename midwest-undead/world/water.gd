@@ -1,10 +1,11 @@
 extends RefCounted
 ## Where the water is, for everyone who needs to know: the player (wading and
 ## swimming), zombies (slowed, and drowning in deep water) and anything else.
-## Every pond and creek on the map (world/map/pond.gd, world/map/creek.gd) puts
-## itself in the "water" group and answers surface_at(pos): the height of its
-## water surface above that point, or NAN if it doesn't cover it. Never
-## instanced.
+## Every pond and creek on the map (world/map/pond.gd, world/map/creek.gd), and
+## flooded mine level (world/map/mine_water.gd), puts itself in the "water"
+## group and answers surface_at(pos): the height of its water surface above
+## that point, or NAN if it doesn't cover it; and water_rect(): the (x, z) area
+## it could cover, looked at first. Never instanced.
 ##
 ##   shallow  (WADE_DEPTH to SWIM_DEPTH deep): you wade, slowly; zombies slower
 ##   deep     (SWIM_DEPTH or more): you swim (no guns); zombies sink and drown
@@ -17,7 +18,10 @@ const SWIM_DEPTH := 1.3 # this deep and you're swimming (chest-deep)
 ## there's no water.
 static func surface_at(tree: SceneTree, pos: Vector3) -> float:
 	var best := NAN
+	var flat := Vector2(pos.x, pos.z)
 	for body in tree.get_nodes_in_group("water"):
+		if not (body.call("water_rect") as Rect2).has_point(flat):
+			continue # (quick: a creek's own lookup is slow)
 		var s: float = body.call("surface_at", pos)
 		if not is_nan(s) and (is_nan(best) or s > best):
 			best = s

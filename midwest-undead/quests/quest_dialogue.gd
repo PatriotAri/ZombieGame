@@ -12,6 +12,16 @@ func first() -> QuestDialogueNode:
 	return nodes[0] if not nodes.is_empty() else null
 
 
+## Where it starts: the first node whose Start When holds (q: the quest
+## manager, which checks conditions), or else the first.
+func start_node(q: Node) -> QuestDialogueNode:
+	if q:
+		for node in nodes:
+			if node and not node.start_when.is_empty() and q.all_hold(node.start_when):
+				return node
+	return first()
+
+
 func find(node_id: String) -> QuestDialogueNode:
 	for node in nodes:
 		if node and node.id == node_id:

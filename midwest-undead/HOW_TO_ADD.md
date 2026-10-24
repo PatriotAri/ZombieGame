@@ -31,6 +31,8 @@ tables, recipes, quests and markers. Don't change one once it's in use.
   - `board` / `barricade` / `build`: like planks / a barricade / a building
     piece. A new `build` item also needs code in `world/structures.gd`.
   - `plate`: like sheet metal: covers the fence or gate you're looking at.
+  - `throw`: like dynamite: lit and thrown (crouching: set down lit). It
+    goes off as dynamite does (`world/dynamite.gd`).
 - **Order:** where it comes in inventory lists (lower first). Today's items use
   10, 20, 30...
 - **Looks:**
@@ -52,7 +54,10 @@ A new item is in the game, but nothing hands it out yet. Add it to:
 ## Weapons (`items/data/`, WeaponData)
 
 A weapon is an item (everything above) plus how it fights. **Weapon Kind** is
-`gun` or `melee`.
+`gun` or `melee`. You carry three weapons ready to switch between (the mouse
+wheel or the D-pad, or 1-3): a primary gun, a sidearm and a melee weapon. A gun
+goes in the slot its **Gun Slot** says (below); melee weapons share the melee
+slot. Extra weapons wait in the backpack, where you can swap one in.
 
 - **In your hands:**
   - **Held Model:** the scene in front of the camera. Copy
@@ -71,6 +76,8 @@ A weapon is an item (everything above) plus how it fights. **Weapon Kind** is
   - **Noise:** meters. Zombies this close hear it: a gun on every shot, a melee
     weapon when it hits. The pistol is 40.
 - **Gun:**
+  - **Gun Slot:** `Primary` (a long gun: the shotgun, the rifle) or `Sidearm`
+    (a handgun: the pistol).
   - **Ammo:** the item id it loads.
   - **Magazine:** rounds it holds.
   - **Pellets:** shots per trigger pull (the shotgun has 9).
@@ -85,6 +92,8 @@ A weapon is an item (everything above) plus how it fights. **Weapon Kind** is
   - **Stamina Cost:** stamina each swing takes.
   - **Salvages:** it can pry things apart for materials (hold interact), like
     the crowbar.
+  - **Digs:** it digs through a mine's cave-ins (hold interact), like the
+    pickaxe.
 
 Fists aren't a file: they're what you have with empty hands.
 
@@ -127,26 +136,36 @@ Every new zombie, at the start and arriving later, rolls a kind:
 - **Skin Color:** leave it fully transparent for the usual skin. Each zombie's
   is a little lighter or darker; shirts and pants are random.
 - **Voice Pitch:** its groans; 1 is normal, higher is shriller.
+- **Mines Only:** never up top; down a mine, its Spawn Chance is the chance
+  a zombie there is this kind (like the miner).
+- **Hard Hat:** the first headshot only knocks its hat off.
+- **Head Lamp:** a lamp glowing on its hat (with Hard Hat).
 
 ## Survivors (`characters/npcs/survivors/`, SurvivorData)
 
-- **Display Name:** how the game shows them. Quests (a `talk_to` step's target)
-  and markers go by it too.
+- **Display Name:** how the game shows them. Their SpawnPoints go by it.
+- **Id:** what quests call them (their Npc Id: no spaces, unique). Empty: the
+  name in lower case with `_` for spaces (`marisol_vega`).
 - **Job:**
-  - `none`: they work a garden plot or a bench at the base.
+  - `none`: they work a garden plot or a bench at their camp, or stand guard on
+    a guard post.
   - `machinist`: they make benches once the woodworker's at the station.
+- **Model:** optional, their own model (see `HOW_TO_MODEL.md`). Empty: the one
+  every survivor has.
 - **Outfit Color, Skin Color.**
 - **Talk:**
   - **Join Talk:** a conversation, the same as in quests (see `QUESTS.md`).
-    Give it a reply with the `join` action and picking that brings them to the
-    base. A `decline` reply leaves them where they are for now. With no `join`
+    Give it a reply with the `join` action and picking that brings them to a
+    camp. A `decline` reply leaves them where they are for now. With no `join`
     reply anywhere, hearing them out brings them.
-  - **Base Talk:** optional. What they say at the base before their work menu.
+  - **Base Talk:** optional. What they say at their camp before their work menu.
   - **Base Line:** what they say over their work menu.
 
-Then put two SpawnPoints on the map (world/map/map.tscn) with **Person** set to their name
+Then put their SpawnPoints on the map (world/map/map.tscn) with **Person** set to their name
 (see `HOW_TO_BUILD.md`):
 - **survivor:** where you find them. Put it in a house.
-- **survivor_home:** their spot in the station yard.
+- **survivor_home:** optional. Their own spot at the police station. Without
+  one, they stand round whichever camp they live at.
 
-If the base is full when you find them, they stay put and say so.
+When they join, they head to a base camp with room. If more than one has room,
+you pick which. If every camp is full, they stay put and say so.

@@ -1,8 +1,9 @@
 extends RefCounted
-## Small things stop being drawn past a distance (the graphics card skips them):
-## containers, items on the ground, windows, doors, boards. Each says how far
-## it shows from (limit()); the View Distance setting scales them all
-## (set_scale()). Never instanced.
+## Things stop being drawn past a distance (the graphics card skips them):
+## containers, items on the ground, windows, doors, boards, and, much further
+## out, whole patches of town (static_merge.gd). Each says how far it shows
+## from (limit()); the View Distance setting scales them all (set_scale()).
+## Never instanced.
 
 const GROUP := &"view_limited"
 ## The View Distance setting: 1 is as tuned, less draws less.
@@ -20,7 +21,11 @@ static func limit(geom: GeometryInstance3D, meters: float) -> void:
 
 ## A box-shaped thing: the bigger it is, the further it shows (a dresser ~40 m, a car ~120 m).
 static func limit_by_size(geom: GeometryInstance3D, size: Vector3) -> void:
-	limit(geom, clampf(maxf(size.x, maxf(size.y, size.z)) * 30.0, 35.0, 150.0))
+	limit(geom, meters_for_size(size))
+
+
+static func meters_for_size(size: Vector3) -> float:
+	return clampf(maxf(size.x, maxf(size.y, size.z)) * 30.0, 35.0, 150.0)
 
 
 static func set_scale(tree: SceneTree, value: float) -> void:

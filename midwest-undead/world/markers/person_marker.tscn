@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/markers/person_marker.gd" id="1_pm"]
+
+[node name="PersonMarker" type="Marker3D"]
+script = ExtResource("1_pm")

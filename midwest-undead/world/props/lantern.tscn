@@ -1,0 +1,75 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/props/kit_prop.gd" id="1_tfoso"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pb54w"]
+albedo_color = Color(0.25, 0.3, 0.22, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_r6e0b"]
+material = SubResource("StandardMaterial3D_pb54w")
+size = Vector3(0.2, 0.1, 0.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_x6asc"]
+shading_mode = 0
+albedo_color = Color(1, 0.8, 0.45, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_mpep7"]
+size = Vector3(0.13, 0.16, 0.13)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ekxun"]
+albedo_color = Color(0.14, 0.14, 0.15, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_cmhf4"]
+material = SubResource("StandardMaterial3D_ekxun")
+size = Vector3(0.015, 0.18, 0.015)
+
+[sub_resource type="BoxMesh" id="BoxMesh_3sgns"]
+material = SubResource("StandardMaterial3D_ekxun")
+size = Vector3(0.015, 0.18, 0.015)
+
+[sub_resource type="BoxMesh" id="BoxMesh_hb5ju"]
+material = SubResource("StandardMaterial3D_pb54w")
+size = Vector3(0.18, 0.04, 0.18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_6xjpr"]
+material = SubResource("StandardMaterial3D_ekxun")
+size = Vector3(0.2, 0.015, 0.015)
+
+[node name="Lantern" type="Node3D" unique_id=1444682261]
+script = ExtResource("1_tfoso")
+
+[node name="StandIn" type="Node3D" parent="." unique_id=2024604800]
+
+[node name="Paint" type="MeshInstance3D" parent="StandIn" unique_id=1610235473]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
+mesh = SubResource("BoxMesh_r6e0b")
+
+[node name="Flame" type="MeshInstance3D" parent="StandIn" unique_id=848548520]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18, 0)
+material_override = SubResource("StandardMaterial3D_x6asc")
+cast_shadow = 0
+mesh = SubResource("BoxMesh_mpep7")
+
+[node name="@MeshInstance3D@475" type="MeshInstance3D" parent="StandIn" unique_id=725234227]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.08, 0.19, 0)
+mesh = SubResource("BoxMesh_cmhf4")
+
+[node name="@MeshInstance3D@476" type="MeshInstance3D" parent="StandIn" unique_id=460134114]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.08, 0.19, 0)
+mesh = SubResource("BoxMesh_3sgns")
+
+[node name="@MeshInstance3D@477" type="MeshInstance3D" parent="StandIn" unique_id=2089253411]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.29, 0)
+mesh = SubResource("BoxMesh_hb5ju")
+
+[node name="@MeshInstance3D@478" type="MeshInstance3D" parent="StandIn" unique_id=665024208]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.38, 0)
+mesh = SubResource("BoxMesh_6xjpr")
+
+[node name="Glow" type="OmniLight3D" parent="StandIn" unique_id=637834762]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+light_color = Color(1, 0.75, 0.45, 1)
+light_energy = 1.4
+distance_fade_enabled = true
+distance_fade_begin = 60.0
+omni_range = 8.0

@@ -5,11 +5,16 @@ extends Resource
 ## the station's back yard are SpawnPoints in the map scene (roles "survivor"
 ## and "survivor_home", Person set to their name).
 
-## Their name as the game shows it. Saves, SpawnPoints and quests go by it.
+## Their name as the game shows it. Saves and SpawnPoints go by it.
 @export var display_name := ""
+## What quests call them: no spaces (marisol_vega). Empty: their name in lower
+## case with _ for spaces.
+@export var id := ""
 ## What they do at the base besides working a station. "machinist": makes
 ## benches (once the woodworker's at the station) instead of working one.
 @export_enum("none", "machinist") var job := "none"
+## Their own model (HOW_TO_MODEL.md). Empty: the one survivor.tscn has.
+@export var model: PackedScene
 @export var outfit_color := Color(0.4, 0.4, 0.4)
 @export var skin_color := Color(0.7, 0.55, 0.45)
 
@@ -22,3 +27,8 @@ extends Resource
 @export var base_talk: QuestDialogue
 ## What they say over their work menu at the base.
 @export var base_line := ""
+
+
+## Their id: `id`, or made from their name.
+func npc_id() -> String:
+	return id if id != "" else display_name.strip_edges().to_lower().replace(" ", "_")

@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_dfv3f"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/cell_bars.tscn" id="2_hpdjp"]
+
+[node name="CellBars" type="StaticBody3D" unique_id=1325574750]
+script = ExtResource("1_dfv3f")
+size = Vector3(1, 2.6, 0.1)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_hpdjp")])

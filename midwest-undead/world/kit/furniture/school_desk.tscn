@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_l032k"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/school_desk.tscn" id="2_61fn1"]
+
+[node name="SchoolDesk" type="StaticBody3D" unique_id=786733064]
+script = ExtResource("1_l032k")
+size = Vector3(0.65, 0.76, 0.5)
+sits_on_floor = true
+solid = false
+models = Array[PackedScene]([ExtResource("2_61fn1")])

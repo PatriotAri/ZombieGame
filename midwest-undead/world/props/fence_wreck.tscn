@@ -1,0 +1,43 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/props/kit_prop.gd" id="1_r0xgi"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ht8e0"]
+albedo_color = Color(0.4, 0.3, 0.19, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_5p5c6"]
+material = SubResource("StandardMaterial3D_ht8e0")
+size = Vector3(1.4, 0.05, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_5nb6t"]
+material = SubResource("StandardMaterial3D_ht8e0")
+size = Vector3(1.4, 0.05, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lbyfe"]
+material = SubResource("StandardMaterial3D_ht8e0")
+size = Vector3(1.4, 0.05, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_qnuek"]
+material = SubResource("StandardMaterial3D_ht8e0")
+size = Vector3(0.14, 0.6, 0.14)
+
+[node name="FenceWreck" type="Node3D" unique_id=1453689698]
+script = ExtResource("1_r0xgi")
+
+[node name="StandIn" type="Node3D" parent="." unique_id=483165442]
+
+[node name="@MeshInstance3D@132" type="MeshInstance3D" parent="StandIn" unique_id=305610219]
+transform = Transform3D(0.921061, 0, -0.38941833, 0, 1, 0, 0.38941833, 0, 0.921061, -0.8, 0.04, 0.3)
+mesh = SubResource("BoxMesh_5p5c6")
+
+[node name="@MeshInstance3D@133" type="MeshInstance3D" parent="StandIn" unique_id=1611079280]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.4, 0.04, -0.2)
+mesh = SubResource("BoxMesh_5nb6t")
+
+[node name="@MeshInstance3D@134" type="MeshInstance3D" parent="StandIn" unique_id=1603594681]
+transform = Transform3D(0.921061, 0, 0.38941833, 0, 1, 0, -0.38941833, 0, 0.921061, 0.9, 0.04, 0.5)
+mesh = SubResource("BoxMesh_lbyfe")
+
+[node name="@MeshInstance3D@135" type="MeshInstance3D" parent="StandIn" unique_id=675697058]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0.3, 0)
+mesh = SubResource("BoxMesh_qnuek")

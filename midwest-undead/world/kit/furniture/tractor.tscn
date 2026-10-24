@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_ml2hi"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/tractor.tscn" id="2_n1o3f"]
+
+[node name="Tractor" type="StaticBody3D" unique_id=2037881913]
+script = ExtResource("1_ml2hi")
+size = Vector3(2, 2.3, 3.6)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_n1o3f")])
+metadata/salvage_label = "Tractor"

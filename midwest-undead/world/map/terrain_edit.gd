@@ -5,8 +5,6 @@ extends RefCounted
 ## in tests); the Map Tools plugin (addons/map_tools/) wraps each Apply in an
 ## undo step using snapshot() and restore(). Never instanced.
 
-const MAP_HEIGHT := 0
-const MAP_CONTROL := 1
 const MAP_ALL := 3
 
 

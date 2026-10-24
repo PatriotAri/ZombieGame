@@ -2,9 +2,11 @@
 
 [ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_4duv1"]
 [ext_resource type="Material" path="res://world/kit/materials/timber.tres" id="2_kqgo3"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/desk.tscn" id="9_standin"]
 
 [node name="Desk" type="StaticBody3D" unique_id=827620064]
 script = ExtResource("1_4duv1")
 size = Vector3(1, 0.85, 2.2)
 material = ExtResource("2_kqgo3")
 sits_on_floor = true
+models = Array[PackedScene]([ExtResource("9_standin")])

@@ -8,6 +8,7 @@ extends Control
 const Controls := preload("res://core/controls.gd")
 const Settings := preload("res://core/settings.gd")
 const SaveGame := preload("res://core/save_game.gd")
+const SceneFade := preload("res://ui/scene_fade.gd")
 const MenuStyle := preload("res://ui/menu_style.gd")
 const SettingsPage := preload("res://ui/settings_page.gd")
 const ControlsPage := preload("res://ui/controls_page.gd")
@@ -56,8 +57,10 @@ func _continue() -> void:
 
 
 func _new_game() -> void:
+	if SceneFade.busy(get_tree()):
+		return
 	SaveGame.pending_load = {}
-	get_tree().change_scene_to_file(SaveGame.GAME_SCENE)
+	SceneFade.change_to(get_tree(), SaveGame.GAME_SCENE)
 
 
 func _quit() -> void:

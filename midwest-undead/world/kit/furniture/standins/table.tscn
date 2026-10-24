@@ -1,0 +1,45 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://world/kit/materials/wood_planks.tres" id="1_b8gxy"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_5jdgs"]
+material = ExtResource("1_b8gxy")
+size = Vector3(1.2, 0.06, 1.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lxtfb"]
+material = ExtResource("1_b8gxy")
+size = Vector3(0.07, 0.74, 0.07)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ver3t"]
+material = ExtResource("1_b8gxy")
+size = Vector3(0.07, 0.74, 0.07)
+
+[sub_resource type="BoxMesh" id="BoxMesh_2y4qs"]
+material = ExtResource("1_b8gxy")
+size = Vector3(0.07, 0.74, 0.07)
+
+[sub_resource type="BoxMesh" id="BoxMesh_0g1fn"]
+material = ExtResource("1_b8gxy")
+size = Vector3(0.07, 0.74, 0.07)
+
+[node name="Table" type="Node3D" unique_id=1305507019]
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=588326323]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.77, 0)
+mesh = SubResource("BoxMesh_5jdgs")
+
+[node name="@MeshInstance3D@2" type="MeshInstance3D" parent="." unique_id=876628551]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.52, 0.37, -0.82)
+mesh = SubResource("BoxMesh_lxtfb")
+
+[node name="@MeshInstance3D@3" type="MeshInstance3D" parent="." unique_id=1066628377]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.52, 0.37, 0.82)
+mesh = SubResource("BoxMesh_ver3t")
+
+[node name="@MeshInstance3D@4" type="MeshInstance3D" parent="." unique_id=1808036045]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.52, 0.37, -0.82)
+mesh = SubResource("BoxMesh_2y4qs")
+
+[node name="@MeshInstance3D@5" type="MeshInstance3D" parent="." unique_id=83760739]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.52, 0.37, 0.82)
+mesh = SubResource("BoxMesh_0g1fn")

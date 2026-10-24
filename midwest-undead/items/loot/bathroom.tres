@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="LootTable" format=3]
+
+[ext_resource type="Script" path="res://items/loot_roll.gd" id="1_dyea2"]
+[ext_resource type="Script" path="res://items/loot_pick.gd" id="2_miv5h"]
+[ext_resource type="Script" path="res://items/loot_table.gd" id="3_bvsyj"]
+
+[sub_resource type="Resource" id="Resource_p58ad"]
+script = ExtResource("2_miv5h")
+item = "health_pack"
+
+[sub_resource type="Resource" id="Resource_sak1n"]
+script = ExtResource("1_dyea2")
+chance = 0.45
+items = Array[ExtResource("2_miv5h")]([SubResource("Resource_p58ad")])
+
+[sub_resource type="Resource" id="Resource_k8t6i"]
+script = ExtResource("2_miv5h")
+item = "health_pack"
+
+[sub_resource type="Resource" id="Resource_f1usg"]
+script = ExtResource("1_dyea2")
+items = Array[ExtResource("2_miv5h")]([SubResource("Resource_k8t6i")])
+
+[sub_resource type="Resource" id="Resource_yqqo2"]
+script = ExtResource("2_miv5h")
+item = "batteries"
+
+[sub_resource type="Resource" id="Resource_lbcug"]
+script = ExtResource("1_dyea2")
+items = Array[ExtResource("2_miv5h")]([SubResource("Resource_yqqo2")])
+
+[resource]
+script = ExtResource("3_bvsyj")
+rolls = Array[ExtResource("1_dyea2")]([SubResource("Resource_sak1n"), SubResource("Resource_f1usg"), SubResource("Resource_lbcug")])

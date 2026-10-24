@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_i3xgy"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/supply_cache.tscn" id="2_swdgy"]
+
+[node name="SupplyCache" type="StaticBody3D" unique_id=10279930]
+script = ExtResource("1_i3xgy")
+label = "Supply cache"
+loot_table = "mine_cache"
+size = Vector3(1.1, 0.7, 0.6)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_swdgy")])

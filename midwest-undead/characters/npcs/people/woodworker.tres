@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="PersonData" format=3]
+
+[ext_resource type="Script" path="res://characters/npcs/person_data.gd" id="1_person"]
+[ext_resource type="PackedScene" path="res://characters/npcs/woodworker.tscn" id="2_scene"]
+[ext_resource type="Script" path="res://quests/quest_dialogue_node.gd" id="3_pl46n"]
+[ext_resource type="Script" path="res://quests/quest_reply.gd" id="4_u0rjw"]
+[ext_resource type="Script" path="res://quests/quest_condition.gd" id="5_mjex4"]
+[ext_resource type="Script" path="res://quests/quest_dialogue.gd" id="6_rym8j"]
+
+[sub_resource type="Resource" id="Resource_pl46n"]
+script = ExtResource("3_pl46n")
+lines = Array[String](["Easy... easy. You're not one of them.", "They grabbed me off the road a week back. Made me patch up their junk, kept me tied to this post the rest of the time.", "I'm a woodworker. Scaffolding, lookout posts, fences, gates. If it's made of wood, I can build it.", "The police station? Then that's where I'm going. Find me in the yard. I owe you one."])
+
+[sub_resource type="Resource" id="Resource_u0rjw"]
+script = ExtResource("6_rym8j")
+nodes = Array[ExtResource("3_pl46n")]([SubResource("Resource_pl46n")])
+
+[resource]
+script = ExtResource("1_person")
+id = "woodworker"
+display_name = "Woodworker"
+scene = ExtResource("2_scene")
+untie_talk = SubResource("Resource_u0rjw")

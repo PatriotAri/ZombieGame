@@ -1,0 +1,44 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://world/kit/materials/concrete_slab.tres" id="1_ov0lv"]
+[ext_resource type="Material" path="res://world/kit/materials/pump_red.tres" id="2_0ghak"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_ni6a0"]
+material = ExtResource("1_ov0lv")
+size = Vector3(0.8, 0.3, 0.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_r0560"]
+material = ExtResource("2_0ghak")
+size = Vector3(0.7, 1.5, 0.45)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_w6gil"]
+albedo_color = Color(0.85, 0.85, 0.78, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_nflxx"]
+material = SubResource("StandardMaterial3D_w6gil")
+size = Vector3(0.5, 0.3, 0.02)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_y4wky"]
+albedo_color = Color(0.14, 0.14, 0.15, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_u3inp"]
+material = SubResource("StandardMaterial3D_y4wky")
+size = Vector3(0.12, 0.25, 0.1)
+
+[node name="GasPump" type="Node3D" unique_id=2031593360]
+
+[node name="@MeshInstance3D@241" type="MeshInstance3D" parent="." unique_id=1869805429]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
+mesh = SubResource("BoxMesh_ni6a0")
+
+[node name="Paint" type="MeshInstance3D" parent="." unique_id=983667515]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0)
+mesh = SubResource("BoxMesh_r0560")
+
+[node name="@MeshInstance3D@242" type="MeshInstance3D" parent="." unique_id=576275901]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.45, 0.23)
+mesh = SubResource("BoxMesh_nflxx")
+
+[node name="@MeshInstance3D@243" type="MeshInstance3D" parent="." unique_id=297358213]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0.95, 0.28)
+mesh = SubResource("BoxMesh_u3inp")

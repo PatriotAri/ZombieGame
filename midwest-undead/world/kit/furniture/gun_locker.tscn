@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://items/loot_spot.gd" id="1_w76lb"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/gun_locker.tscn" id="2_3vf2t"]
+
+[node name="GunLocker" type="StaticBody3D" unique_id=384874479]
+script = ExtResource("1_w76lb")
+label = "Gun locker"
+loot_table = "police"
+size = Vector3(1, 1.9, 0.5)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_3vf2t")])

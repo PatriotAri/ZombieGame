@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/kit/kit_box.gd" id="1_l02vt"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/gas_pump.tscn" id="2_db0o7"]
+
+[node name="GasPump" type="StaticBody3D" unique_id=78856982]
+script = ExtResource("1_l02vt")
+size = Vector3(0.8, 1.8, 0.5)
+sits_on_floor = true
+models = Array[PackedScene]([ExtResource("2_db0o7")])
+metadata/salvage_label = "Gas pump"

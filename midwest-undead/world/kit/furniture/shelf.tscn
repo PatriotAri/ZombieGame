@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://items/loot_spot.gd" id="1_1j6o5"]
 [ext_resource type="Material" path="res://world/kit/materials/shelf_metal.tres" id="2_y783v"]
+[ext_resource type="PackedScene" path="res://world/kit/furniture/standins/shelf.tscn" id="9_standin"]
 
 [node name="Shelf" type="StaticBody3D" unique_id=1634505536]
 script = ExtResource("1_1j6o5")
@@ -9,3 +10,4 @@ label = "Shelf"
 size = Vector3(4, 1.8, 0.5)
 material = ExtResource("2_y783v")
 sits_on_floor = true
+models = Array[PackedScene]([ExtResource("9_standin")])

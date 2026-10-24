@@ -132,6 +132,8 @@ func _next() -> void:
 
 
 func _process(_delta: float) -> void:
+	if _baking.is_empty():
+		return # (most frames: nothing baking)
 	for tile: Vector2i in _baking.keys():
 		if not NavigationServer3D.is_baking_navigation_mesh(_baking[tile]):
 			_on_baked(tile, _baking[tile])

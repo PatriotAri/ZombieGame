@@ -51,6 +51,7 @@ const FALL_MIN := 0.5 # meters: a drop this big in one step draws as a falling s
 
 var _built: Node3D
 var _rebuild_queued := false
+var _rect := Rect2() # water_rect(), once worked out
 var _water: PackedFloat32Array # water surface heights, every STEP meters (bed + depth)
 var _last_ground := PackedFloat32Array() # what work_out_bed() last started from
 static var _material: ShaderMaterial
@@ -101,8 +102,12 @@ func surface_at(pos: Vector3) -> float:
 
 
 ## The (x, z) area the water covers, for skipping the lookup far from it.
+## Worked out once in the game (it doesn't move); afresh in the editor.
 func water_rect() -> Rect2:
-	return TerrainEdit.path_rect(self).grow(maxf(width_start, width_end))
+	if _rect.has_area() and not Engine.is_editor_hint():
+		return _rect
+	_rect = TerrainEdit.path_rect(self).grow(maxf(width_start, width_end))
+	return _rect
 
 
 ## The bed every STEP meters along the creek, from the ground as it is now:
@@ -211,6 +216,7 @@ func _samples() -> Array[Dictionary]:
 
 func _rebuild() -> void:
 	_rebuild_queued = false
+	_rect = Rect2()
 	if _built:
 		remove_child(_built) # out now, so the new one can have its name
 		_built.queue_free()
