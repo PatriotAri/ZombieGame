@@ -726,6 +726,105 @@ func _objective_state(q: Quest, oid: String) -> Dictionary:
 	return all[oid]
 
 
+# --- Debugging (ui/quest_debug.gd, F4 in a debug build) ----------------------------------
+
+## Starts it whether it's on offer or not (or not even available yet).
+func debug_start(quest_id: String) -> void:
+	var q := find(quest_id)
+	if q and status(q) != ACTIVE:
+		_start(q)
+
+
+## Puts it at a stage, as if it had just got there: the stage it's on ends
+## without paying. One that isn't going starts first (its first stage's On
+## Start runs too).
+func debug_go_to_stage(quest_id: String, stage_id: String) -> void:
+	var q := find(quest_id)
+	var index := q.stage_index(stage_id) if q else -1
+	if index < 0:
+		return
+	if status(q) != ACTIVE:
+		_start(q)
+		if status(q) != ACTIVE:
+			return # (it was done the moment it started)
+	_end_objectives(q)
+	_enter_stage(q, index)
+
+
+## Counts an objective of the stage it's on as done (its When or not); the
+## stage moves on if that finishes it.
+func debug_finish_objective(quest_id: String, oid: String) -> void:
+	var q := find(quest_id)
+	var stage := current_stage(q) if q else null
+	if stage == null or _objective_of(stage, oid) == null:
+		return
+	_set_done(q, stage, oid)
+	_check()
+
+
+## Done now, paid what the quest itself pays (not the stages it skipped).
+func debug_complete(quest_id: String) -> void:
+	var q := find(quest_id)
+	if q and status(q) == ACTIVE:
+		_end_objectives(q)
+		_complete(q)
+		_check()
+
+
+## Back as a new game has it: locked, then on offer or started as its
+## Available When says. What it gave, took or brought in stays.
+func debug_reset(quest_id: String) -> void:
+	var q := find(quest_id)
+	if q == null:
+		return
+	if status(q) == ACTIVE:
+		_end_objectives(q)
+	_state[q.id] = _fresh_state()
+	_untrack(q)
+	_unlock()
+	_check()
+
+
+## Where it stands, for the panel: its status, stage, time left, and each
+## objective of the stage (ticked when done).
+func debug_summary(quest_id: String) -> String:
+	var q := find(quest_id)
+	if q == null:
+		return ""
+	var st: Dictionary = _state[q.id]
+	var lines := ["%s  (%s%s)" % [q.id, status(q), ", main story" if q.main else ""]]
+	var stage := current_stage(q)
+	if stage:
+		lines.append("Stage: %s  (%d of %d)" % [stage.id, q.stage_index(stage.id) + 1, q.stages.size()])
+		if q.time_limit_hours > 0.0 or stage.time_limit_hours > 0.0:
+			lines.append("Hours left: %.1f" % _hours_left(q))
+		for i in stage.objectives.size():
+			var obj := stage.objectives[i]
+			if obj:
+				var oid := _objective_id(stage, i)
+				lines.append("  [%s] %s: %s%s" % ["x" if _is_done(q, stage, oid) else " ", oid,
+						obj.shown_text(self, _objective_state(q, oid)), "  (optional)" if obj.optional else ""])
+	if not Array(st["reached"]).is_empty():
+		lines.append("Reached: " + ", ".join(st["reached"]))
+	return "\n".join(lines)
+
+
+## The ids of the objectives of the stage it's on.
+func debug_objective_ids(quest_id: String) -> Array[String]:
+	var q := find(quest_id)
+	var stage := current_stage(q) if q else null
+	var ids: Array[String] = []
+	if stage:
+		for i in stage.objectives.size():
+			if stage.objectives[i]:
+				ids.append(_objective_id(stage, i))
+	return ids
+
+
+func debug_flags() -> Dictionary:
+	return _flags.duplicate()
+
+
 # --- Every so often ----------------------------------------------------------------------
 
 func _process(delta: float) -> void:

@@ -499,6 +499,9 @@ go by ids: quest markers (**Map Tools > Quests > New quest marker**, then its
 then its **Person** file). Put these on the map where you want them; each
 missing one leaves that part of the story unreachable (the story test,
 `tests/story_test.gd`, plays it through on a test map that has them all).
+Then press **Map Tools > Quests > Check quests**: it lists every marker and
+person the quests name that the map doesn't have yet (and any typos in the
+quests). Nothing listed: the story has everything it needs.
 
 | What | Marker | Settings |
 |---|---|---|
@@ -551,8 +554,8 @@ the game, from the woodworker's camp kit.
 The station's old fixed guards are gone. You post your own survivors on guard
 posts you build instead.
 
-**Quest markers** are what quests point at. Press **Map Tools > New quest
-marker**, then set in the Inspector:
+**Quest markers** are what quests point at. Press **Map Tools > Quests > New
+quest marker**, then set in the Inspector:
 - **Marker Id:** what quests call it (`the_radio`, `barn_loft`). No spaces,
   and each one is different. Don't change it once a quest uses it.
 - **Kind:**

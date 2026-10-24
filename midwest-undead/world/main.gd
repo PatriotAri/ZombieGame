@@ -16,6 +16,7 @@ extends Node3D
 ##   quests/              the main story and side quests (see QUESTS.md)
 ##   ui/hud.gd            everything on screen during play
 ##   ui/perf_overlay.gd   the performance readout (F3)
+##   ui/quest_debug.gd    the quest debug panel (F4, debug builds only)
 ##
 ## What's fixed and what's random: the map, its containers and the items lying
 ## around are exactly what the map scene has. What's in the containers (beyond
@@ -48,6 +49,7 @@ const HumanNPCScene := preload("res://characters/npcs/human_npc.tscn")
 const DialogueBox := preload("res://ui/dialogue_box.gd")
 const QuestManager := preload("res://quests/quest_manager.gd")
 const JournalMenu := preload("res://ui/journal_menu.gd")
+const QuestDebug := preload("res://ui/quest_debug.gd")
 const SaveGame := preload("res://core/save_game.gd")
 const SaveIO := preload("res://world/save_io.gd")
 const MapSummary := preload("res://world/map_summary.gd")
@@ -302,6 +304,11 @@ func _setup_story() -> void:
 	add_child(journal_menu)
 	journal_menu.setup(player, quests)
 	player.died.connect(journal_menu.close)
+	if OS.is_debug_build():
+		var debug := QuestDebug.new()
+		add_child(debug)
+		debug.setup(player, quests)
+		player.died.connect(debug.close)
 	salvage = Salvage.new()
 	add_child(salvage)
 	salvage.setup(loot_spots, salvage_others)

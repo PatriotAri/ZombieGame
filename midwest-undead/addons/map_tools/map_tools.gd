@@ -24,7 +24,9 @@ extends EditorPlugin
 ## chimney, dormer, porch or cellar door under the mouse. Its walls' numbers
 ## show while it's selected. Apply opens the ground for its basement.
 ## Quests: New quest marker adds a spot, area or usable thing for quests to
-## point at (world/markers/quest_marker.gd).
+## point at (world/markers/quest_marker.gd). Check quests checks every quest
+## file against the open map (quests/quest_check.gd): missing markers and
+## people, typos in ids, stages nothing leads to, conversations with no end.
 ## Mines: select a KitMine and pick a tool in the Mines section; the 3D view
 ## then draws on the Level set there (its plan shows through the hill):
 ## tunnels (click each corner; Esc or Enter ends one), chambers (click two
@@ -48,6 +50,7 @@ const BaseCampMarker := preload("res://world/markers/base_camp_marker.gd")
 const QuestMarker := preload("res://world/markers/quest_marker.gd")
 const PersonMarker := preload("res://world/markers/person_marker.gd")
 const SaveIds := preload("res://core/save_ids.gd")
+const QuestCheck := preload("res://quests/quest_check.gd")
 const Building := preload("res://world/building.gd")
 const BuildingTool := preload("res://addons/map_tools/building_tool.gd")
 const MineTool := preload("res://addons/map_tools/mine_tool.gd")
@@ -61,11 +64,13 @@ const ROADS_DIR := "res://world/map/roads/"
 const APPLY_MARGIN := 40.0 # meters around a path that an Apply's undo step covers
 const BRUSHES := ["Off", "Forest", "Paint plant", "Place one", "Erase"]
 const CREEK_KEPT := ["bed", "ground_before", "applied_points", "applied_depth"]
+const QUEST_REPORT_LINES := 12 # shown in the panel; the Output panel gets them all
 
 var _panel: Control
 var _road_styles: OptionButton
 var _selected_label: Label
 var _help: Label
+var _quest_report: Label
 var _draw: CheckButton
 var _apply: Button
 var _template_list: OptionButton
@@ -182,6 +187,11 @@ func _build_panel() -> Control:
 	var quest_tools := _section(root, "Quests")
 	_button(quest_tools, "New person", "Adds a person marker in front of the camera: who stands there when a new game starts. Pick their person file (characters/npcs/people/) in the Inspector.", _new_person)
 	_button(quest_tools, "New quest marker", "Adds a quest marker in front of the camera: a spot, an area or something to use that quests point at. Give it a Marker Id in the Inspector (QUESTS.md).", _new_quest_marker)
+	_button(quest_tools, "Check quests", "Checks every quest (quests/main/, quests/side/) against this map: quest markers and people they name that aren't here, ids that don't match, stages nothing leads to, conversations that can't end. The list shows here and in the Output panel.", _check_quests)
+	_quest_report = Label.new()
+	_quest_report.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_quest_report.custom_minimum_size = Vector2(320, 0)
+	quest_tools.add_child(_quest_report)
 
 	var selected := _section(root, "Selected")
 	_selected_label = Label.new()
@@ -477,6 +487,25 @@ func _new_person() -> void:
 	marker.name = "Person"
 	marker.position = _in_view()
 	_add(marker, _group("People"), "New person")
+
+
+func _check_quests() -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null:
+		_quest_report.text = "Open world/map/map.tscn first."
+		return
+	var found := QuestCheck.check(root)
+	if found.is_empty():
+		_quest_report.text = "Nothing wrong with the quests on this map."
+		print("Check quests: nothing wrong.")
+		return
+	print("Check quests: %d problem%s" % [found.size(), "" if found.size() == 1 else "s"])
+	for line in found:
+		print("  " + line)
+	var shown := found.slice(0, QUEST_REPORT_LINES)
+	if found.size() > shown.size():
+		shown.append("...and %d more (all of them are in the Output panel)." % (found.size() - shown.size()))
+	_quest_report.text = "\n".join(shown)
 
 
 func _new_quest_marker() -> void:

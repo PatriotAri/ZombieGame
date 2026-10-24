@@ -5,7 +5,7 @@ extends QuestObjective
 ## you had them already. Nothing's taken: a Deliver objective, or a Take
 ## action, does that.
 
-## The item's id (its file in items/data/, e.g. "bandages").
+## The item's id (its file in items/data/, e.g. "health_pack").
 @export var item := ""
 @export_range(1, 999) var count := 1
 ## Where to find them, for the map (a quest marker's id). Optional.

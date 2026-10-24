@@ -143,8 +143,9 @@ Every new zombie, at the start and arriving later, rolls a kind:
 
 ## Survivors (`characters/npcs/survivors/`, SurvivorData)
 
-- **Display Name:** how the game shows them. Quests (a `talk_to` step's target)
-  and markers go by it too.
+- **Display Name:** how the game shows them. Their SpawnPoints go by it.
+- **Id:** what quests call them (their Npc Id: no spaces, unique). Empty: the
+  name in lower case with `_` for spaces (`marisol_vega`).
 - **Job:**
   - `none`: they work a garden plot or a bench at their camp, or stand guard on
     a guard post.
