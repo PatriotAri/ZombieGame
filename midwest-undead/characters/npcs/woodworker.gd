@@ -6,6 +6,8 @@ extends HumanNPC
 ## station, so he counts toward how many people it holds (world/camps.gd).
 ## world/woodworker_rescue.gd moves him around and keeps track of all that.
 
+const Recipes := preload("res://core/recipes.gd")
+
 enum State { CAPTIVE, TRAVELLING, HOME }
 
 var state := State.HOME
@@ -18,3 +20,10 @@ func interact_prompt() -> String:
 		State.TRAVELLING:
 			return "" # on his way
 	return "talk to " + display_name
+
+
+## At home: he builds things for you.
+func own_business(main: Node) -> Array:
+	if state != State.HOME:
+		return []
+	return ["Build something", func() -> void: main.craft_menu.open(main.player, display_name, Recipes.WOODWORKER)]

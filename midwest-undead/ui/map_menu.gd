@@ -1,7 +1,7 @@
 extends CanvasLayer
 ## The map (M, or Back/View on a controller): the map from above, the streets
 ## named, the places you've found named (world/discoveries.gd), your base camps
-## (world/camps.gd), and you. North is up. Zoomed all the way out it shows the
+## (world/camps.gd), where the tracked quest's objectives are, and you. North is up. Zoomed all the way out it shows the
 ## whole map. The zones (world/zones.gd) are outlined and named only while you
 ## have them turned on (interact: E, or X on a controller); the zone under the
 ## pointer (or the middle, on a controller) is named below the map either way.
@@ -22,6 +22,8 @@ const FENCE := Color(0.55, 0.42, 0.25)
 const CAMP := Color(1.0, 0.62, 0.25)
 const PLAYER := Color(0.3, 0.85, 1.0)
 const ZONE_OUTLINE := Color(1.0, 0.95, 0.75, 0.9)
+const OBJECTIVE := Color(1.0, 0.85, 0.35)
+const EDGE_INSET := 16.0 # pixels: an objective off the shown map sits this far in from its edge
 const REDRAW_INTERVAL := 0.2
 const MAX_ZOOM := 8.0 # 1 = the whole map fits
 const WHEEL_ZOOM := 1.25 # per wheel notch
@@ -232,6 +234,35 @@ func _rect_to_map(rect: Rect2) -> Rect2:
 	return Rect2(a, _to_map(rect.end) - a)
 
 
+## The tracked quest's objectives (quests/quest_manager.gd objective_places()):
+## an area as a ring, a spot or a person as a diamond, each with its label.
+## One off the shown part of the map is an arrow at its edge, pointing the way.
+func _draw_objectives(font: Font) -> void:
+	var quests := get_tree().get_first_node_in_group("quests")
+	if quests == null:
+		return
+	var per_meter := (_to_map(Vector2(1, 0)) - _to_map(Vector2.ZERO)).x
+	var shown := Rect2(Vector2.ZERO, _canvas.size).grow(-EDGE_INSET)
+	for place: Dictionary in quests.objective_places():
+		var world: Vector3 = place["position"]
+		var at := _to_map(Vector2(world.x, world.z))
+		if not shown.has_point(at):
+			var edge := Vector2(clampf(at.x, shown.position.x, shown.end.x), clampf(at.y, shown.position.y, shown.end.y))
+			var way := (at - edge).normalized()
+			var side := Vector2(-way.y, way.x)
+			_canvas.draw_colored_polygon(PackedVector2Array([edge + way * 10.0, edge - way * 6.0 + side * 7.0,
+					edge - way * 6.0 - side * 7.0]), OBJECTIVE)
+			continue
+		var ring := float(place.get("radius", 0.0)) * per_meter
+		if ring > 5.0:
+			_canvas.draw_circle(at, ring, Color(OBJECTIVE, 0.12))
+			_canvas.draw_arc(at, ring, 0.0, TAU, 48, OBJECTIVE, 2.5)
+		var diamond := PackedVector2Array([at + Vector2(0, -7), at + Vector2(7, 0), at + Vector2(0, 7), at + Vector2(-7, 0)])
+		_canvas.draw_colored_polygon(diamond, OBJECTIVE)
+		_canvas.draw_polyline(diamond + PackedVector2Array([diamond[0]]), Color.BLACK, 1.5)
+		_draw_label(_canvas, font, str(place.get("label", "")), at + Vector2(0, -18), 14)
+
+
 ## The map itself, drawn on _canvas (clipped to the map's square).
 func _draw_map() -> void:
 	if _player == null or _canvas.size == Vector2.ZERO:
@@ -273,6 +304,7 @@ func _draw_map() -> void:
 		if _discoveries.is_discovered(place["name"]):
 			_draw_label(_canvas, font, place["name"], _to_map(place["label_at"]), 14)
 
+	_draw_objectives(font)
 	_draw_player()
 	if Controls.using_gamepad: # what the zone readout below refers to
 		var mid := _canvas.size / 2.0

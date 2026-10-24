@@ -89,7 +89,7 @@ func _physics_process(_d: float) -> bool:
 		60:
 			check(q.npc("quartermaster").global_position.distance_to(q.world.marker("store").global_position) < 0.5, "you left: the Quartermaster's moved to the store")
 			check(q.npc("stranger") == null or q.npc("stranger").is_queued_for_deletion(), "...and the stranger's gone")
-			main._save_game(SaveGame.new_path())
+			main.save_game(SaveGame.new_path())
 			SaveGame.pending_load = SaveGame.read(SaveGame.latest())
 			root.remove_child(main); main.free()
 			main = null

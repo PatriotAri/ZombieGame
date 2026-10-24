@@ -11,3 +11,7 @@ extends Resource
 ## fail the quest. Survivors: join (come to the base) or decline (not now).
 ## "decline" and "fail" end the conversation there.
 @export_enum("none", "accept", "decline", "fail", "join") var action := "none"
+## Offered only while these all hold (you've got the key, a quest's at a stage...).
+@export var when: Array[QuestCondition] = []
+## Done when it's picked, besides its Action (quests/actions/: give, set a flag...).
+@export var actions: Array[QuestAction] = []

@@ -51,6 +51,20 @@ func interact_prompt() -> String:
 	return "take down the broken " + label if broken else "take down the " + label
 
 
+## A camp kit: the camp comes down (its people moved first: world/camps.gd).
+## Anything else: taken down, and what it was made of back.
+func interact(player: Node) -> void:
+	if kind == "camp_kit":
+		var main := get_tree().get_first_node_in_group("main")
+		get_tree().get_first_node_in_group("camps").take_down_camp(self, player, main.choice_menu)
+		return
+	var back: Dictionary = get_tree().get_first_node_in_group("structures").take_down(self)
+	if back.is_empty():
+		player.emit_signal("notify", "Take down what's on top of it first.")
+	for id: String in back:
+		player.call("give_item", id, back[id])
+
+
 func is_breakable() -> bool:
 	return kind in BREAKABLE
 

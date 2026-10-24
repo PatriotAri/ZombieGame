@@ -101,3 +101,7 @@ func _drop_unknown(dict: Dictionary, what: String) -> void:
 			push_warning("%s %s: unknown item id '%s' ignored. Valid ids: %s"
 					% [display_name, what, id, GameData.item_ids()])
 			dict.erase(id)
+
+
+func own_business(main: Node) -> Array:
+	return ["Trade", func() -> void: main.shop_menu.open(main.player, self)]

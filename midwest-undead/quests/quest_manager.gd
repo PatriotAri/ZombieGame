@@ -249,8 +249,10 @@ func journal() -> Array[Dictionary]:
 			for entry in _objectives_of(q):
 				steps.append({"objective": entry["text"] + ("  (optional)" if entry["optional"] and not entry["done"] else ""),
 						"done": entry["done"]})
+			var stage := q.stage(st["stage"])
 			entries.append({"id": q.id, "title": q.title, "description": q.description, "main": q.main,
-					"status": st["status"], "tracked": q.id == tracked, "steps": steps, "hours_left": _hours_left(q)})
+					"status": st["status"], "tracked": q.id == tracked, "steps": steps, "hours_left": _hours_left(q),
+					"note": stage.journal_note if stage and st["status"] == ACTIVE else ""})
 	return entries
 
 
@@ -387,7 +389,7 @@ func story(text: String) -> void:
 func play(dialogue: QuestDialogue, npc_id: String, finished := Callable(), quest: Quest = null) -> void:
 	var person := npc(npc_id)
 	var who: String = person.display_name if person else npc_id
-	_conversation.play(dialogue, who, finished, func(action: String) -> void: _on_reply(action, quest))
+	_conversation.play(dialogue, who, finished, func(action: String) -> void: _on_reply(action, quest), quest)
 
 
 func start_quest(quest_id: String) -> void:
@@ -506,7 +508,7 @@ func _start(q: Quest, announce := true) -> void:
 	st["done"] = []
 	st["reached"] = []
 	st["hours_left"] = q.time_limit_hours
-	_run(q.on_start, q)
+	run_actions(q.on_start, q)
 	if announce and not _quiet:
 		_notify(("New: " if q.main else "New quest: ") + q.title)
 	if not q.main or tracked == "" or status_of(tracked) != ACTIVE:
@@ -529,7 +531,7 @@ func _enter_stage(q: Quest, index: int) -> void:
 		st["reached"].append(stage.id)
 	st["stage_hours_left"] = stage.time_limit_hours
 	_begin_objectives(q, stage)
-	_run(stage.on_start, q)
+	run_actions(stage.on_start, q)
 	GameEvents.send(&"stage_reached", {"quest": q.id, "stage": stage.id})
 	_mark_done(q, stage)
 	if _stage_finished(q, stage) == null:
@@ -605,7 +607,7 @@ func _stage_finished(q: Quest, stage: QuestStage) -> Variant:
 func _complete_stage(q: Quest, stage: QuestStage, finished: Variant) -> void:
 	_end_objectives(q)
 	_reward(stage.reward_money, stage.reward_items)
-	_run(stage.on_complete, q)
+	run_actions(stage.on_complete, q)
 	_beat(stage.complete_story)
 	if status(q) != ACTIVE:
 		return # an action ended the quest
@@ -629,7 +631,7 @@ func _complete_stage(q: Quest, stage: QuestStage, finished: Variant) -> void:
 func _complete(q: Quest) -> void:
 	_state[q.id]["status"] = DONE
 	_reward(q.reward_money, q.reward_items)
-	_run(q.on_complete, q)
+	run_actions(q.on_complete, q)
 	if q.complete_story != "":
 		_beat(q.complete_story)
 	elif not _quiet:
@@ -644,7 +646,7 @@ func _fail(q: Quest, why := "") -> void:
 		return # the main story never fails
 	_end_objectives(q)
 	_state[q.id]["status"] = FAILED
-	_run(q.on_fail, q)
+	run_actions(q.on_fail, q)
 	var reason := why if why != "" else q.fail_text
 	_notify("Failed: %s%s" % [q.title, (" (%s)" % reason) if reason != "" else ""])
 	GameEvents.send(&"quest_failed", {"quest": q.id})
@@ -664,7 +666,9 @@ func _reward(money: int, items: Dictionary) -> void:
 		give(items, money)
 
 
-func _run(actions: Array[QuestAction], q: Quest) -> void:
+## Does these actions (a quest's, a stage's, a reply's), as part of quest q
+## (null: none).
+func run_actions(actions: Array[QuestAction], q: Quest) -> void:
 	for action in actions:
 		if action:
 			action.run(self, q)

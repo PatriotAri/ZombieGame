@@ -13,3 +13,7 @@ extends Resource
 @export var replies: Array[QuestReply] = []
 ## With no replies: the node that comes next. Empty ends the conversation.
 @export var next := ""
+## The conversation starts here instead of at the first node while these all
+## hold (the first node in the list whose do): the Chief saying something else
+## once you've been to the safe house. Replies and Next lead here whatever these say.
+@export var start_when: Array[QuestCondition] = []

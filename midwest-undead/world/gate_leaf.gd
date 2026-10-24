@@ -11,6 +11,10 @@ func interact_prompt() -> String:
 	return "close the gate" if piece.gate_open else "open the gate"
 
 
+func interact(_player: Node) -> void:
+	get_tree().get_first_node_in_group("structures").toggle_gate(piece)
+
+
 func can_be_bashed() -> bool:
 	return not piece.gate_open and piece.call("can_be_bashed")
 

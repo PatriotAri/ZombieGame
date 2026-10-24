@@ -143,7 +143,7 @@ func _physics_process(_d: float) -> bool:
 		612:
 			main.map_menu.close()
 			saved["food"] = camp2.crate.inventory.count("canned_food")
-			main._save_game(SaveGame.new_path())
+			main.save_game(SaveGame.new_path())
 			SaveGame.pending_load = SaveGame.read(SaveGame.latest())
 			root.remove_child(main); main.free()
 			_start()
@@ -157,11 +157,8 @@ func _physics_process(_d: float) -> bool:
 			check(camp2.crate.inventory.count("canned_food") == saved["food"] and camps.kills_near("Police Station") == 75, "loaded: the crate and the kill count")
 			# Taking the camp down: they move to the station; you get the kit back.
 			camps.move_to(survivor, camps.station)
-			main._rehome([], camp2, camp2.piece)
+			camp2.piece.interact(p) # (nobody left there: it comes straight down)
 		700:
-			for c in main.camps.camps:
-				print("    camp ", c.name, " piece valid ", is_instance_valid(c.piece) if c.piece else "station", " in pieces ", (c.piece in main.structures.pieces) if c.piece and is_instance_valid(c.piece) else "-")
-			print("    pieces: ", main.structures.pieces.map(func(x): return x.kind))
 			check(main.camps.camps.size() == 1 and survivor.camp_name == "Police Station", "taken down: one camp left, they moved to the station (%d camps, %s)" % [main.camps.camps.size(), survivor.camp_name])
 			check(main.player.inventory.count("camp_kit") == 1, "...and the camp kit's back in your pack")
 			print("FAILS: %d" % fails)

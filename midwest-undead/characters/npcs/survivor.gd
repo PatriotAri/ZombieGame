@@ -26,3 +26,7 @@ func _animation() -> Array:
 	if working and not talking and is_instance_valid(work_piece):
 		return ["work_dig" if work_piece.get("kind") == "garden_plot" else "work_bench", 1.0]
 	return super()
+
+
+func own_business(main: Node) -> Array:
+	return ["Talk", func() -> void: main.survivors.talk(self)]

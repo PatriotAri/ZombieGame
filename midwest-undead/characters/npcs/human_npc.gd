@@ -158,6 +158,13 @@ func is_targetable() -> bool:
 ## The action shown in the "E: ..." prompt when you look at this NPC, e.g.
 ## "trade with Quartermaster". Empty means there's nothing to do with them.
 ## Subclasses override this; main.gd decides what pressing E actually opens.
+## What they do for you besides quests, offered next to any quest talk:
+## [label, callable], or [] if nothing (traders trade, the woodworker builds...).
+## main: world/main.gd, for the menus.
+func own_business(_main: Node) -> Array:
+	return []
+
+
 ## People quests know (an npc_id) can be talked to; kinds with business of
 ## their own (trading, building...) say so instead.
 func interact_prompt() -> String:

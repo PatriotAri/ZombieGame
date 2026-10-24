@@ -113,6 +113,7 @@ func setup(marker: KitBaseCamp, station_homes: Dictionary, survivors: Node, wood
 
 func _ready() -> void:
 	add_to_group("kill_listeners")
+	add_to_group("camps") # (a camp kit taking itself down finds its camp through it)
 
 
 ## A zombie died (zombie.gd tells everyone in "kill_listeners"); yours count
@@ -523,3 +524,36 @@ func load_state(data: Dictionary) -> void:
 			post_guard(survivors[i], pieces[p])
 	_update_boards()
 
+
+## Taking down a camp you built: its people need somewhere else to live. For
+## each, you pick another camp with room; once everyone's placed, it comes down
+## and you get the camp kit back. With nowhere for someone to go, it stays up.
+func take_down_camp(piece: StructurePiece, player: Node, choices: Node) -> void:
+	var camp := camp_for_piece(piece)
+	if camp == null:
+		return
+	var people := members(camp)
+	_rehome(people, camp, piece, player, choices)
+
+
+func _rehome(people: Array, leaving: Camp, piece: StructurePiece, player: Node, choices: Node) -> void:
+	if people.is_empty():
+		var back: Dictionary = _structures.take_down(piece)
+		for id: String in back:
+			player.give_item(id, back[id])
+		player.emit_signal("notify", "%s is packed up." % leaving.name)
+		return
+	var survivor: Survivor = people[0]
+	var options := []
+	for camp in with_room():
+		if camp == leaving:
+			continue
+		var label := "%s  (%d / %d)" % [camp.name, population(camp), capacity(camp)]
+		options.append([label, func() -> void:
+			move_to(survivor, camp)
+			_rehome(people.slice(1), leaving, piece, player, choices), true])
+	if options.is_empty():
+		player.emit_signal("notify", "There's no room anywhere for %s. Make room at another camp first." % survivor.display_name)
+		return
+	options.append(["Never mind (keep the camp)", Callable(), true])
+	choices.call("open", player, "Taking down " + leaving.name, "Where should %s live now?" % survivor.display_name, options)

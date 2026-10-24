@@ -1,5 +1,5 @@
 extends RefCounted
-## Saving and loading the game (main.gd's _save_game and _apply_save use it):
+## Saving and loading the game (main.gd's save_game and _apply_save use it):
 ## everything that can change during play, gathered from the game scene's root
 ## (main.gd) into a Dictionary for core/save_game.gd, and put back on a freshly
 ## loaded map. Things on the map go by their "town_id". Never instanced.

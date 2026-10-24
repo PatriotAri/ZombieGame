@@ -79,7 +79,7 @@ func _physics_process(_d: float) -> bool:
 				var to: Vector3 = shell.global_transform * Vector3(back - 2.0, y, z)
 				if not space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, 1)).is_empty(): hits += 1
 		check(hits == 18, "a merged building's solid back wall still blocks rays: %d of 18" % hits)
-		main._save_game(SaveGame.new_path())
+		main.save_game(SaveGame.new_path())
 	if f == 20:
 		SaveGame.pending_load = SaveGame.read(SaveGame.latest())
 		root.remove_child(main); main.free()

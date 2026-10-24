@@ -167,7 +167,7 @@ func _physics_process(_d: float) -> bool:
 					"counting: %s" % q.objective_text().replace("\n", " | "))
 			check(q.objective_text().contains("Find somewhere  (optional)"), "the extra shows as optional")
 			# Save here, then load.
-			main._save_game(SaveGame.new_path())
+			main.save_game(SaveGame.new_path())
 			SaveGame.pending_load = SaveGame.read(SaveGame.latest())
 			root.remove_child(main); main.free()
 			main = null

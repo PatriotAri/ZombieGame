@@ -111,7 +111,7 @@ func _physics_process(_d: float) -> bool:
 			main.trader.stock.add("pistol_ammo", 7)
 			saved["boarded"] = main.fortifications.save_state()["boarded"]
 			saved["ammo"] = main.trader.stock.count("pistol_ammo")
-			main._save_game(SaveGame.new_path())
+			main.save_game(SaveGame.new_path())
 			SaveGame.pending_load = SaveGame.read(SaveGame.latest())
 			root.remove_child(main); main.free()
 			_start()

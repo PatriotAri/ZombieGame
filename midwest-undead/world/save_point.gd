@@ -24,3 +24,8 @@ func _ready() -> void:
 
 func interact_prompt() -> String:
 	return "open the logbook (save / load)"
+
+
+func interact(player: Node) -> void:
+	var main := get_tree().get_first_node_in_group("main")
+	main.save_menu.open(player, main.save_game)

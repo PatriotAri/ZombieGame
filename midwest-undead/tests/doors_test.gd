@@ -55,7 +55,7 @@ func _physics_process(_d: float) -> bool:
 					"the shop door's hinge is in its doorway (%s)" % local)
 			door.set_open(false, false)
 			door_id = door.get_meta("town_id")
-			main._save_game(SaveGame.new_path())
+			main.save_game(SaveGame.new_path())
 			SaveGame.pending_load = SaveGame.read(SaveGame.latest())
 			root.remove_child(main) # like a scene change: the old game is gone first
 			main.free()
@@ -68,7 +68,7 @@ func _physics_process(_d: float) -> bool:
 			check(door_id.begins_with("#"), "it went by its building's save id (%s)" % door_id)
 			door.bash(9999.0)
 			check(door.is_broken, "broken")
-			main._save_game(SaveGame.new_path())
+			main.save_game(SaveGame.new_path())
 			# The building renamed on the map (its save id kept, as in the editor), then the save loaded.
 			var renamed: Node = test_map.instantiate()
 			renamed.get_node("Buildings/Shop").name = "GeneralStore"

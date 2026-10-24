@@ -16,13 +16,13 @@ func _physics_process(_d: float) -> bool:
 	f += 1
 	if f == 5:
 		main.player.global_position = Vector3(10, 0.2, 0)
-		paths["a"] = SaveGame.new_path(); main._save_game(paths["a"])
+		paths["a"] = SaveGame.new_path(); main.save_game(paths["a"])
 		OS.delay_msec(1100) # saved_at has 1 s resolution
 		main.player.global_position = Vector3(20, 0.2, 0)
-		paths["b"] = SaveGame.new_path(); main._save_game(paths["b"])
+		paths["b"] = SaveGame.new_path(); main.save_game(paths["b"])
 		OS.delay_msec(1100)
 		main.player.global_position = Vector3(30, 0.2, 0)
-		main._save_game(SaveGame.autosave_path())
+		main.save_game(SaveGame.autosave_path())
 		var l := SaveGame.list()
 		check(l.size() == 3, "3 saves: " + str(l.map(func(s: Dictionary) -> String: return s["path"].get_file())))
 		check(l[0]["autosave"] and l[1]["path"] == paths["b"] and l[2]["path"] == paths["a"], "newest first, autosave marked")
@@ -31,7 +31,7 @@ func _physics_process(_d: float) -> bool:
 		# Overwrite a, delete b.
 		OS.delay_msec(1100)
 		main.player.global_position = Vector3(40, 0.2, 0)
-		main._save_game(paths["a"])
+		main.save_game(paths["a"])
 		SaveGame.delete(paths["b"])
 		l = SaveGame.list()
 		check(l.size() == 2 and l[0]["path"] == paths["a"], "overwrite moves it to the top, delete removes")
@@ -42,7 +42,7 @@ func _physics_process(_d: float) -> bool:
 		page.refresh()
 		check(page._rows.get_child_count() == 2, "load page shows 2 saves")
 		var logbook := SaveList.new(SaveList.Mode.SAVE, "LOGBOOK")
-		logbook.save_callback = main._save_game
+		logbook.save_callback = main.save_game
 		root.add_child(logbook)
 		logbook.refresh()
 		logbook._save_new()

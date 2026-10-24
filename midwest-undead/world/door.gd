@@ -163,6 +163,10 @@ func interact_prompt() -> String:
 	return ("close the %s" if is_open else "open the %s") % label
 
 
+func interact(_player: Node) -> void:
+	toggle()
+
+
 ## The player pressed interact on it.
 func toggle() -> void:
 	if is_broken or boarded:

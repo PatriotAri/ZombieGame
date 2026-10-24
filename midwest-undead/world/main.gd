@@ -56,7 +56,6 @@ const SaveGame := preload("res://core/save_game.gd")
 const SaveIO := preload("res://world/save_io.gd")
 const MapSummary := preload("res://world/map_summary.gd")
 const SceneFade := preload("res://ui/scene_fade.gd")
-const SavePoint := preload("res://world/save_point.gd")
 const SaveMenu := preload("res://ui/save_menu.gd")
 const Bandit := preload("res://characters/npcs/bandit.gd")
 const BanditScene := preload("res://characters/npcs/bandit.tscn")
@@ -75,22 +74,16 @@ const TraderArrival := preload("res://world/trader_arrival.gd")
 const WoodworkerRescue := preload("res://world/woodworker_rescue.gd")
 const Survivors := preload("res://world/survivors.gd")
 const Camps := preload("res://world/camps.gd")
-const BulletinBoard := preload("res://world/bulletin_board.gd")
 const Salvage := preload("res://world/salvage.gd")
-const Recipes := preload("res://core/recipes.gd")
 const CraftMenu := preload("res://ui/craft_menu.gd")
 const ChoiceMenu := preload("res://ui/choice_menu.gd")
-const Survivor := preload("res://characters/npcs/survivor.gd")
 const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Hud := preload("res://ui/hud.gd")
 const PerfOverlay := preload("res://ui/perf_overlay.gd")
 const Loot := preload("res://world/loot.gd")
 const SkyShader := preload("res://world/sky_clouds.gdshader")
 const Fortifications := preload("res://world/fortifications.gd")
-const Fortification := preload("res://world/fortification.gd")
 const Structures := preload("res://world/structures.gd")
-const StructurePiece := preload("res://world/structure_piece.gd")
-const GateLeaf := preload("res://world/gate_leaf.gd")
 const SpawnPoint := preload("res://world/markers/spawn_point.gd")
 const ZombieSpawn := preload("res://world/markers/zombie_spawn.gd")
 const Place := preload("res://world/markers/place.gd")
@@ -181,6 +174,7 @@ var shop_menu: ShopMenu
 
 
 func _ready() -> void:
+	add_to_group("main") # (what you interact with finds the menus it opens through it)
 	Controls.setup()
 	Settings.load_settings() # before anything can play a sound: it creates the Effects bus
 	rng.randomize()
@@ -348,32 +342,11 @@ func _setup_story() -> void:
 	survivors.attach(player, dialogue, choice_menu, craft_menu, camps, woodworker_rescue)
 
 
-## Pressing interact on something that isn't a person, an item or a container.
+## Pressing interact on something that isn't a person, an item or a container:
+## it does its own thing (its interact(player): the logbook opens the save
+## menu, a door swings, planks come down...).
 func _on_object_interacted(obj: Node) -> void:
-	if obj is SavePoint:
-		save_menu.open(player, _save_game)
-	elif obj is BulletinBoard:
-		var board := obj as BulletinBoard
-		choice_menu.open(player, board.title, board.summary + "\n\n" + board.details, [["Close", Callable(), true]])
-	elif obj is StructurePiece and (obj as StructurePiece).kind == "camp_kit":
-		_take_down_camp(obj as StructurePiece)
-	elif obj is Door:
-		(obj as Door).toggle()
-	elif obj is Fortification:
-		var back := fortifications.take_down(obj as Fortification)
-		if back == "":
-			hud.show_toast("The used planks splinter apart. Nothing left to save.")
-		else:
-			player.give_item(back)
-	elif obj is GateLeaf:
-		structures.toggle_gate((obj as GateLeaf).piece)
-	elif obj is StructurePiece:
-		var back := structures.take_down(obj as StructurePiece)
-		if back.is_empty():
-			hud.show_toast("Take down what's on top of it first.")
-		for id: String in back:
-			player.give_item(id, back[id])
-	elif obj.has_method("interact"): # a mine's generator, cage lever, call button
+	if obj.has_method("interact"):
 		obj.call("interact", player)
 
 
@@ -531,17 +504,10 @@ func _on_npc_interacted(npc: HumanNPC) -> void:
 	choice_menu.open(player, npc.display_name, "", options)
 
 
-## What an NPC does when it's not about quests: [label, callable], or [] if nothing.
+## What an NPC does when it's not about quests (each kind says: its
+## own_business()): [label, callable], or [] if nothing.
 func _own_business(npc: HumanNPC) -> Array:
-	if npc is Guard and npc.has_meta("survivor"): # one of your survivors on a guard post
-		return ["Come down off guard duty", func() -> void: camps.stand_down(npc.get_meta("survivor"))]
-	if npc is Woodworker and (npc as Woodworker).state == Woodworker.State.HOME:
-		return ["Build something", func() -> void: craft_menu.open(player, npc.display_name, Recipes.WOODWORKER)]
-	if npc is Survivor:
-		return ["Talk", func() -> void: survivors.talk(npc as Survivor)]
-	if npc is Shopkeeper:
-		return ["Trade", func() -> void: shop_menu.open(player, npc as Shopkeeper)]
-	return []
+	return npc.own_business(self)
 
 
 func _process(_delta: float) -> void:
@@ -637,40 +603,6 @@ func _setup_navigation() -> void:
 			Vector3(rect.size.x, heights.y - heights.x + 45.0, rect.size.y)), terrain)
 
 
-## Taking down a camp you built: its people need somewhere else to live. For
-## each, you pick another camp with room; once everyone's placed, it comes down
-## and you get the camp kit back. With nowhere for someone to go, it stays up.
-func _take_down_camp(piece: StructurePiece) -> void:
-	var camp := camps.camp_for_piece(piece)
-	if camp == null:
-		return
-	var people := camps.members(camp)
-	_rehome(people, camp, piece)
-
-
-func _rehome(people: Array, leaving: Camps.Camp, piece: StructurePiece) -> void:
-	if people.is_empty():
-		var back := structures.take_down(piece)
-		for id: String in back:
-			player.give_item(id, back[id])
-		hud.show_toast("%s is packed up." % leaving.name)
-		return
-	var survivor: Survivor = people[0]
-	var options := []
-	for camp in camps.with_room():
-		if camp == leaving:
-			continue
-		var label := "%s  (%d / %d)" % [camp.name, camps.population(camp), camps.capacity(camp)]
-		options.append([label, func() -> void:
-			camps.move_to(survivor, camp)
-			_rehome(people.slice(1), leaving, piece), true])
-	if options.is_empty():
-		hud.show_toast("There's no room anywhere for %s. Make room at another camp first." % survivor.display_name)
-		return
-	options.append(["Never mind (keep the camp)", Callable(), true])
-	choice_menu.open(player, "Taking down " + leaving.name, "Where should %s live now?" % survivor.display_name, options)
-
-
 # --- Saving and loading --------------------------------------------------------
 
 ## Autosave when a quest asks for it (an Autosave action), but not while
@@ -680,7 +612,7 @@ func _check_autosave() -> void:
 	if player.is_dead or not quests.wants_autosave() or _player_threatened():
 		return
 	quests.autosaved()
-	if _save_game(SaveGame.autosave_path()):
+	if save_game(SaveGame.autosave_path()):
 		hud.show_toast("Autosaved")
 
 
@@ -697,7 +629,7 @@ func _player_threatened() -> bool:
 
 ## Saves the game to `path` (the logbook's new save or the one you picked, or
 ## the autosave): world/save_io.gd gathers it.
-func _save_game(path: String) -> bool:
+func save_game(path: String) -> bool:
 	return SaveGame.write(SaveIO.collect(self), path)
 
 

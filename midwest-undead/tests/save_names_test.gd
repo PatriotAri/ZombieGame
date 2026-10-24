@@ -48,7 +48,7 @@ func _process(_d: float) -> bool:
 	match f:
 		5:
 			for z in main.zombies: z.set_physics_process(false); z.global_position += Vector3(0, 0, 900)
-			main.save_menu.open(main.player, main._save_game)
+			main.save_menu.open(main.player, main.save_game)
 			lst = main.save_menu._list
 			lst._new_button.pressed.emit()
 		7:
@@ -90,7 +90,7 @@ func _process(_d: float) -> bool:
 			main.save_menu._unhandled_input(esc)
 			check(not main.save_menu.visible, "Esc again: the logbook closes")
 			# No name, and a long one.
-			main.save_menu.open(main.player, main._save_game)
+			main.save_menu.open(main.player, main.save_game)
 			lst._new_button.pressed.emit()
 			lst._name_edit.text = ""
 			lst._save_new()
@@ -100,7 +100,7 @@ func _process(_d: float) -> bool:
 			check(SaveGame.rename(s["path"], "x".repeat(80)) and SaveGame.read(s["path"])["name"].length() == SaveGame.NAME_LENGTH, "names are cut to %d characters" % SaveGame.NAME_LENGTH)
 			check(SaveGame.rename(s["path"], "   ") and not SaveGame.read(s["path"]).has("name"), "a blank name takes the name away")
 			# The autosave.
-			main._save_game(SaveGame.autosave_path())
+			main.save_game(SaveGame.autosave_path())
 			check(not SaveGame.rename(SaveGame.autosave_path(), "mine"), "the autosave can't be renamed")
 			lst.refresh()
 			var auto_row: Node = row_of(SaveGame.autosave_path())

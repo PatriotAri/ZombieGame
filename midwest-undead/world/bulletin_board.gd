@@ -57,3 +57,8 @@ func _refresh() -> void:
 func interact_prompt() -> String:
 	return "read the bulletin board"
 
+
+func interact(player: Node) -> void:
+	var main := get_tree().get_first_node_in_group("main")
+	main.choice_menu.open(player, title, summary + "\n\n" + details, [["Close", Callable(), true]])
+

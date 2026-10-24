@@ -76,7 +76,7 @@ func _physics_process(_d: float) -> bool:
 		Input.action_release("aim")
 		# Save and load keep loaded rounds.
 		p.select("shotgun")
-		main._save_game(SaveGame.new_path())
+		main.save_game(SaveGame.new_path())
 		var data := SaveGame.read(SaveGame.latest())
 		check(data["player"]["mags"]["shotgun"] == 4 and data["player"]["mags"]["rifle"] == 4, "mags saved %s" % data["player"]["mags"])
 		# Selling a loaded gun keeps the rounds.

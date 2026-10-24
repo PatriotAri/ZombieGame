@@ -60,7 +60,7 @@ func _physics_process(_d: float) -> bool:
 		var head: Vector3 = crawler.head_point()
 		var ahead: float = (head - crawler.global_position).dot(-crawler.global_basis.z)
 		check(crawler.is_headshot(head) and ahead > 0.3 and not crawler.is_headshot(crawler.global_position + Vector3(0, 0.3, 0)), "crawler head is at the front (%.2f m ahead)" % ahead)
-		main._save_game(SaveGame.new_path())
+		main.save_game(SaveGame.new_path())
 		var data := SaveGame.read(SaveGame.latest())
 		var kinds: Array = data["zombies"].map(func(z: Dictionary) -> String: return z.get("kind", "?"))
 		check("runner" in kinds and "crawler" in kinds, "kinds saved")

@@ -163,7 +163,7 @@ func _after(g: int) -> bool:
 			# Saved partway: horde state and each one's walk come back.
 			saved["count"] = now.size()
 			saved["next_day"] = main.horde.next_day
-			main._save_game(SaveGame.new_path())
+			main.save_game(SaveGame.new_path())
 			# The population rule: over it (a horde can push the count over), nobody new turns up...
 			var pop: Node = main.zombie_population_node
 			pop.population = pop._alive() - 5

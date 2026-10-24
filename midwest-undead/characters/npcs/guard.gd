@@ -146,3 +146,10 @@ func _fire_at(target: Node3D) -> void:
 		# Out of rounds: lower the rifle and reload. A gap the zombies can exploit.
 		_reload_left = reload_time
 		body.one_shot("rifle_reload", reload_time)
+
+
+## One of your survivors posted here: they can come down.
+func own_business(main: Node) -> Array:
+	if not has_meta("survivor"):
+		return []
+	return ["Come down off guard duty", func() -> void: main.camps.stand_down(get_meta("survivor"))]
