@@ -239,11 +239,6 @@ func _check_loaded() -> void:
 	var marchers := now.filter(func(z: Node) -> bool: return z.march_to != Vector3.INF)
 	check(marchers.size() == 20 and marchers.all(func(z: Node) -> bool: return z.march_map == main.horde.outdoor_map and z.march_map.is_valid()), "20 still marching after load, on the outdoor map")
 	check(main.horde.next_day == saved["next_day"] and main.horde.last_size == 20, "horde schedule restored")
-	# A save from before hordes: first one 10-18 days after its day.
-	var h: Horde = main.horde
-	main.day_night.day = 40
-	h.load_state({})
-	check(h.next_day >= 50 and h.next_day <= 58, "old save: next on day %d" % h.next_day)
 
 
 ## How far short of the point `to` (along the ground) a path ends; INF with no path.

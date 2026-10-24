@@ -75,6 +75,7 @@ func _physics_process(_d: float) -> bool:
 			# A zombie below the guard: he aims down at it and shoots.
 			zed = main._add_zombie(g(30, 42) + Vector3(0, 0.1, 0), null, "walker")
 			zed.set_physics_process(false)
+			zed.health = 1e9 # (shot dead by a lucky first round, he'd leave nothing to fire the last at, so no reload)
 			guard.position.y += 4.0 # up a tower
 			guard._cooldown = 0.0
 		12:
@@ -85,7 +86,10 @@ func _physics_process(_d: float) -> bool:
 			mark["muzzle"] = guard.muzzle()
 		20:
 			check(guard._reload_left > 0.0 and guard.body.is_busy(), "out of rounds: the reload plays")
-			check(guard.muzzle().distance_to(guard.global_position + Vector3(0, 1.4, 0)) < 1.2, "the muzzle is at the rifle, in front of him")
+			# (Up at his chest and out in front, where the rifle is: not at his feet or behind him.)
+			var muzzle: Vector3 = guard.global_transform.affine_inverse() * guard.muzzle()
+			check(muzzle.y > 0.9 and muzzle.y < 1.8 and -muzzle.z > 0.5 and -muzzle.z < 1.6 and absf(muzzle.x) < 0.5,
+					"the muzzle is at the rifle, in front of him (%.2f up, %.2f ahead, %.2f aside)" % [muzzle.y, -muzzle.z, muzzle.x])
 			# Talking to the chief.
 			main._on_npc_interacted(chief)
 		24:
