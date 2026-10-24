@@ -366,8 +366,7 @@ label. `HOW_TO_MAP.md` (section 12) lists which ones the story needs.
 
 - **SpawnPoint:** where someone starts, facing the marker's forward (-Z).
   **Role** picks who:
-  - player, trader, chief, wagon, wagon_trader, woodworker_captive,
-    woodworker_home: the game uses the first marker it finds with that role.
+  - player: where you start (the first one).
   - guard: an old-style fixed guard (the old police station had them). Put it
     under its guard tower node. Watch From and Watch To are the ends of the
     stretch of road it shoots zombies on. The new map doesn't use any: you post
@@ -384,11 +383,16 @@ label. `HOW_TO_MAP.md` (section 12) lists which ones the story needs.
   with **Chance**. **Spread** scatters them in a box around the marker.
 - **Place:** a named place on the map. **Kind** is discoverable (found by
   coming within Radius of the marker) or street (a street name, always shown).
-  The quest uses the "Safe House" place.
+  (Quests use quest markers instead: below.)
 - **Zone:** a named area, drawn as an outline (Map Tools > New zone, then Draw
   points). Walking in shows its name.
 - **Base Camp:** the police station's camp (Map Tools > Police station camp).
   Drag its Logbook, Board and Crate child markers to where those go.
+- **Person:** someone from a person file (Map Tools > Quests > New person):
+  the Chief, the Quartermaster... **Captive** ties them to a post until you
+  untie them.
+- **Quest marker:** a spot, area or usable thing quests point at by its
+  Marker Id (Map Tools > Quests > New quest marker).
 
 ## Things the game relies on
 
@@ -399,10 +403,9 @@ label. `HOW_TO_MAP.md` (section 12) lists which ones the story needs.
 - **Groups mark a few special things** (Node dock > Groups):
   - `map_road`: drawn as road on the map screen.
   - `map_fence`: drawn as the compound fence.
-  - `safe_house_trigger`: walking into it counts as reaching the safe house.
-- **Saves find things by their path in the map scene** (folder / building
-  / name). Renaming or moving something to another parent means an older save
-  won't find it.
+- **Saves find things by their save id** (given out when you save the map in
+  the editor: `HOW_TO_MAP.md`, section 12), so renaming or moving something
+  keeps older saves working.
 - **Buildings and modular pieces are merged when a game starts.** To keep the
   game fast, every Building and modular piece (wall, floor, stairs, box) is
   combined into a few big meshes by material (`world/static_merge.gd`). This

@@ -30,6 +30,9 @@ const QuestMarkers := preload("res://quests/quest_markers.gd")
 
 const MAIN_DIR := "res://quests/main/"
 const SIDE_DIR := "res://quests/side/"
+## Where the quest files come from: [folder, main story?]. Tests set it to []
+## to start with no quests but their own (add_quest()).
+static var folders: Array = [[MAIN_DIR, true], [SIDE_DIR, false]]
 ## Saves from another version of this layout start the quests afresh.
 const SAVE_VERSION := 2
 const CHECK_INTERVAL := 0.25
@@ -62,10 +65,15 @@ var _main: Node
 var _state := {}
 var _flags := {} # flag -> number
 var _history: Array = [] # [event, data]: what's happened, for Happened conditions
-## People quests brought in, moved or sent off: npc id -> {"person": their
-## person file's path (brought in), "at": [x, y, z], "yaw", "gone": bool}.
+## People quests brought in, moved, freed or sent off: npc id -> {"person":
+## their person file's path (brought in), "at": [x, y, z], "yaw", "gone": bool,
+## "freed": bool (was held captive)}.
 var _people := {}
-var _pending_people: Array = [] # ["move" or "remove", npc id, marker id]: waiting till you're away
+## Things quests brought in (Spawn Scene): marker id -> {"scene": path, "at", "yaw"}.
+var _things := {}
+## Waiting till you're away: ["spawn", npc id, marker id, person file path],
+## ["move", npc id, marker id], ["remove", npc id, ""], ["thing", marker id, scene path].
+var _pending_people: Array = []
 var _autosave_wanted := false
 var _conversation: Conversation
 var _markers: QuestMarkers
@@ -103,7 +111,7 @@ func setup(main: Node, the_player: Node3D, dialogue: Node, choices: Node, quest_
 
 
 func _load_quests() -> void:
-	for dir_main: Array in [[MAIN_DIR, true], [SIDE_DIR, false]]:
+	for dir_main: Array in folders:
 		for path in _quest_files(dir_main[0]):
 			var q := load(path) as Quest
 			if q == null:
@@ -413,18 +421,22 @@ func fail_current(objective: QuestObjective, why := "") -> void:
 			return
 
 
-## Someone (a person file) turns up at a quest marker, unless they're already there.
+## Someone (a person file) turns up at a quest marker, once you're away from
+## it, unless they're already there.
 func spawn_person(someone: PersonData, marker_id: String) -> void:
-	var m: KitQuestMarker = world.marker(marker_id)
-	if someone == null or someone.id == "" or m == null:
+	if someone == null or someone.id == "" or world.marker(marker_id) == null:
 		push_warning("Spawn person: no person file (with an id), or no quest marker \"%s\"." % marker_id)
 		return
-	var existing := npc(someone.id)
-	if existing and not existing.is_dead:
+	_pending_people.append(["spawn", someone.id, marker_id, someone.resource_path])
+
+
+## Something (a scene) turns up at a quest marker, once you're away from it.
+func spawn_scene(scene: PackedScene, marker_id: String) -> void:
+	if scene == null or world.marker(marker_id) == null:
+		push_warning("Spawn scene: no scene, or no quest marker \"%s\"." % marker_id)
 		return
-	_people[someone.id] = {"person": someone.resource_path, "at": _vec(m.global_position),
-			"yaw": m.global_rotation.y, "gone": false}
-	_bring_in(someone.id)
+	if not _things.has(marker_id):
+		_pending_people.append(["thing", marker_id, scene.resource_path])
 
 
 ## Someone goes to a quest marker, once you're away from both places.
@@ -458,6 +470,10 @@ func autosaved() -> void:
 func _on_event(event: StringName, data: Dictionary) -> void:
 	if _markers:
 		_markers.stale = true # (who's marked can hang on what you carry: a delivery)
+	if event == &"person_freed":
+		var freed: Dictionary = _people.get(data.get("npc_id", ""), {})
+		freed["freed"] = true
+		_people[data.get("npc_id", "")] = freed
 	if not event in NOT_REMEMBERED:
 		var kept := data.duplicate()
 		kept.erase("position")
@@ -474,13 +490,6 @@ func _on_event(event: StringName, data: Dictionary) -> void:
 			if obj and not _is_done(q, stage, oid):
 				obj.on_event(self, _objective_state(q, oid), event, data)
 	_check()
-
-
-## A story event from the old scripts (world/trader_arrival.gd and the like):
-## "story" with its name.
-func event(event_name: String) -> void:
-	if not happened("story", {"name": event_name}):
-		_on_event(&"story", {"name": event_name})
 
 
 func track(quest_id: String) -> void:
@@ -585,7 +594,7 @@ func _mark_done(q: Quest, stage: QuestStage) -> void:
 	for i in stage.objectives.size():
 		var obj := stage.objectives[i]
 		var oid := _objective_id(stage, i)
-		if obj and not _is_done(q, stage, oid) and obj.is_done(self, _objective_state(q, oid)):
+		if obj and not _is_done(q, stage, oid) and obj.is_done(self, _objective_state(q, oid)) and all_hold(obj.when):
 			_set_done(q, stage, oid)
 
 
@@ -778,6 +787,17 @@ func _check_failing() -> void:
 
 # --- People ------------------------------------------------------------------------------
 
+func _put_thing(marker_id: String) -> void:
+	var entry: Dictionary = _things[marker_id]
+	if not ResourceLoader.exists(str(entry.get("scene", ""))):
+		return
+	var thing := (load(entry["scene"]) as PackedScene).instantiate() as Node3D
+	thing.name = "Quest_" + marker_id
+	thing.position = _from_vec(entry["at"])
+	thing.rotation.y = float(entry.get("yaw", 0.0))
+	_main.add_child(thing)
+
+
 ## Brings in someone _people says a quest brought (spawn_person, or loading).
 func _bring_in(id: String) -> void:
 	var entry: Dictionary = _people[id]
@@ -794,10 +814,25 @@ func _bring_in(id: String) -> void:
 	_main.add_child(person)
 
 
-## Moves and removals waiting till you're away.
+## Spawns, moves and removals waiting till you're away.
 func _move_people() -> void:
 	var still: Array = []
 	for job: Array in _pending_people:
+		if job[0] == "spawn" or job[0] == "thing":
+			var m: KitQuestMarker = world.marker(job[2] if job[0] == "spawn" else job[1])
+			if m == null:
+				continue
+			if _near_player(m.global_position):
+				still.append(job)
+			elif job[0] == "spawn":
+				var existing := npc(job[1])
+				if existing == null or existing.is_dead:
+					_people[job[1]] = {"person": job[3], "at": _vec(m.global_position), "yaw": m.global_rotation.y, "gone": false}
+					_bring_in(job[1])
+			elif not _things.has(job[1]):
+				_things[job[1]] = {"scene": job[2], "at": _vec(m.global_position), "yaw": m.global_rotation.y}
+				_put_thing(job[1])
+			continue
 		var person := npc(job[1])
 		if person == null or person.is_dead:
 			if job[0] == "move" and person == null:
@@ -835,7 +870,8 @@ func _near_player(at: Vector3) -> bool:
 
 ## What this person has to say about quests: [label, callable] for each.
 ## main.gd shows them in a choice menu next to their own business (trading,
-## building...), or plays a lone one straight away.
+## building...), or plays a lone one straight away. Per quest: an objective
+## about them, else an offer, else the stage's reminder if it's theirs.
 func talk_options(person: Node) -> Array:
 	var id: String = person.get("npc_id")
 	var options := []
@@ -843,6 +879,7 @@ func talk_options(person: Node) -> Array:
 		return options
 	for q in quests:
 		var stage := current_stage(q)
+		var before := options.size()
 		if stage != null:
 			for i in stage.objectives.size():
 				var obj := stage.objectives[i]
@@ -851,6 +888,9 @@ func talk_options(person: Node) -> Array:
 				if obj and not _is_done(q, stage, oid) and obj.talks_to(self, st, id):
 					var label := obj.choice_text(self)
 					options.append([label if label != "" else q.title, _talk.bind(q, stage, oid, id)])
+			var from := stage.reminder_from if stage.reminder_from != "" else q.giver
+			if options.size() == before and stage.reminder and from == id:
+				options.append([q.title, play.bind(stage.reminder, id, Callable(), q)])
 		elif _offerable(q) and q.giver == id and q.offer:
 			options.append([q.title + "  (new)", _offer.bind(q)])
 	return options
@@ -862,7 +902,8 @@ func afterword(person: Node) -> bool:
 	var id: String = person.get("npc_id")
 	for i in range(quests.size() - 1, -1, -1):
 		var q := quests[i]
-		if q.giver == id and id != "" and status(q) == DONE and q.afterword:
+		var from := q.afterword_from if q.afterword_from != "" else q.giver
+		if from == id and id != "" and status(q) == DONE and q.afterword:
 			play(q.afterword, id, Callable(), q)
 			return true
 	return false
@@ -945,7 +986,7 @@ func _announce() -> void:
 
 func save_state() -> Dictionary:
 	return {"version": SAVE_VERSION, "quests": _state.duplicate(true), "flags": _flags.duplicate(),
-			"history": _history.duplicate(true), "people": _people.duplicate(true),
+			"history": _history.duplicate(true), "people": _people.duplicate(true), "things": _things.duplicate(true),
 			"pending_people": _pending_people.duplicate(true), "tracked": tracked, "autosave": _autosave_wanted}
 
 
@@ -997,6 +1038,12 @@ func load_state(data: Dictionary) -> void:
 		elif entry.has("at"):
 			person.global_position = _from_vec(entry["at"])
 			person.rotation.y = float(entry.get("yaw", 0.0))
+		person = npc(id)
+		if person and entry.get("freed", false):
+			person.set_captive(false)
+	_things = data.get("things", {}).duplicate(true)
+	for marker_id: String in _things:
+		_put_thing(marker_id)
 	_pending_people = Array(data.get("pending_people", []))
 	tracked = str(data.get("tracked", ""))
 	_autosave_wanted = bool(data.get("autosave", false))

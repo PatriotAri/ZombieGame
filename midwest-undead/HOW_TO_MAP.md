@@ -493,26 +493,42 @@ solid ground they stood on. Zombies that fall out just die.
 
 ## 12. Putting the story back: markers
 
-The old town's story places, people and spawn points went with it. Place
-markers on the new map (drag them from `world/markers/` onto the
-**Markers** node) and each system starts working again. `HOW_TO_BUILD.md`
-(Markers) explains each marker's settings.
+The story (`quests/main/westside_safe_house.tres`) and the example side quest
+go by ids: quest markers (**Map Tools > Quests > New quest marker**, then its
+**Marker Id** and **Kind**) and people (**Map Tools > Quests > New person**,
+then its **Person** file). Put these on the map where you want them; each
+missing one leaves that part of the story unreachable (the story test,
+`tests/story_test.gd`, plays it through on a test map that has them all).
+
+| What | Marker | Settings |
+|---|---|---|
+| The Police Chief | person marker | Person: `people/chief.tres` |
+| The Quartermaster (trader) | person marker | Person: `people/quartermaster.tres` |
+| The woodworker, held at the bandit camp | person marker | Person: `people/woodworker.tres`, **Captive** on |
+| The police station's yard (75 kills round it) | quest marker `station` | area, Radius 75 |
+| The Westside safe house | quest marker `safe_house` | area, Radius about 15 (its yard) |
+| Where the wagon turns up | quest marker `wagon` | point, facing the way it's parked |
+| Where the wagon trader stands | quest marker `wagon_trader` | point |
+| The bandit camp (on the map while you're to rescue him) | quest marker `bandit_camp` | area |
+| Where the woodworker works, once he's free | quest marker `woodworker_home` | point (put a workbench by it) |
+| The gas station (the medicine run) | quest marker `gas_station` | area |
+
+And the rest of the world:
 
 | What | Marker or setting | Without it |
 |---|---|---|
 | Where you start | SpawnPoint, role **player** (there's one at the middle of the map) | you start in the middle |
-| The Quartermaster (trader) | SpawnPoint, role **trader** | no shop |
-| The Police Chief | SpawnPoint, role **chief** | the story stops at "Talk to the Police Chief" |
 | Bandits | SpawnPoint, role **bandit** (under the camp node) | none |
-| The woodworker | SpawnPoints **woodworker_captive** and **woodworker_home** | he stands in the middle of the map |
-| The wagon trader | SpawnPoints **wagon** and **wagon_trader** | the wagon turns up in the middle |
 | Survivors | SpawnPoint **survivor** (in their house), with Person set. Optional: **survivor_home** for their own spot at the police station | they're missing (without a survivor_home they stand round their camp) |
-| Bodies at the safe house | SpawnPoint, role **corpse** | none |
+| Bodies (at the safe house) | SpawnPoint, role **corpse** | none |
 | Zombies at the start | ZombieSpawn markers | only the ones scattered around |
-| Story places | Place markers named **Safe House**, **Gas Station**, **Grocery Store** | quest steps there can't be reached |
+| Named places (found by going there) | Place markers | no place names on the map |
 | The police station camp | **Map Tools > Police station camp**: a Base Camp marker in the station, with its **Logbook**, **Board** and **Crate** markers dragged where they go | the camp is wherever you start, with no logbook, board or supply crate |
 | Zones (named areas) | **Map Tools > New zone**, then draw its outline (below) | no zone names |
-| Reaching the safe house | an Area3D in the group **safe_house_trigger** | that story step never happens |
+
+The story's lines still talk about the old town's streets (7th Street, Main):
+change them in the quest file to fit where you put things.
+
 **Zones** are named areas: a hollow, a town, a farm. Walking into one shows
 its name, and the map screen outlines them when you turn that on (interact
 while the map is open). They're just names: nothing else depends on them.
@@ -527,7 +543,6 @@ To make one:
 - Its logbook saves and loads the game.
 - Its bulletin board shows who lives there.
 - Its supply crate fills with food and ammo each morning.
-- The wagon trader comes once you've killed 75 zombies within 75 m of it.
 
 Put one marker in the station (**Map Tools > Police station camp**), then drag
 its three child markers where you want those things. Other camps are built in

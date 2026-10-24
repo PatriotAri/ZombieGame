@@ -1,0 +1,262 @@
+[gd_resource type="Resource" script_class="Quest" format=3]
+
+[ext_resource type="Script" path="res://quests/quest_dialogue_node.gd" id="1_sirhi"]
+[ext_resource type="Script" path="res://quests/quest_reply.gd" id="2_vy30o"]
+[ext_resource type="Script" path="res://quests/quest_condition.gd" id="3_3cdov"]
+[ext_resource type="Script" path="res://quests/quest_dialogue.gd" id="4_kcsb2"]
+[ext_resource type="Script" path="res://quests/quest_action.gd" id="5_r7pxy"]
+[ext_resource type="Script" path="res://quests/quest.gd" id="6_r7uiy"]
+[ext_resource type="Script" path="res://quests/quest_stage.gd" id="7_tla2o"]
+[ext_resource type="Script" path="res://quests/quest_branch.gd" id="8_lmvvo"]
+[ext_resource type="Script" path="res://quests/conditions/happened.gd" id="9_n6lqw"]
+[ext_resource type="Script" path="res://quests/quest_objective.gd" id="10_28f33"]
+[ext_resource type="Script" path="res://quests/objectives/talk_to.gd" id="11_kagnu"]
+[ext_resource type="Script" path="res://quests/objectives/go_to.gd" id="12_581mv"]
+[ext_resource type="Script" path="res://quests/actions/noise.gd" id="13_i05jp"]
+[ext_resource type="Script" path="res://quests/actions/autosave.gd" id="14_n7oqe"]
+[ext_resource type="Script" path="res://quests/objectives/kill.gd" id="15_0hehw"]
+[ext_resource type="PackedScene" path="res://world/props/wagon.tscn" id="16_wmwkv"]
+[ext_resource type="Script" path="res://quests/actions/spawn_scene.gd" id="17_n2slu"]
+[ext_resource type="Resource" path="res://characters/npcs/people/wagon_trader.tres" id="18_35lxi"]
+[ext_resource type="Script" path="res://quests/actions/spawn_person.gd" id="19_kp4ei"]
+[ext_resource type="Script" path="res://quests/conditions/person_alive.gd" id="20_6ie8m"]
+[ext_resource type="Script" path="res://quests/objectives/event.gd" id="21_as473"]
+[ext_resource type="Script" path="res://quests/actions/move_person.gd" id="22_uxv4e"]
+
+[sub_resource type="Resource" id="Resource_bbj8d"]
+script = ExtResource("1_sirhi")
+lines = Array[String](["A trader in our own yard, and a woodworker. Almost feels like a town again.", "Still working out what comes next. Keep your head down, and keep that gun clean."])
+
+[sub_resource type="Resource" id="Resource_jr4qy"]
+script = ExtResource("4_kcsb2")
+nodes = Array[ExtResource("1_sirhi")]([SubResource("Resource_bbj8d")])
+
+[sub_resource type="Resource" id="Resource_scvua"]
+script = ExtResource("9_n6lqw")
+event = "area_entered"
+match = {
+"marker": "safe_house"
+}
+
+[sub_resource type="Resource" id="Resource_8gchb"]
+script = ExtResource("8_lmvvo")
+when = Array[ExtResource("3_3cdov")]([SubResource("Resource_scvua")])
+next = "reward_early"
+
+[sub_resource type="Resource" id="Resource_k54f0"]
+script = ExtResource("1_sirhi")
+lines = Array[String](["Good, you're up. Listen. We've lost contact with the Westside safe house.", "Eleven people holed up there. Families, mostly. They checked in on the radio every night like clockwork.", "Three nights ago they missed the call. Nothing since.", "Could be a dead battery. Could be worse. I can't spare a guard off the towers to find out.", "It's way out on the west end of 7th Street, past Main and past the houses, across from the gas station. Get over there, see what happened, and come back and tell me.", "Trade with the Quartermaster if you need supplies. And keep it quiet out there. Gunfire brings every one of them for blocks."])
+
+[sub_resource type="Resource" id="Resource_qb1sw"]
+script = ExtResource("9_n6lqw")
+event = "area_entered"
+match = {
+"marker": "safe_house"
+}
+
+[sub_resource type="Resource" id="Resource_cxim5"]
+script = ExtResource("1_sirhi")
+id = "already_been"
+lines = Array[String](["Good, you're up. Listen. We've lost contact with the Westside safe house, and I need someone to...", "...Hold on. You've got that look. You've already been out west, haven't you?", "Overrun. All eleven of them?", "Damn it. I was about to send you out there to find exactly that.", "You saved me a day of wondering, and yourself a trip. Here. You've earned this.", "And here's our next move. We stop hiding behind this fence and take back the blocks around it.", "Every one of those things on the streets around the station. Clear them out. Board up what you can so they stay out.", "Do that and word gets around. Traders follow safe streets."])
+start_when = Array[ExtResource("3_3cdov")]([SubResource("Resource_qb1sw")])
+
+[sub_resource type="Resource" id="Resource_3am02"]
+script = ExtResource("4_kcsb2")
+nodes = Array[ExtResource("1_sirhi")]([SubResource("Resource_k54f0"), SubResource("Resource_cxim5")])
+
+[sub_resource type="Resource" id="Resource_ebsc8"]
+script = ExtResource("11_kagnu")
+npc = "chief"
+dialogue = SubResource("Resource_3am02")
+text = "Talk to the Police Chief"
+
+[sub_resource type="Resource" id="Resource_1kt0i"]
+script = ExtResource("7_tla2o")
+id = "talk_chief"
+objectives = Array[ExtResource("10_28f33")]([SubResource("Resource_ebsc8")])
+branches = Array[ExtResource("8_lmvvo")]([SubResource("Resource_8gchb")])
+
+[sub_resource type="Resource" id="Resource_h538q"]
+script = ExtResource("12_581mv")
+marker = "safe_house"
+text = "Find out what happened at the Westside safe house"
+map_label = "Safe house"
+
+[sub_resource type="Resource" id="Resource_qbo2b"]
+script = ExtResource("13_i05jp")
+marker = "safe_house"
+
+[sub_resource type="Resource" id="Resource_vh0ly"]
+script = ExtResource("14_n7oqe")
+
+[sub_resource type="Resource" id="Resource_cfowo"]
+script = ExtResource("1_sirhi")
+lines = Array[String](["The safe house is way out on the west end of 7th Street, across from the gas station. Go. And come back in one piece."])
+
+[sub_resource type="Resource" id="Resource_170wd"]
+script = ExtResource("4_kcsb2")
+nodes = Array[ExtResource("1_sirhi")]([SubResource("Resource_cfowo")])
+
+[sub_resource type="Resource" id="Resource_d308o"]
+script = ExtResource("7_tla2o")
+id = "reach_safe_house"
+objectives = Array[ExtResource("10_28f33")]([SubResource("Resource_h538q")])
+reminder = SubResource("Resource_170wd")
+reminder_from = "chief"
+complete_story = "The barricade is torn open. The windows are smashed in.
+Nobody answered the radio because nobody is left."
+on_complete = Array[ExtResource("5_r7pxy")]([SubResource("Resource_qbo2b"), SubResource("Resource_vh0ly")])
+
+[sub_resource type="Resource" id="Resource_xaytx"]
+script = ExtResource("1_sirhi")
+lines = Array[String](["...You're back. What did you find?", "Overrun. All of them?", "Damn it. I knew those people. The Harlans. Old Mrs. Pruitt. The Okafor kids.", "If the Westside barricades couldn't hold, nothing in this town is as safe as we've been telling ourselves.", "Here. You earned this, and then some.", "And here's our next move. We stop hiding behind this fence and take back the blocks around it.", "Every one of those things on the streets around the station. Clear them out. Board up what you can so they stay out.", "Do that and word gets around. Traders follow safe streets."])
+
+[sub_resource type="Resource" id="Resource_e07ub"]
+script = ExtResource("4_kcsb2")
+nodes = Array[ExtResource("1_sirhi")]([SubResource("Resource_xaytx")])
+
+[sub_resource type="Resource" id="Resource_xhhf2"]
+script = ExtResource("11_kagnu")
+npc = "chief"
+dialogue = SubResource("Resource_e07ub")
+text = "Report back to the Police Chief"
+
+[sub_resource type="Resource" id="Resource_ggip0"]
+script = ExtResource("7_tla2o")
+id = "report"
+objectives = Array[ExtResource("10_28f33")]([SubResource("Resource_xhhf2")])
+reward_money = 100
+
+[sub_resource type="Resource" id="Resource_ttngv"]
+script = ExtResource("15_0hehw")
+count = 75
+near = "station"
+text = "Kill zombies near the police station ({count}/{total})"
+
+[sub_resource type="Resource" id="Resource_hiw2m"]
+script = ExtResource("17_n2slu")
+scene = ExtResource("16_wmwkv")
+at = "wagon"
+
+[sub_resource type="Resource" id="Resource_5xkq6"]
+script = ExtResource("19_kp4ei")
+person = ExtResource("18_35lxi")
+at = "wagon_trader"
+
+[sub_resource type="Resource" id="Resource_srmhv"]
+script = ExtResource("1_sirhi")
+lines = Array[String](["There are still too many of them around the station. Keep thinning them out."])
+
+[sub_resource type="Resource" id="Resource_l3bex"]
+script = ExtResource("4_kcsb2")
+nodes = Array[ExtResource("1_sirhi")]([SubResource("Resource_srmhv")])
+
+[sub_resource type="Resource" id="Resource_i8a7r"]
+script = ExtResource("7_tla2o")
+id = "clear_zone"
+objectives = Array[ExtResource("10_28f33")]([SubResource("Resource_ttngv")])
+reminder = SubResource("Resource_l3bex")
+reminder_from = "chief"
+complete_story = "It's quiet around the station now.
+Word will get around."
+on_complete = Array[ExtResource("5_r7pxy")]([SubResource("Resource_hiw2m"), SubResource("Resource_5xkq6")])
+
+[sub_resource type="Resource" id="Resource_yijqc"]
+script = ExtResource("20_6ie8m")
+npc = "wagon_trader"
+
+[sub_resource type="Resource" id="Resource_7n6jk"]
+script = ExtResource("12_581mv")
+marker = "wagon_trader"
+radius = 25.0
+text = "The station's quieter now. Head out and scavenge; word will get around"
+when = Array[ExtResource("3_3cdov")]([SubResource("Resource_yijqc")])
+show_on_map = false
+
+[sub_resource type="Resource" id="Resource_bd7l7"]
+script = ExtResource("1_sirhi")
+lines = Array[String](["You did it. It's quiet around here. First time in months.", "Give it time. Anyone out there with goods to sell will hear about it. Go see what else is out there."])
+
+[sub_resource type="Resource" id="Resource_oss3r"]
+script = ExtResource("4_kcsb2")
+nodes = Array[ExtResource("1_sirhi")]([SubResource("Resource_bd7l7")])
+
+[sub_resource type="Resource" id="Resource_5lvew"]
+script = ExtResource("7_tla2o")
+id = "wait_for_trader"
+objectives = Array[ExtResource("10_28f33")]([SubResource("Resource_7n6jk")])
+reminder = SubResource("Resource_oss3r")
+reminder_from = "chief"
+complete_story = "A trader's wagon has pulled into the station yard."
+
+[sub_resource type="Resource" id="Resource_3hbku"]
+script = ExtResource("21_as473")
+event = "person_freed"
+match = {
+"npc_id": "woodworker"
+}
+marker = "bandit_camp"
+text = "Rescue the woodworker the bandits are holding at their camp"
+map_label = "Bandit camp"
+
+[sub_resource type="Resource" id="Resource_wvsd0"]
+script = ExtResource("22_uxv4e")
+npc = "woodworker"
+to = "woodworker_home"
+
+[sub_resource type="Resource" id="Resource_hi4tq"]
+script = ExtResource("1_sirhi")
+lines = Array[String](["The trader told you too? A woodworker, held at that bandit camp north of 7th.", "Someone who can build is worth more to us than all the ammo in town. Watch towers, fences, gates.", "Get him out of there. Quietly, if you can."])
+
+[sub_resource type="Resource" id="Resource_1d66y"]
+script = ExtResource("4_kcsb2")
+nodes = Array[ExtResource("1_sirhi")]([SubResource("Resource_hi4tq")])
+
+[sub_resource type="Resource" id="Resource_c0u2i"]
+script = ExtResource("7_tla2o")
+id = "rescue_woodworker"
+objectives = Array[ExtResource("10_28f33")]([SubResource("Resource_3hbku")])
+reminder = SubResource("Resource_1d66y")
+reminder_from = "chief"
+start_story = "The trader says the bandits are holding a woodworker at their camp."
+on_complete = Array[ExtResource("5_r7pxy")]([SubResource("Resource_wvsd0")])
+
+[sub_resource type="Resource" id="Resource_1f2u2"]
+script = ExtResource("12_581mv")
+marker = "woodworker_home"
+radius = 10.0
+text = "Find the woodworker in the station yard"
+map_label = "Woodworker"
+
+[sub_resource type="Resource" id="Resource_fft0y"]
+script = ExtResource("1_sirhi")
+lines = Array[String](["You got him out? Good work. He'll be setting up in the yard; go and see him."])
+
+[sub_resource type="Resource" id="Resource_j8x13"]
+script = ExtResource("4_kcsb2")
+nodes = Array[ExtResource("1_sirhi")]([SubResource("Resource_fft0y")])
+
+[sub_resource type="Resource" id="Resource_opbt2"]
+script = ExtResource("7_tla2o")
+id = "meet_woodworker"
+objectives = Array[ExtResource("10_28f33")]([SubResource("Resource_1f2u2")])
+next = "end"
+reminder = SubResource("Resource_j8x13")
+reminder_from = "chief"
+complete_story = "The woodworker has set up in the station yard.
+Bring him planks, plywood and scrap metal and he'll build for you."
+
+[sub_resource type="Resource" id="Resource_pcxh4"]
+script = ExtResource("7_tla2o")
+id = "reward_early"
+next = "clear_zone"
+reward_money = 100
+
+[resource]
+script = ExtResource("6_r7uiy")
+id = "westside_safe_house"
+title = "The Westside Safe House"
+description = "The Police Chief holds the station. Help him take the town back, one block at a time."
+stages = Array[ExtResource("7_tla2o")]([SubResource("Resource_1kt0i"), SubResource("Resource_d308o"), SubResource("Resource_ggip0"), SubResource("Resource_i8a7r"), SubResource("Resource_5lvew"), SubResource("Resource_c0u2i"), SubResource("Resource_opbt2"), SubResource("Resource_pcxh4")])
+afterword = SubResource("Resource_jr4qy")
+afterword_from = "chief"

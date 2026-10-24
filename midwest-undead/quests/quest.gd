@@ -46,6 +46,8 @@ extends Resource
 @export_multiline var complete_story := ""
 ## What the giver says afterwards, when there's nothing else to talk about.
 @export var afterword: QuestDialogue
+## Who says the afterword (an Npc Id). Empty: the giver.
+@export var afterword_from := ""
 
 ## Set by quests/quest_manager.gd: it's in quests/main/.
 var main := false

@@ -8,8 +8,7 @@ extends Marker3D
 ##   bandit    - under their camp: they stay near the camp node's position.
 ##   survivor  - inside the house (a Building) they're holed up in.
 
-@export_enum("player", "trader", "chief", "guard", "bandit", "corpse", "survivor", "survivor_home",
-		"woodworker_captive", "woodworker_home", "wagon", "wagon_trader") var role := "player":
+@export_enum("player", "guard", "bandit", "corpse", "survivor", "survivor_home") var role := "player":
 	set(value):
 		role = value
 		_update_label()

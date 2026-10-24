@@ -40,9 +40,8 @@ func _initialize() -> void:
 	house.position = Vector3(80, 0, 40)
 	map_root.get_node("Buildings").add_child(house); house.owner = map_root
 	var markers := map_root.get_node("Markers")
-	for spec: Array in [["Trader", "trader", Vector3(0, 0.1, 12)], ["Chief", "chief", Vector3(3, 0.1, 12)]]:
-		var sp := KitSpawnPoint.new(); sp.name = spec[0]; sp.role = spec[1]; sp.position = spec[2]
-		markers.add_child(sp); sp.owner = map_root
+	TestMap.person(map_root, "quartermaster", Vector3(0, 0.1, 12))
+	TestMap.person(map_root, "chief", Vector3(3, 0.1, 12))
 	var place := KitPlace.new(); place.name = "Station"; place.place_name = "Police Station"
 	markers.add_child(place); place.owner = map_root
 	var zs := KitZombieSpawn.new(); zs.name = "Spawn"; zs.count = 5; zs.spread = Vector2(10, 10)
@@ -75,7 +74,7 @@ func _physics_process(_d: float) -> bool:
 		60:
 			_find()
 			check(main.doors.size() >= 2 and main.windows.size() >= 4, "found %d doors and %d windows" % [main.doors.size(), main.windows.size()])
-			check(main.trader != null and main.chief != null, "trader and chief at their markers")
+			check(main.quests.npc("quartermaster") != null and main.quests.npc("chief") != null, "the Quartermaster and the Chief at their markers")
 			check(main.places.size() == 1, "the Place is found")
 			var near_spawn: Array = main.zombies.filter(func(q: Node) -> bool: return q.global_position.distance_to(Vector3(-150, 0, -150)) < 20.0)
 			check(near_spawn.size() == 5, "ZombieSpawn: %d zombies around it" % near_spawn.size())
@@ -108,9 +107,9 @@ func _physics_process(_d: float) -> bool:
 			var upstairs: Vector3 = house.global_transform * Vector3(9.0, house.floor_top(1) + 0.1, -2.0)
 			var path: PackedVector3Array = NavigationServer3D.map_get_path(m, Vector3(75, 0.1, 40), upstairs, true, 3)
 			check(not path.is_empty() and path[path.size() - 1].distance_to(upstairs) < 1.0, "a path from outside up the stairs to the house's upper floor (ends %.1f m off)" % (path[path.size() - 1].distance_to(upstairs) if path.size() else INF))
-			main.trader.stock.add("pistol_ammo", 7)
+			main.quests.npc("quartermaster").stock.add("pistol_ammo", 7)
 			saved["boarded"] = main.fortifications.save_state()["boarded"]
-			saved["ammo"] = main.trader.stock.count("pistol_ammo")
+			saved["ammo"] = main.quests.npc("quartermaster").stock.count("pistol_ammo")
 			main.save_game(SaveGame.new_path())
 			SaveGame.pending_load = SaveGame.read(SaveGame.latest())
 			root.remove_child(main); main.free()
@@ -121,7 +120,7 @@ func _physics_process(_d: float) -> bool:
 			check(main.fortifications.save_state()["boarded"] == saved["boarded"], "loaded: the planked window is still planked")
 			var d: Node = main.doors.filter(func(q: Node) -> bool: return String(q.get_meta("town_id")).begins_with(TestMap.under(main, "Buildings/Shop")))[0]
 			check(d.is_broken, "loaded: the broken door is still broken")
-			check(main.trader.stock.count("pistol_ammo") == saved["ammo"], "loaded: the trader's stock")
+			check(main.quests.npc("quartermaster").stock.count("pistol_ammo") == saved["ammo"], "loaded: the trader's stock")
 			print("FAILS: %d" % fails)
 			return true
 	return false

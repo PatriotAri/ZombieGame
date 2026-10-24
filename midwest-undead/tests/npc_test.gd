@@ -50,9 +50,8 @@ func _physics_process(_d: float) -> bool:
 			p.set_physics_process(false)
 			for q in main.zombies: q.set_physics_process(false); q.global_position = Vector3(-900, 0, 900)
 			p.global_position = g(40, 40) + Vector3(0, 0.1, 0)
-			chief = main.chief if main.chief else ChiefScene.instantiate()
-			if not chief.is_inside_tree():
-				chief.position = g(42, 40); main.add_child(chief)
+			chief = ChiefScene.instantiate()
+			chief.position = g(42, 40); main.add_child(chief)
 			guard = GuardScene.instantiate(); guard.position = g(30, 30)
 			main.add_child(guard)
 			# Out of sight of you and the guard (both his enemies), so he idles.

@@ -54,8 +54,6 @@ static func collect(main: Node) -> Dictionary:
 		"structures": main.structures.save_state(),
 		"discovered": main.discoveries.save_state(),
 		"traders": _traders(main),
-		"wagon_trader": main.trader_arrival.save_state(),
-		"woodworker": main.woodworker_rescue.save_state(),
 		"survivors": main.survivors.save_state(),
 		"camps": main.camps.save_state(),
 		"salvaged": main.salvage.save_state(),
@@ -127,8 +125,6 @@ static func apply(main: Node, data: Dictionary) -> void:
 		else:
 			bandit.health = float(entry.get("health", bandit.max_health))
 
-	main.trader_arrival.load_state(data.get("wagon_trader", {}))
-	main.woodworker_rescue.load_state(data.get("woodworker", {}))
 	main.survivors.load_state(data.get("survivors", {}))
 	main.camps.load_state(data.get("camps", {}))
 	main.salvage.load_state(data.get("salvaged", []))

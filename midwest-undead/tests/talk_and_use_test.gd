@@ -18,6 +18,7 @@ func check(c: bool, what: String) -> void:
 	if not c: fails += 1
 
 func _initialize() -> void:
+	preload("res://quests/quest_manager.gd").folders = [] # only the quests made here
 	var map := TestMap.begin()
 	TestMap.base_camp(map, Vector3(0, 0, 20))
 	TestMap.building(map, "Shop", Vector3(40, 0, 40))

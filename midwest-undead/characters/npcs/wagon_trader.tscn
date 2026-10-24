@@ -24,6 +24,7 @@ rare_stock = Dictionary[String, int]({
 "shotgun": 1
 })
 rare_chance = 0.25
+restock_clear_radius = 40.0
 buy_prices = Dictionary[String, int]({
 "barricade": 28,
 "batteries": 10,

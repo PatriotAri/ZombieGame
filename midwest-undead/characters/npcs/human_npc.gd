@@ -86,6 +86,9 @@ var _last_blow: Array = [] # [impulse, where]: what knocks the body over if this
 var _last_attacker: Node # who hit them last (npc_died says whether it was you)
 ## Their person file, if they came from one (characters/npcs/person_data.gd).
 var person: PersonData
+## Tied to a post (set_captive()): "untie" is all you can do with them.
+var captive := false
+var _post: Node3D
 var _player: Node
 
 @onready var visual: Node3D = $Visual
@@ -165,10 +168,44 @@ func own_business(_main: Node) -> Array:
 	return []
 
 
+## Tied up, untying them; otherwise what their kind says (_talk_prompt()).
+func interact_prompt() -> String:
+	if captive:
+		return "untie " + display_name
+	return _talk_prompt()
+
+
 ## People quests know (an npc_id) can be talked to; kinds with business of
 ## their own (trading, building...) say so instead.
-func interact_prompt() -> String:
+func _talk_prompt() -> String:
 	return "talk to " + display_name if npc_id != "" else ""
+
+
+## Tied to a post at their back (on), or let go (off). Freeing someone is
+## main.gd's untie (it reports person_freed); this just sets the look.
+func set_captive(on: bool) -> void:
+	captive = on
+	if on and _post == null:
+		_post = StaticBody3D.new()
+		_post.name = "Post"
+		_post.position = Vector3(0, 1.0, 0.45)
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(0.22, 2.2, 0.22)
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.33, 0.24, 0.16)
+		mesh.material = mat
+		var inst := MeshInstance3D.new()
+		inst.mesh = mesh
+		_post.add_child(inst)
+		var shape := BoxShape3D.new()
+		shape.size = mesh.size
+		var col := CollisionShape3D.new()
+		col.shape = shape
+		_post.add_child(col)
+		add_child(_post)
+	elif not on and _post:
+		_post.queue_free()
+		_post = null
 
 
 ## Hits from weapons (player or NPC). Same signature zombies use, so attackers

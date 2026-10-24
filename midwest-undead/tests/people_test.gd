@@ -20,6 +20,7 @@ func check(c: bool, what: String) -> void:
 	if not c: fails += 1
 
 func _initialize() -> void:
+	preload("res://quests/quest_manager.gd").folders = [] # only the quests made here
 	preload("res://tests/support/test_saves.gd").use() # never your own saves
 	stranger = PersonData.new()
 	stranger.id = "stranger"; stranger.display_name = "Stranger"

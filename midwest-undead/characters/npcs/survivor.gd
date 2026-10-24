@@ -17,7 +17,7 @@ var camp_name := "" # the base camp they live at (world/camps.gd)
 var guard_post: Node3D = null # the guard post they're on, or null
 
 
-func interact_prompt() -> String:
+func _talk_prompt() -> String:
 	return "" if state == State.TRAVELLING else "talk to " + display_name
 
 

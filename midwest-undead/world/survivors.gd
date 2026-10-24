@@ -26,7 +26,6 @@ const Building := preload("res://world/building.gd")
 const SpawnPoint := preload("res://world/markers/spawn_point.gd")
 const Survivor := preload("res://characters/npcs/survivor.gd")
 const SurvivorScene := preload("res://characters/npcs/survivor.tscn")
-const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Recipes := preload("res://core/recipes.gd")
 const Conversation := preload("res://quests/conversation.gd")
 
@@ -51,7 +50,6 @@ var _choices: Node # ui/choice_menu.gd
 var _conversation: Conversation
 var _crafting: Node # ui/craft_menu.gd
 var _camps: Node # camps.gd
-var _woodworker: Node # woodworker_rescue.gd
 var _bedrolls := {} # survivor -> its bedroll in the yard
 var _timer := 0.0
 
@@ -117,14 +115,13 @@ static func station_homes(spots: Array) -> Dictionary:
 
 ## Who's talking to them, and the camps they'd join (main.gd creates these after
 ## the town).
-func attach(player: Node3D, dialogue: Node, choices: Node, crafting: Node, camps: Node, woodworker: Node) -> void:
+func attach(player: Node3D, dialogue: Node, choices: Node, crafting: Node, camps: Node) -> void:
 	_player = player
 	_dialogue = dialogue
 	_choices = choices
 	_conversation = Conversation.new(player, dialogue, choices)
 	_crafting = crafting
 	_camps = camps
-	_woodworker = woodworker
 
 
 ## Zombies the map put inside a survivor's house go outside it instead (they
@@ -170,7 +167,7 @@ func talk(survivor: Survivor) -> void:
 ## At the base: the machinist's crafting, or everyone else's stations.
 func _work_menu(survivor: Survivor, person: SurvivorData) -> void:
 	if survivor.job == "machinist":
-		var home: bool = _woodworker.call("state") == Woodworker.State.HOME
+		var home: bool = _camps.call("woodworker_free")
 		_crafting.call("open", _player, survivor.display_name,
 				Recipes.MACHINIST_ANYTIME + (Recipes.MACHINIST if home else []),
 				"" if home else MACHINIST_NEEDS_WOODWORKER)

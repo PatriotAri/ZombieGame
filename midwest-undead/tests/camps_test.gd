@@ -2,8 +2,7 @@ extends SceneTree
 ## Queue A: drawn zones (entering toast, lookups), the police station camp from
 ## its marker, a built camp (placement rule, name from its zone, its parts),
 ## recruits picking a camp, stations and capacity per camp, posting a guard
-## (it shoots), morning supplies per camp, the bulletin board, kills near the
-## station bringing the trader, building anywhere, save
+## (it shoots), morning supplies per camp, the bulletin board, building anywhere, save
 ## and load, and taking a camp down.
 const SaveGame := preload("res://core/save_game.gd")
 var main: Node
@@ -119,21 +118,7 @@ func _physics_process(_d: float) -> bool:
 			var food: int = camp2.crate.inventory.count("canned_food")
 			check(food == 2 and main.camps.station.crate.inventory.count("canned_food") == 0, "the morning's food goes in that camp's crate (%d)" % food)
 			check(camp2.board.summary == "Members 1 / 12" and "Dale Hutchins (on the garden)" in camp2.board.details, "the bulletin board: %s, %s" % [camp2.board.summary, camp2.board.details])
-			# Kills near the station.
-			p.global_position = g(0, 30) + Vector3(0, 0.1, 0)
-			var near = main._add_zombie(g(0, 45) + Vector3(0, 0.1, 0), null, "walker")
-			near.set_physics_process(false)
-			near.take_hit(500.0, p.global_position, 1.0, p)
-			var far = main._add_zombie(g(250, 250) + Vector3(0, 0.1, 0), null, "walker")
-			far.set_physics_process(false)
-			far.take_hit(500.0, far.global_position + Vector3(0, 0, 2), 1.0, p)
-			check(main.camps.kills_near("Police Station") == 1, "a kill near the station counts; one far off doesn't (%d)" % main.camps.kills_near("Police Station"))
-			main.camps.kills["Police Station"] = 74
-			var last = main._add_zombie(g(5, 45) + Vector3(0, 0.1, 0), null, "walker")
-			last.set_physics_process(false)
-			last.take_hit(500.0, p.global_position, 1.0, p)
 		610:
-			check(main.trader_arrival.cleared, "75 kills near the station: word gets around (the trader's coming)")
 			# Building anywhere: a fence out on its own (no zone, nobody's cleared it).
 			var none: Array[RID] = []
 			var view: Dictionary = main.structures.preview("fence", g(-200, -200) + Vector3(0, 1.6, 0), Vector3(0, -0.6, -1).normalized(), g(-200, -200), none)
@@ -154,7 +139,7 @@ func _physics_process(_d: float) -> bool:
 			camp2 = camps.camps[1]
 			survivor = main.survivors.survivors[0]
 			check(survivor.camp_name == "Pine Hollow Camp" and survivor.working, "loaded: they still live there and work the plot")
-			check(camp2.crate.inventory.count("canned_food") == saved["food"] and camps.kills_near("Police Station") == 75, "loaded: the crate and the kill count")
+			check(camp2.crate.inventory.count("canned_food") == saved["food"] and true, "loaded: the crate")
 			# Taking the camp down: they move to the station; you get the kit back.
 			camps.move_to(survivor, camps.station)
 			camp2.piece.interact(p) # (nobody left there: it comes straight down)

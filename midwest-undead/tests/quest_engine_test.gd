@@ -28,11 +28,12 @@ func check(c: bool, what: String) -> void:
 
 func _initialize() -> void:
 	preload("res://tests/support/test_saves.gd").use() # never your own saves
+	preload("res://quests/quest_manager.gd").folders = [] # only the quests made here
 	var map := TestMap.begin()
 	TestMap.quest_marker(map, "farm", "area", Vector3(60, 0, 0)).radius = 8.0
 	TestMap.quest_marker(map, "radio", "usable", Vector3(0, 1.5, -1.5))
 	TestMap.quest_marker(map, "well", "point", Vector3(-30, 0, 0))
-	TestMap.spawn_point(map, "chief", Vector3(3, 0.1, 6))
+	TestMap.person(map, "chief", Vector3(3, 0.1, 6))
 	test_map = TestMap.finish(map)
 	_start()
 
@@ -150,7 +151,7 @@ func _physics_process(_d: float) -> bool:
 			check(at_stage("test_story") == "talk", "at the farm: on to the talk (and its objective \"1\" isn't done already)")
 			check(q.flag("went") == 1, "the stage's action set a flag")
 			check(q.marked_people().get("chief") == "?", "a ? over the chief")
-			var options: Array = q.talk_options(main.chief)
+			var options: Array = q.talk_options(q.npc("chief"))
 			check(options.size() == 1, "the chief has the story to talk about")
 			options[0][1].call()
 			check(main.dialogue.is_open(), "...and says his line")
@@ -198,17 +199,17 @@ func _physics_process(_d: float) -> bool:
 					"the journal lists what was done (%s)" % [entry[0]["steps"].map(func(s): return s["objective"]) if entry.size() else []])
 		130:
 			check(status("test_errand") == "available" and q.marked_people().get("chief") == "!", "the errand's on offer: a ! over the chief")
-			var options: Array = q.talk_options(main.chief)
+			var options: Array = q.talk_options(q.npc("chief"))
 			check(options.size() == 1 and options[0][0] == "Test errand  (new)", "...offered when you talk to him")
 			options[0][1].call()
 			finish_talk()
 			check(pick("Sure"), "his offer: Sure")
 		150:
 			check(status("test_errand") == "active", "accepted")
-			check(q.talk_options(main.chief).size() == 1, "you've a plank (the story's reward): the delivery's on")
+			check(q.talk_options(q.npc("chief")).size() == 1, "you've a plank (the story's reward): the delivery's on")
 			money_before = p.money
 			var planks: int = p.inventory.count("planks")
-			q.talk_options(main.chief)[0][1].call()
+			q.talk_options(q.npc("chief"))[0][1].call()
 			finish_talk()
 			check(p.inventory.count("planks") == planks - 1, "handed over: one plank less")
 		170:

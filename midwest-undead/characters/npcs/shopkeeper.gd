@@ -39,10 +39,10 @@ var stock := Inventory.new()
 var day_night: Node
 ## The last day they restocked; their starting stock counts as day 1's.
 var restocked_day := 1
-## Optional: returns false while they can't restock (the wagon trader waits for
-## the streets around the station to be clear). A missed morning is made up as
-## soon as it returns true again.
-var can_restock := Callable()
+## No restock while a zombie is this close (meters): the morning's restock
+## waits till they've gone (a missed morning is made up then). 0: they always
+## restock.
+@export var restock_clear_radius := 0.0
 
 
 func _npc_ready() -> void:
@@ -62,8 +62,17 @@ func _npc_ready() -> void:
 ## to the clock passing an hour) means a loaded save can't restock twice.
 func _npc_physics(_delta: float) -> void:
 	if day_night and day_night.day > restocked_day and day_night.hour >= restock_hour \
-			and (not can_restock.is_valid() or can_restock.call()):
+			and _clear_of_zombies():
 		restock()
+
+
+func _clear_of_zombies() -> bool:
+	if restock_clear_radius <= 0.0:
+		return true
+	for zombie: Node3D in get_tree().get_nodes_in_group("zombies"):
+		if zombie.global_position.distance_squared_to(global_position) < restock_clear_radius * restock_clear_radius:
+			return false
+	return true
 
 
 func restock() -> void:
@@ -91,7 +100,7 @@ func can_trade() -> bool:
 	return not is_dead
 
 
-func interact_prompt() -> String:
+func _talk_prompt() -> String:
 	return "trade with " + display_name if can_trade() else ""
 
 

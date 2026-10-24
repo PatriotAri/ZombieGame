@@ -17,6 +17,12 @@ extends Marker3D
 	set(value):
 		start_here = value
 		_update_label()
+## Held captive here: tied to a post at their back, until you untie them (they
+## say their person file's Untie Talk, and quests hear person_freed).
+@export var captive := false:
+	set(value):
+		captive = value
+		_update_label()
 
 const LABEL_COLOR := Color(0.55, 0.85, 1.0)
 
@@ -44,4 +50,4 @@ func _update_label() -> void:
 	var who := "no person file"
 	if person:
 		who = person.display_name if person.display_name != "" else person.id
-	_label.text = who + ("" if start_here else " (later)")
+	_label.text = who + ("" if start_here else " (later)") + (" (captive)" if captive else "")

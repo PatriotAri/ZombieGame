@@ -31,6 +31,9 @@ extends Resource
 ## What they say when they have no quest business with you and nothing of
 ## their own (trading, building) to offer. Optional.
 @export var talk: QuestDialogue
+## What they say when you untie them, if they're held captive (a person
+## marker's Captive). Optional.
+@export var untie_talk: QuestDialogue
 
 const DEFAULT_SCENE := "res://characters/npcs/human_npc.tscn"
 

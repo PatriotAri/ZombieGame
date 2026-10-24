@@ -16,25 +16,21 @@ extends Node
 ##     camp: they shoot zombies within GUARD_RADIUS of it (free ammo), and come
 ##     back to camp when you stand them down.
 ##   - Each camp's bulletin board shows who lives there.
-##   - Zombies you kill within RANGE of a camp are counted for it (the wagon
-##     trader comes once enough are killed round the station; quests can ask
-##     for kills near a camp).
 ## main.gd creates it. Saved: the camps (built ones by their piece), each
-## crate's contents, who works what, who guards where, and the kills. (Who lives where is
+## crate's contents, who works what and who guards where. (Who lives where is
 ## saved with the survivors.)
 
 const CampSite := preload("res://world/camp_site.gd")
 const Survivor := preload("res://characters/npcs/survivor.gd")
-const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Guard := preload("res://characters/npcs/guard.gd")
 const GuardScene := preload("res://characters/npcs/guard.tscn")
+const WOODWORKER_ID := "woodworker"
 const StructurePiece := preload("res://world/structure_piece.gd")
 const SavePoint := preload("res://world/save_point.gd")
 const BulletinBoard := preload("res://world/bulletin_board.gd")
 const KitContainer := preload("res://items/loot_spot.gd")
 const Ground := preload("res://world/ground.gd")
 
-signal kills_changed
 
 ## Meters: how far apart camps must be, and how far a camp's stations and guard
 ## posts can be from it.
@@ -75,7 +71,6 @@ class Camp:
 var camps: Array[Camp] = []
 var station: Camp
 var _survivors: Node # world/survivors.gd
-var _woodworker: Node # world/woodworker_rescue.gd
 var _structures: Node
 var _zones: Node
 var _day_night: Node
@@ -83,14 +78,12 @@ var _player: Node3D
 var _station_homes := {} # survivor name -> their spot at the station (SpawnPoints)
 var _guards := {} # survivor -> their Guard on a post
 var _names := {} # piece -> the name its camp was given (so it keeps it)
-var kills := {} # camp name -> zombies you've killed within RANGE of it
 var _timer := 0.0
 
 
-func setup(marker: KitBaseCamp, station_homes: Dictionary, survivors: Node, woodworker: Node,
+func setup(marker: KitBaseCamp, station_homes: Dictionary, survivors: Node,
 		structures: Node, zones: Node, day_night: Node, player: Node3D) -> void:
 	_survivors = survivors
-	_woodworker = woodworker
 	_structures = structures
 	_zones = zones
 	_day_night = day_night
@@ -112,26 +105,7 @@ func setup(marker: KitBaseCamp, station_homes: Dictionary, survivors: Node, wood
 
 
 func _ready() -> void:
-	add_to_group("kill_listeners")
 	add_to_group("camps") # (a camp kit taking itself down finds its camp through it)
-
-
-## A zombie died (zombie.gd tells everyone in "kill_listeners"); yours count
-## for every camp it was near.
-func zombie_killed(at: Vector3, killer: Node) -> void:
-	if killer == null or not killer.is_in_group("player"):
-		return
-	var counted := false
-	for camp in camps:
-		if Vector2(camp.center.x - at.x, camp.center.z - at.z).length() <= RANGE:
-			kills[camp.name] = int(kills.get(camp.name, 0)) + 1
-			counted = true
-	if counted:
-		kills_changed.emit()
-
-
-func kills_near(camp_name: String) -> int:
-	return int(kills.get(camp_name, 0))
 
 
 func _part(node: Node3D, xform: Transform3D) -> Node3D:
@@ -236,12 +210,16 @@ func population(camp: Camp) -> int:
 
 
 func _woodworker_home() -> bool:
-	return _woodworker != null and _woodworker.call("state") != Woodworker.State.CAPTIVE
+	return woodworker_free()
 
 
-## The woodworker's rescue (world/woodworker_rescue.gd), made after the camps.
-func attach_woodworker(woodworker: Node) -> void:
-	_woodworker = woodworker
+## Whether the woodworker (npc id "woodworker") is about and free: he lives at
+## the station then, and the machinist can make benches.
+func woodworker_free() -> bool:
+	for person in get_tree().get_nodes_in_group("named_npcs"):
+		if person.get("npc_id") == WOODWORKER_ID:
+			return not person.get("captive") and not person.get("is_dead")
+	return false
 
 
 func capacity(camp: Camp) -> int:
@@ -491,14 +469,13 @@ func save_state() -> Dictionary:
 			workers[str(i)] = pieces.find(survivor.work_piece)
 		if is_guarding(survivor) and survivor.guard_post in pieces:
 			guards[str(i)] = pieces.find(survivor.guard_post)
-	return {"camps": camp_data, "workers": workers, "guards": guards, "kills": kills.duplicate()}
+	return {"camps": camp_data, "workers": workers, "guards": guards}
 
 
 ## After structures.gd and survivors.gd have loaded.
 func load_state(data: Dictionary) -> void:
 	var pieces: Array = _structures.get("pieces")
 	var survivors: Array = _survivors.get("survivors")
-	kills = (data.get("kills", {}) as Dictionary).duplicate()
 	for entry: Dictionary in data.get("camps", []):
 		var index := int(entry.get("piece", -1))
 		if index >= 0 and index < pieces.size():

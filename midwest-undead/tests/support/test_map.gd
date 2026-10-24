@@ -79,6 +79,20 @@ static func base_camp(map: Node3D, at: Vector3) -> KitBaseCamp:
 	return camp
 
 
+## Someone from a person file (characters/npcs/people/<file>.tres, or a
+## PersonData) at a person marker.
+static func person(map: Node3D, who: Variant, at: Vector3, captive := false, start_here := true) -> KitPersonMarker:
+	var data: PersonData = load("res://characters/npcs/people/%s.tres" % who) if who is String else who
+	var m := KitPersonMarker.new()
+	m.name = "Person_" + data.id
+	m.person = data
+	m.captive = captive
+	m.start_here = start_here
+	m.position = at
+	add(map, "People", m)
+	return m
+
+
 ## A quest marker (world/markers/quest_marker.gd).
 static func quest_marker(map: Node3D, id: String, kind: String, at: Vector3) -> KitQuestMarker:
 	var marker := KitQuestMarker.new()

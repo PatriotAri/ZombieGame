@@ -21,6 +21,9 @@ extends Resource
 ## In a stage that's done when any objective is: the stage it goes to when it's
 ## this one. Empty: the stage's own Next.
 @export var leads_to := ""
+## It can't be done until these all hold too (going to where the trader stands
+## only counts once the trader's there).
+@export var when: Array[QuestCondition] = []
 
 @export_group("Map")
 ## Marked on the map screen while it's the tracked quest's (where the kind has

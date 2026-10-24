@@ -22,6 +22,11 @@ extends Resource
 @export var branches: Array[QuestBranch] = []
 ## In-game hours for this stage alone; the quest fails if they run out. 0: no limit.
 @export var time_limit_hours := 0.0
+## What someone says about it if you talk to them meanwhile ("The safe house
+## is out west. Go."), when they've nothing else about this quest for you.
+@export var reminder: QuestDialogue
+## Who says the reminder (an Npc Id). Empty: the quest's giver.
+@export var reminder_from := ""
 
 @export_group("Story")
 ## Shown big in the middle of the screen as it begins (not if it's already

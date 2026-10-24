@@ -37,7 +37,7 @@ var _aim_left := 0.0 # seconds it keeps the rifle up after its last target
 
 
 ## One of your survivors on a guard post (world/camps.gd) can be talked to.
-func interact_prompt() -> String:
+func _talk_prompt() -> String:
 	return "talk to " + display_name if has_meta("survivor") else ""
 
 

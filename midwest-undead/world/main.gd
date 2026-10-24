@@ -42,10 +42,6 @@ const PauseMenu := preload("res://ui/pause_menu.gd")
 const InventoryMenu := preload("res://ui/inventory_menu.gd")
 const ShopMenu := preload("res://ui/shop_menu.gd")
 const DayNight := preload("res://world/day_night.gd")
-const Shopkeeper := preload("res://characters/npcs/shopkeeper.gd")
-const ShopkeeperScene := preload("res://characters/npcs/shopkeeper.tscn")
-const PoliceChief := preload("res://characters/npcs/police_chief.gd")
-const PoliceChiefScene := preload("res://characters/npcs/police_chief.tscn")
 const Guard := preload("res://characters/npcs/guard.gd")
 const GuardScene := preload("res://characters/npcs/guard.tscn")
 const HumanNPCScene := preload("res://characters/npcs/human_npc.tscn")
@@ -70,14 +66,11 @@ const ZombiePopulation := preload("res://world/zombie_population.gd")
 const StaticMerge := preload("res://world/static_merge.gd")
 const Instancer := preload("res://world/instancer.gd")
 const Horde := preload("res://world/horde.gd")
-const TraderArrival := preload("res://world/trader_arrival.gd")
-const WoodworkerRescue := preload("res://world/woodworker_rescue.gd")
 const Survivors := preload("res://world/survivors.gd")
 const Camps := preload("res://world/camps.gd")
 const Salvage := preload("res://world/salvage.gd")
 const CraftMenu := preload("res://ui/craft_menu.gd")
 const ChoiceMenu := preload("res://ui/choice_menu.gd")
-const Woodworker := preload("res://characters/npcs/woodworker.gd")
 const Hud := preload("res://ui/hud.gd")
 const PerfOverlay := preload("res://ui/perf_overlay.gd")
 const Loot := preload("res://world/loot.gd")
@@ -147,8 +140,6 @@ var backpack_menu: BackpackMenu
 var discoveries: Discoveries
 var zombie_population_node: ZombiePopulation
 var horde: Horde # every couple of weeks, a horde crosses the map
-var trader_arrival: TraderArrival # the wagon trader who comes once enough zombies are killed round the station
-var woodworker_rescue: WoodworkerRescue # the woodworker held at the bandit camp
 var survivors: Survivors # the ones holed up in boarded-up houses
 var camps: Camps # the base camps: who lives where, jobs, guards, supply crates
 var salvage: Salvage # stripping cars and furniture for materials
@@ -159,9 +150,6 @@ var quests: QuestManager # the main story and side quests (quests/)
 var game_events: GameEvents # what just happened, for anything listening
 var quest_world: QuestWorld # quest markers and people, by id
 var journal_menu: JournalMenu
-var chief: PoliceChief
-var trader: Shopkeeper
-var safe_house_point := Vector3.ZERO # the "Safe House" place (quest marker target)
 var bandits: Array[Bandit] = []
 var zombies: Array[Zombie] = [] # every zombie up (and bodies not yet cleared away)
 ## A new game's random rolls: what's in the containers, which zombies turn up.
@@ -243,7 +231,7 @@ func _setup_camps_and_zombies() -> void:
 	zones.zone_entered.connect(func(zone_name: String) -> void: hud.show_toast("Entering " + zone_name))
 	camps = Camps.new()
 	add_child(camps)
-	camps.setup(_base_camp_marker(), Survivors.station_homes(spawn_points), survivors, null, structures,
+	camps.setup(_base_camp_marker(), Survivors.station_homes(spawn_points), survivors, structures,
 			zones, day_night, player)
 	structures.camps = camps
 	# More zombies around the map, and new ones over time.
@@ -314,32 +302,10 @@ func _setup_story() -> void:
 	add_child(journal_menu)
 	journal_menu.setup(player, quests)
 	player.died.connect(journal_menu.close)
-	safe_house_point = _place_position("Safe House")
-	for trigger in get_tree().get_nodes_in_group("safe_house_trigger"):
-		# Walking into the safe house's yard (or the house) is what "reaching" it means.
-		(trigger as Area3D).body_entered.connect(func(body: Node3D) -> void:
-			if body.is_in_group("player") and not quests.happened("story", {"name": "safe_house_reached"}):
-				# You stumbled in on them: everything inside comes to see what made that noise.
-				get_tree().call_group("noise_listeners", "hear_noise", safe_house_point, 30.0)
-				quests.event("safe_house_reached"))
-
-	trader_arrival = TraderArrival.new()
-	add_child(trader_arrival)
-	trader_arrival.setup(player, camps, day_night, camps.station.center,
-			_spawn_transform("wagon"), _spawn_transform("wagon_trader"))
-	trader_arrival.seen.connect(quests.event.bind("trader_found"))
-
-	woodworker_rescue = WoodworkerRescue.new()
-	add_child(woodworker_rescue)
-	woodworker_rescue.setup(player, dialogue, _spawn_transform("woodworker_captive"),
-			_spawn_transform("woodworker_home"))
-	woodworker_rescue.freed.connect(quests.event.bind("woodworker_untied"))
-	woodworker_rescue.seen.connect(quests.event.bind("woodworker_found"))
 	salvage = Salvage.new()
 	add_child(salvage)
 	salvage.setup(loot_spots, salvage_others)
-	camps.attach_woodworker(woodworker_rescue)
-	survivors.attach(player, dialogue, choice_menu, craft_menu, camps, woodworker_rescue)
+	survivors.attach(player, dialogue, choice_menu, craft_menu, camps)
 
 
 ## Pressing interact on something that isn't a person, an item or a container:
@@ -452,14 +418,6 @@ func _spawn_point(role: String) -> SpawnPoint:
 	return null
 
 
-## Where a SpawnPoint is, turned only about the vertical (an NPC stands upright).
-func _spawn_transform(role: String) -> Transform3D:
-	var spot := _spawn_point(role)
-	if spot == null:
-		return Transform3D(Basis.IDENTITY, Ground.snap(Vector3.ZERO))
-	return Transform3D(Basis(Vector3.UP, spot.global_rotation.y), spot.global_position)
-
-
 ## The police station's camp marker (a KitBaseCamp in the map scene), or null.
 func _base_camp_marker() -> KitBaseCamp:
 	for node in town.find_children("*", "Marker3D", true, false):
@@ -468,22 +426,14 @@ func _base_camp_marker() -> KitBaseCamp:
 	return null
 
 
-func _place_position(place_name: String) -> Vector3:
-	for place in places:
-		if place.place_name == place_name:
-			return place.global_position
-	push_warning("The map scene has no Place called \"%s\"." % place_name)
-	return Vector3.ZERO
-
-
 ## Pressing interact on an NPC. Anything a quest has for them (an offer, a step
 ## to talk to them, a reminder) comes first; next to their own business
 ## (trading, building...) it's a choice. With nothing about quests, they do
 ## their own thing.
 func _on_npc_interacted(npc: HumanNPC) -> void:
 	npc.talking = true # (until your menus close)
-	if npc is Woodworker and (npc as Woodworker).state == Woodworker.State.CAPTIVE:
-		woodworker_rescue.untie() # (the rescue itself is the woodworker's own scene)
+	if npc.captive:
+		_untie(npc)
 		return
 	var options := quests.talk_options(npc)
 	var own := _own_business(npc)
@@ -502,6 +452,20 @@ func _on_npc_interacted(npc: HumanNPC) -> void:
 		options.append(own)
 	options.append(["Never mind", Callable()])
 	choice_menu.open(player, npc.display_name, "", options)
+
+
+## Untying someone held captive: they say their person file's Untie Talk, and
+## they're free (quests hear person_freed).
+func _untie(npc: HumanNPC) -> void:
+	var lines := npc.person.untie_talk if npc.person else null
+	var free := func() -> void:
+		if npc.captive:
+			npc.set_captive(false)
+			GameEvents.send(&"person_freed", {"npc_id": npc.npc_id})
+	if lines:
+		quests.play(lines, npc.npc_id, free)
+	else:
+		free.call()
 
 
 ## What an NPC does when it's not about quests (each kind says: its
@@ -661,10 +625,9 @@ func _spawn_player() -> void:
 	player.notify.connect(hud.show_toast)
 
 
-## The map's NPCs: everyone at a person marker (from their person file), and
-## those at SpawnPoints: the Quartermaster and the Chief in the station, the
-## guards on their towers, the bandits at their camp, and the people who didn't
-## make it at the safe house. After the navigation bake, so they can find
+## The map's NPCs: everyone at a person marker (from their person file: the
+## Quartermaster, the Chief...), and those at SpawnPoints: guards on their
+## towers, the bandits at their camp, and the people who didn't make it (corpses). After the navigation bake, so they can find
 ## their way around.
 func _spawn_npcs() -> void:
 	for spot in person_markers:
@@ -675,18 +638,11 @@ func _spawn_npcs() -> void:
 		if "day_night" in someone:
 			someone.set("day_night", day_night) # a trader restocks each morning
 		add_child(someone)
+		if spot.captive:
+			someone.set_captive(true)
 	for spot in spawn_points:
 		var xform := Transform3D(Basis(Vector3.UP, spot.global_rotation.y), spot.global_position)
 		match spot.role:
-			"trader":
-				trader = ShopkeeperScene.instantiate() as Shopkeeper
-				trader.transform = xform
-				trader.day_night = day_night # restocks each morning
-				add_child(trader)
-			"chief":
-				chief = PoliceChiefScene.instantiate() as PoliceChief
-				chief.transform = xform
-				add_child(chief)
 			"guard":
 				var guard := GuardScene.instantiate() as Guard
 				# Its own tower (what the marker sits under) doesn't block its aim.
